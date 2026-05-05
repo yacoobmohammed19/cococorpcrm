@@ -169,7 +169,7 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
                 </div>
               </div>
             ))}
-            {filtered.length === 0 && <div className="text-center py-16 text-sm" style={{ color: "var(--muted2)" }}>No costs found</div>}
+            {filtered.length === 0 && <EmptyState icon="💸" title={search || catFilter || acctFilter || dateFrom || dateTo ? "No costs match your filters" : "No costs yet"} description={search || catFilter || acctFilter || dateFrom || dateTo ? "Try adjusting your filters." : "Record your first cost to start tracking expenses."} />}
           </div>
 
           {/* Desktop Table */}
@@ -204,7 +204,7 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
                       </td>
                     </tr>
                   ))}
-                  {filtered.length === 0 && <tr><td colSpan={7} className="px-3 py-6 text-center" style={{ color: "var(--muted2)" }}>No costs found</td></tr>}
+                  {filtered.length === 0 && <tr><td colSpan={7}><EmptyState icon="💸" title={search || catFilter || acctFilter || dateFrom || dateTo ? "No costs match your filters" : "No costs yet"} description={search || catFilter || acctFilter || dateFrom || dateTo ? "Try adjusting your filters." : "Record your first cost to start tracking expenses."} /></td></tr>}
                 </tbody>
               </table>
             </div>

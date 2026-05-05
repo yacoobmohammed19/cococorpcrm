@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/hooks/useConfirm";
 import { runAction } from "@/lib/action-utils";
 import { createCampaign, logCampaignUpdate, deleteCampaign, deleteCampaignUpdate, updateCampaignStatus } from "@/server-actions/marketing";
@@ -216,7 +217,7 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
                       </tr>
                     );
                   })}
-                  {campaigns.length === 0 && <tr><td colSpan={10} className="px-3 py-8 text-center" style={{ color: "var(--muted2)" }}>No campaigns yet — create one to get started</td></tr>}
+                  {campaigns.length === 0 && <tr><td colSpan={10}><EmptyState icon="📣" title="No campaigns yet" description="Create your first campaign to start tracking marketing performance." /></td></tr>}
                 </tbody>
               </table>
             </div>
@@ -276,9 +277,7 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
             );
           })}
           {campaigns.length === 0 && (
-            <div className="rounded-lg p-12 text-center" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
-              <p className="text-sm" style={{ color: "var(--muted2)" }}>No campaigns yet. Click &ldquo;+ Campaign&rdquo; to create one.</p>
-            </div>
+            <EmptyState icon="📣" title="No campaigns yet" description='Click "+ Campaign" to create your first marketing campaign.' />
           )}
         </div>
       )}
@@ -316,7 +315,7 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
                     </tr>
                   );
                 })}
-                {updates.length === 0 && <tr><td colSpan={9} className="px-3 py-8 text-center" style={{ color: "var(--muted2)" }}>No performance entries yet</td></tr>}
+                {updates.length === 0 && <tr><td colSpan={9}><EmptyState icon="📈" title="No performance entries yet" description="Click the log button on a campaign to record results." /></td></tr>}
               </tbody>
             </table>
           </div>

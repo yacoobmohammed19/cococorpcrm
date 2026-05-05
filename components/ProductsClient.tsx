@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 import { useToast } from "@/components/Toast";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { useConfirm } from "@/hooks/useConfirm";
+import { runAction } from "@/lib/action-utils";
 import { createProduct, updateProduct, deleteProduct } from "@/server-actions/products";
 
 type Product = {
@@ -19,6 +23,7 @@ function fmt(n: number) { return Number(n).toLocaleString("en-ZA", { minimumFrac
 export function ProductsClient({ products, currency }: { products: Product[]; currency: string }) {
   const cur = currency === "ZAR" ? "R" : "$";
   const toast = useToast();
+  const { confirm, dialogProps } = useConfirm();
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("");
   const [showInactive, setShowInactive] = useState(false);
@@ -41,11 +46,10 @@ export function ProductsClient({ products, currency }: { products: Product[]; cu
   function close() { setModal({ open: false, product: null }); }
 
   async function handleDelete(id: number, name: string) {
-    if (!confirm(`Archive "${name}"?`)) return;
+    if (!await confirm(`Archive "${name}"?`, "The product will be marked inactive.")) return;
     setBusy(true);
-    try { await deleteProduct(id); toast.success("Product archived"); }
-    catch { toast.error("Failed to archive"); }
-    finally { setBusy(false); }
+    await runAction(() => deleteProduct(id), toast, "Product archived");
+    setBusy(false);
   }
 
   return (
@@ -134,9 +138,7 @@ export function ProductsClient({ products, currency }: { products: Product[]; cu
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={6} className="px-3 py-10 text-center text-sm" style={{ color: "var(--muted2)" }}>
-                  {search ? "No products match your search" : "No products yet — add your first one"}
-                </td></tr>
+                <tr><td colSpan={6}><EmptyState icon="📦" title={search || catFilter ? "No products match your filters" : "No products yet"} description={search || catFilter ? "Try adjusting your filters." : "Add your first product or service to start building your catalogue."} /></td></tr>
               )}
             </tbody>
           </table>
@@ -209,6 +211,7 @@ export function ProductsClient({ products, currency }: { products: Product[]; cu
           </div>
         </div>
       )}
+      <ConfirmDialog {...dialogProps} confirmLabel="Archive" />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/hooks/useConfirm";
 import { runAction } from "@/lib/action-utils";
 import { updateLeadStatus, deleteLead, createLead, updateLead, convertLeadToCustomer } from "@/server-actions/leads";
@@ -384,7 +385,7 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
               );
             })}
             {filtered.length === 0 && (
-              <div className="text-center py-16 text-xs" style={{ color: "var(--muted2)" }}>No leads found</div>
+              <EmptyState icon="🎯" title={search || statusFilter ? "No leads match your filters" : "No leads yet"} description={search || statusFilter ? "Try adjusting your filters." : "Add your first lead to start tracking your pipeline."} />
             )}
           </div>
 
@@ -432,7 +433,7 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
                     );
                   })}
                   {filtered.length === 0 && (
-                    <tr><td colSpan={8} className="px-3 py-6 text-center text-xs" style={{ color: "var(--muted2)" }}>No leads found</td></tr>
+                    <tr><td colSpan={8}><EmptyState icon="🎯" title={search || statusFilter ? "No leads match your filters" : "No leads yet"} description={search || statusFilter ? "Try adjusting your filters." : "Add your first lead to start tracking your pipeline."} /></td></tr>
                   )}
                 </tbody>
               </table>

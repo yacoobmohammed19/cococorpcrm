@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/hooks/useConfirm";
 import { runAction } from "@/lib/action-utils";
 import { createQuote, updateQuoteStatus, deleteQuote, convertQuoteToInvoice } from "@/server-actions/quotes";
@@ -184,9 +185,7 @@ export function QuotesClient({ quotes, customers, products, currency }: {
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={7} className="px-3 py-10 text-center text-sm" style={{ color: "var(--muted2)" }}>
-                  No quotes found
-                </td></tr>
+                <tr><td colSpan={7}><EmptyState icon="📋" title={search || statusFilter ? "No quotes match your filters" : "No quotes yet"} description={search || statusFilter ? "Try adjusting your filters." : "Create your first quote to start winning business."} /></td></tr>
               )}
             </tbody>
           </table>
