@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 import { useToast } from "@/components/Toast";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { DateInput } from "@/components/ui/DateInput";
+import { useConfirm } from "@/hooks/useConfirm";
+import { runAction } from "@/lib/action-utils";
 import { createQuote, updateQuoteStatus, deleteQuote, convertQuoteToInvoice } from "@/server-actions/quotes";
 
 type Quote = {
@@ -32,9 +36,11 @@ export function QuotesClient({ quotes, customers, products, currency }: {
 }) {
   const cur = currency === "ZAR" ? "R" : "$";
   const toast = useToast();
+  const { confirm, dialogProps } = useConfirm();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [modal, setModal] = useState(false);
+  const [validUntil, setValidUntil] = useState("");
   const [busy, setBusy] = useState(false);
   const [lines, setLines] = useState<Line[]>([{ description: "", quantity: 1, unit_price: 0 }]);
 
@@ -85,17 +91,15 @@ export function QuotesClient({ quotes, customers, products, currency }: {
   }
 
   async function handleDelete(id: number) {
-    if (!confirm("Archive this quote?")) return;
-    try { await deleteQuote(id); toast.success("Quote archived"); }
-    catch { toast.error("Failed to archive quote"); }
+    if (!await confirm("Archive this quote?", "The quote will be hidden from the list.")) return;
+    await runAction(() => deleteQuote(id), toast, "Quote archived");
   }
 
   async function handleConvert(id: number, quoteNum: string) {
-    if (!confirm(`Convert ${quoteNum} to an invoice?`)) return;
+    if (!await confirm(`Convert ${quoteNum} to an invoice?`, "A new invoice will be created from this quote.")) return;
     setBusy(true);
-    try { await convertQuoteToInvoice(id); toast.success("Invoice created from quote"); }
-    catch { toast.error("Failed to convert quote"); }
-    finally { setBusy(false); }
+    await runAction(() => convertQuoteToInvoice(id), toast, "Invoice created from quote");
+    setBusy(false);
   }
 
   return (
@@ -121,7 +125,7 @@ export function QuotesClient({ quotes, customers, products, currency }: {
           <option value="">All Statuses</option>
           {[...STATUSES, "Invoiced"].map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        <button onClick={() => setModal(true)}
+        <button onClick={() => { setValidUntil(""); setModal(true); }}
           className="px-4 py-2 text-sm font-semibold rounded"
           style={{ background: "var(--accent)", color: "#fff" }}>
           + New Quote
@@ -221,7 +225,7 @@ export function QuotesClient({ quotes, customers, products, currency }: {
                   </div>
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Valid Until</label>
-                    <input name="valid_until" type="date" className={inp} style={inpS} />
+                    <DateInput name="valid_until" value={validUntil} onChange={setValidUntil} placeholder="Pick a date" />
                   </div>
                   <div className="col-span-2">
                     <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Notes</label>
@@ -279,6 +283,7 @@ export function QuotesClient({ quotes, customers, products, currency }: {
           </div>
         </div>
       )}
+      <ConfirmDialog {...dialogProps} confirmLabel="Confirm" />
     </div>
   );
 }

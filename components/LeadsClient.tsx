@@ -1,6 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useToast } from "@/components/Toast";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { DateInput } from "@/components/ui/DateInput";
+import { useConfirm } from "@/hooks/useConfirm";
+import { runAction } from "@/lib/action-utils";
 import { updateLeadStatus, deleteLead, createLead, updateLead, convertLeadToCustomer } from "@/server-actions/leads";
 
 // ─── Tinder-style swipe card view ────────────────────────────────────────────
@@ -220,6 +225,8 @@ const dot = (v: boolean) => <span style={{ color: v ? "var(--accent)" : "var(--m
 
 export function LeadsClient({ leads, statuses, customers, products = [], currency }: Props) {
   const cur = currency === "ZAR" ? "R" : "$";
+  const toast = useToast();
+  const { confirm, dialogProps } = useConfirm();
   const [view, setView] = useState<"table" | "kanban" | "cards">("table");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -231,6 +238,8 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
   type FunnelState = { contacted: boolean; responded: boolean; developed: boolean; completed: boolean };
   const [funnelState, setFunnelState] = useState<FunnelState>({ contacted: false, responded: false, developed: false, completed: false });
   const [modalWeight, setModalWeight] = useState(0);
+  const [modalLeadDate, setModalLeadDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [modalFollowUp, setModalFollowUp] = useState("");
 
   useEffect(() => {
     if (modal.open) {
@@ -241,6 +250,8 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
         completed: modal.lead?.completed ?? false,
       });
       setModalWeight(modal.lead?.weight ?? 0);
+      setModalLeadDate(modal.lead?.lead_date?.slice(0, 10) || new Date().toISOString().slice(0, 10));
+      setModalFollowUp(modal.lead?.last_follow_up?.slice(0, 10) || "");
     }
   }, [modal.open, modal.lead]);
 
@@ -279,16 +290,16 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
   function closeModal() { setModal({ open: false, lead: null }); }
 
   async function handleDelete(id: number) {
-    if (!confirm("Archive this lead?")) return;
+    if (!await confirm("Archive this lead?", "The lead will be hidden from the list.")) return;
     setBusy(true);
-    await deleteLead(id);
+    await runAction(() => deleteLead(id), toast, "Lead archived");
     setBusy(false);
   }
 
   async function handleConvert(id: number) {
-    if (!confirm("Convert this lead to a customer?")) return;
+    if (!await confirm("Convert this lead to a customer?", "A new customer record will be created from this lead.")) return;
     setBusy(true);
-    await convertLeadToCustomer(id);
+    await runAction(() => convertLeadToCustomer(id), toast, "Lead converted to customer");
     setBusy(false);
   }
 
@@ -576,7 +587,7 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
                 </div>
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Lead Date</label>
-                  <input name="lead_date" type="date" defaultValue={modal.lead?.lead_date?.slice(0, 10) || new Date().toISOString().slice(0, 10)} className={inputStyle} style={inputCss} />
+                  <DateInput name="lead_date" value={modalLeadDate} onChange={setModalLeadDate} placeholder="Lead date" />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -599,7 +610,7 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
                 </div>
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Follow Up Date</label>
-                  <input name="last_follow_up" type="date" defaultValue={modal.lead?.last_follow_up?.slice(0, 10) || ""} className={inputStyle} style={inputCss} />
+                  <DateInput name="last_follow_up" value={modalFollowUp} onChange={setModalFollowUp} placeholder="Follow-up date" />
                 </div>
               </div>
               {products.length > 0 && (
@@ -661,6 +672,7 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
           </div>
         </div>
       )}
+      <ConfirmDialog {...dialogProps} confirmLabel="Confirm" />
     </div>
   );
 }

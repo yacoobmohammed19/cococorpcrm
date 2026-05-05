@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { DateInput } from "@/components/ui/DateInput";
 import { useConfirm } from "@/hooks/useConfirm";
 import { runAction } from "@/lib/action-utils";
 import { createActivity, toggleActivity, deleteActivity } from "@/server-actions/activities";
@@ -37,6 +38,7 @@ export function LeadDetailClient({ lead, activities, currency, leadId }: {
 }) {
   const toast = useToast();
   const { confirm, dialogProps } = useConfirm();
+  const [activityDueDate, setActivityDueDate] = useState("");
   const [busy, setBusy] = useState(false);
   const [activityModal, setActivityModal] = useState(false);
   const weightedValue = ((lead.opportunity_value ?? 0) * ((lead.weight ?? 0) / 100));
@@ -80,7 +82,7 @@ export function LeadDetailClient({ lead, activities, currency, leadId }: {
       <div>
         <div className="flex justify-between items-center mb-3">
           <h2 className="text-base font-semibold">Activities</h2>
-          <button onClick={() => setActivityModal(true)}
+          <button onClick={() => { setActivityDueDate(""); setActivityModal(true); }}
             className="text-xs px-3 py-1.5 rounded font-semibold"
             style={{ background: "var(--accent)", color: "#fff" }}>+ Log Activity</button>
         </div>
@@ -138,7 +140,7 @@ export function LeadDetailClient({ lead, activities, currency, leadId }: {
                 </div>
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Due Date</label>
-                  <input name="due_date" type="date" className={inp} style={inpS} />
+                  <DateInput name="due_date" value={activityDueDate} onChange={setActivityDueDate} placeholder="Due date (optional)" />
                 </div>
                 <div className="col-span-2">
                   <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Subject *</label>

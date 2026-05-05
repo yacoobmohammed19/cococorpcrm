@@ -1,6 +1,11 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useToast } from "@/components/Toast";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { DateInput } from "@/components/ui/DateInput";
+import { useConfirm } from "@/hooks/useConfirm";
+import { runAction } from "@/lib/action-utils";
 import { createCampaign, logCampaignUpdate, deleteCampaign, deleteCampaignUpdate, updateCampaignStatus } from "@/server-actions/marketing";
 
 type Campaign = {
@@ -47,9 +52,14 @@ function aggCampaign(updates: CampaignUpdate[], cid: number) {
 
 export function MarketingClient({ campaigns, updates, currency }: Props) {
   const cur = currency === "ZAR" ? "R" : "$";
+  const toast = useToast();
+  const { confirm, dialogProps } = useConfirm();
   const [tab, setTab] = useState<"dashboard" | "campaigns" | "log">("dashboard");
   const [campModal, setCampModal] = useState(false);
+  const [campStartDate, setCampStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [campEndDate, setCampEndDate] = useState("");
   const [logModal, setLogModal] = useState<number | null>(null);
+  const [logDate, setLogDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
 
   const allAgg = useMemo(() => {
@@ -93,16 +103,16 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
   }
 
   async function handleDeleteCampaign(id: number) {
-    if (!confirm("Delete this campaign?")) return;
+    if (!await confirm("Delete this campaign?", "All associated log entries will also be removed.")) return;
     setBusy(true);
-    await deleteCampaign(id);
+    await runAction(() => deleteCampaign(id), toast, "Campaign deleted");
     setBusy(false);
   }
 
   async function handleDeleteUpdate(id: number) {
-    if (!confirm("Delete this log entry?")) return;
+    if (!await confirm("Delete this log entry?", "This performance record will be permanently removed.")) return;
     setBusy(true);
-    await deleteCampaignUpdate(id);
+    await runAction(() => deleteCampaignUpdate(id), toast, "Log entry deleted");
     setBusy(false);
   }
 
@@ -151,7 +161,7 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
           {tabBtn("dashboard", "📊 Dashboard")}
           {tabBtn("campaigns", "📋 Campaigns")}
           {tabBtn("log", "📈 Performance Log")}
-          <button onClick={() => setCampModal(true)}
+          <button onClick={() => { setCampStartDate(new Date().toISOString().slice(0, 10)); setCampEndDate(""); setCampModal(true); }}
             className="px-4 py-2 text-xs font-semibold rounded"
             style={{ background: "var(--accent)", color: "#fff" }}>+ Campaign</button>
         </div>
@@ -238,7 +248,7 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
                       style={{ background: sc + "22", color: sc }}>
                       {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
-                    <button onClick={() => setLogModal(c.id)}
+                    <button onClick={() => { setLogDate(new Date().toISOString().slice(0, 10)); setLogModal(c.id); }}
                       className="text-xs px-3 py-1.5 rounded font-semibold"
                       style={{ background: "var(--card3)", color: "var(--accent)", border: "1px solid var(--border)" }}>📊 Log</button>
                     <button onClick={() => handleDeleteCampaign(c.id)}
@@ -349,11 +359,11 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Start Date</label>
-                  <input name="start_date" type="date" defaultValue={today} className={inputCss} style={inputStyle} />
+                  <DateInput name="start_date" value={campStartDate} onChange={setCampStartDate} placeholder="Start date" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>End Date</label>
-                  <input name="end_date" type="date" className={inputCss} style={inputStyle} />
+                  <DateInput name="end_date" value={campEndDate} onChange={setCampEndDate} placeholder="End date (optional)" />
                 </div>
               </div>
               <div>
@@ -381,7 +391,7 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
             <div className="p-5 space-y-3">
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Date *</label>
-                <input name="date" type="date" required defaultValue={today} className={inputCss} style={inputStyle} />
+                <DateInput name="date" value={logDate} onChange={setLogDate} placeholder="Log date" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[["spend", "Ad Spend", "0.00", true], ["impressions", "Impressions", "0", false], ["clicks", "Clicks", "0", false], ["conversions", "Conversions", "0", false], ["revenue", "Revenue from Ads", "0.00", false]].map(([name, label, placeholder, decimal]) => (
@@ -408,6 +418,7 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
           </form>
         </Modal>
       )}
+      <ConfirmDialog {...dialogProps} confirmLabel="Delete" />
     </div>
   );
 }

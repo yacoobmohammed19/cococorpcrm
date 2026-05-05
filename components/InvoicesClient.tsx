@@ -3,6 +3,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { DateInput } from "@/components/ui/DateInput";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { useConfirm } from "@/hooks/useConfirm";
+import { runAction } from "@/lib/action-utils";
 import { createInvoice, updateInvoice, deleteInvoice, updateInvoiceStatus } from "@/server-actions/invoices";
 
 type Invoice = {
@@ -28,10 +33,15 @@ type Line = { description: string; quantity: number; unit_price: number; product
 export function InvoicesClient({ invoices, customers, paymentTypes, products = [], currency }: Props) {
   const cur = currency === "ZAR" ? "R" : "$";
   const toast = useToast();
+  const { confirm, dialogProps } = useConfirm();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [modal, setModal] = useState(false);
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
+  const [editTxDate, setEditTxDate] = useState("");
+  const [editDueDate, setEditDueDate] = useState("");
+  const [createTxDate, setCreateTxDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [createDueDate, setCreateDueDate] = useState("");
   const [busy, setBusy] = useState(false);
   const [lines, setLines] = useState<Line[]>([{ description: "", quantity: 1, unit_price: 0 }]);
 
@@ -89,15 +99,16 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
 
   function openEdit(inv: Invoice) {
     setEditInvoice(inv);
+    setEditTxDate(inv.transaction_date?.slice(0, 10) || today);
+    setEditDueDate(inv.due_date?.slice(0, 10) || "");
     setLines([{ description: inv.description || "Service", quantity: 1, unit_price: inv.amount }]);
   }
 
   async function handleDelete(id: number) {
-    if (!confirm("Archive this invoice?")) return;
+    if (!await confirm("Archive this invoice?", "The invoice will be hidden from the list.")) return;
     setBusy(true);
-    try { await deleteInvoice(id); toast.success("Invoice archived"); }
-    catch { toast.error("Failed to archive"); }
-    finally { setBusy(false); }
+    await runAction(() => deleteInvoice(id), toast, "Invoice archived");
+    setBusy(false);
   }
 
   async function handleStatusChange(id: number, status: string) {
@@ -131,7 +142,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
           <option value="">All Statuses</option>
           {["Completed", "Pending", "Written Off"].map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        <button onClick={() => setModal(true)}
+        <button onClick={() => { setCreateTxDate(today); setCreateDueDate(""); setModal(true); }}
           className="px-4 py-2.5 rounded-xl text-sm font-semibold"
           style={{ background: "var(--accent)", color: "#fff" }}>
           + Invoice
@@ -183,7 +194,10 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
           );
         })}
         {filtered.length === 0 && (
-          <div className="text-center py-16 text-sm" style={{ color: "var(--muted2)" }}>No invoices found</div>
+          <EmptyState icon="🧾" title="No invoices found"
+            description={search || statusFilter ? "Try adjusting your filters." : "Create your first invoice to get started."}
+            action={!search && !statusFilter ? <button onClick={() => setModal(true)} className="px-4 py-2 text-sm font-semibold rounded-xl" style={{ background: "var(--accent)", color: "#fff" }}>+ New Invoice</button> : undefined}
+          />
         )}
       </div>
 
@@ -237,7 +251,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={9} className="px-3 py-8 text-center text-sm" style={{ color: "var(--muted2)" }}>No invoices found</td></tr>
+                <tr><td colSpan={9}><EmptyState icon="🧾" title="No invoices found" description={search || statusFilter ? "Try adjusting your filters." : "Create your first invoice to get started."} /></td></tr>
               )}
             </tbody>
           </table>
@@ -270,11 +284,11 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
                   </div>
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Date</label>
-                    <input name="transaction_date" type="date" required defaultValue={editInvoice.transaction_date?.slice(0, 10) || today} className={inputCss} style={inputStyle} />
+                    <DateInput name="transaction_date" value={editTxDate} onChange={setEditTxDate} placeholder="Invoice date" />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Due Date</label>
-                    <input name="due_date" type="date" defaultValue={editInvoice.due_date?.slice(0, 10) || ""} className={inputCss} style={inputStyle} />
+                    <DateInput name="due_date" value={editDueDate} onChange={setEditDueDate} placeholder="Due date (optional)" />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Status</label>
@@ -359,11 +373,11 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
                   </div>
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Date *</label>
-                    <input name="transaction_date" type="date" required defaultValue={today} className={inputCss} style={inputStyle} />
+                    <DateInput name="transaction_date" value={createTxDate} onChange={setCreateTxDate} placeholder="Invoice date" />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Due Date</label>
-                    <input name="due_date" type="date" className={inputCss} style={inputStyle} />
+                    <DateInput name="due_date" value={createDueDate} onChange={setCreateDueDate} placeholder="Due date (optional)" />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Status</label>
@@ -433,6 +447,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
           </div>
         </div>
       )}
+      <ConfirmDialog {...dialogProps} confirmLabel="Archive" />
     </div>
   );
 }

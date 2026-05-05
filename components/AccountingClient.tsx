@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { DateInput } from "@/components/ui/DateInput";
 import { useConfirm } from "@/hooks/useConfirm";
 import { runAction } from "@/lib/action-utils";
 import {
@@ -113,13 +114,16 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
 
   // Bank recon state
   const [addBusy, setAddBusy] = useState(false);
+  const [balRecordDate, setBalRecordDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [resolveEntry, setResolveEntry] = useState<Cashflow | null>(null);
+  const [resolveDate, setResolveDate] = useState("");
   const [resolveBusy, setResolveBusy] = useState(false);
   const [resolveType, setResolveType] = useState<"income" | "cost">("income");
 
   // Cashflow quick-entry state
   const [cfBusy, setCfBusy] = useState(false);
   const [cfType, setCfType] = useState<"in" | "out">("in");
+  const [txnDate, setTxnDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   // ── IS / BS data ─────────────────────────────────────────────────────────
   const isData = useMemo(() => {
@@ -181,6 +185,7 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
     const sysBal = calcSystemBalance(invoices, costs, entry.record_date);
     const variance = entry.balance - sysBal;
     setResolveType(variance > 0 ? "income" : "cost");
+    setResolveDate(entry.record_date);
     setResolveEntry(entry);
   }
 
@@ -355,6 +360,7 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
                   await saveBankBalance(new FormData(e.currentTarget));
                   toast.success("Balance snapshot saved");
                   (e.target as HTMLFormElement).reset();
+                  setBalRecordDate(new Date().toISOString().slice(0, 10));
                 } catch { toast.error("Failed to save snapshot"); }
                 finally { setAddBusy(false); }
               }}
@@ -364,9 +370,7 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mb-3">
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Date *</label>
-                  <input name="record_date" type="date" required defaultValue={today}
-                    className="w-full px-3 py-2 rounded border text-sm outline-none"
-                    style={{ background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" }} />
+                  <DateInput name="record_date" value={balRecordDate} onChange={setBalRecordDate} placeholder="Select date" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Account</label>
@@ -604,9 +608,7 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
                             </div>
                             <div>
                               <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Date</label>
-                              <input name="date" type="date"
-                                defaultValue={resolveEntry.record_date}
-                                className={inp} style={inpS} />
+                              <DateInput name="date" value={resolveDate} onChange={setResolveDate} placeholder="Select date" />
                             </div>
                           </div>
                         </div>
@@ -649,6 +651,7 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
                 await createBankTransaction(fd);
                 toast.success("Cashflow entry added");
                 (e.target as HTMLFormElement).reset();
+                setTxnDate(new Date().toISOString().slice(0, 10));
                 setCfType("in");
               } catch { toast.error("Failed to save entry"); }
               finally { setCfBusy(false); }
@@ -674,9 +677,7 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mb-3">
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Date *</label>
-                <input name="txn_date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)}
-                  className="w-full px-3 py-2 rounded border text-sm outline-none"
-                  style={{ background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" }} />
+                <DateInput name="txn_date" value={txnDate} onChange={setTxnDate} placeholder="Select date" />
               </div>
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Description *</label>

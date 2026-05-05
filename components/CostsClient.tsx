@@ -2,6 +2,11 @@
 
 import { useState, useMemo } from "react";
 import { useToast } from "@/components/Toast";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { DateInput } from "@/components/ui/DateInput";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { useConfirm } from "@/hooks/useConfirm";
+import { runAction } from "@/lib/action-utils";
 import { createCost, updateCost, deleteCost } from "@/server-actions/costs";
 
 type Cost = {
@@ -34,8 +39,11 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
   const [dateTo, setDateTo] = useState("");
   const [modal, setModal] = useState(false);
   const [editCost, setEditCost] = useState<Cost | null>(null);
+  const [editCostDate, setEditCostDate] = useState("");
+  const [createCostDate, setCreateCostDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
   const toast = useToast();
+  const { confirm, dialogProps } = useConfirm();
 
   const now = new Date();
   const [mFrom, setMFrom] = useState(`${now.getFullYear() - 1}-${String(now.getMonth() + 1).padStart(2, "0")}`);
@@ -132,7 +140,7 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
               className="px-3 py-1.5 text-xs rounded-xl border outline-none" style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--muted)" }} />
           </>
         )}
-        <button onClick={() => setModal(true)} className="ml-auto px-4 py-1.5 text-xs font-semibold rounded-xl" style={{ background: "var(--accent)", color: "#fff" }}>+ New Cost</button>
+        <button onClick={() => { setCreateCostDate(new Date().toISOString().slice(0, 10)); setModal(true); }} className="ml-auto px-4 py-1.5 text-xs font-semibold rounded-xl" style={{ background: "var(--accent)", color: "#fff" }}>+ New Cost</button>
       </div>
 
       {/* TABLE VIEW */}
@@ -155,8 +163,8 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
                   {c.recouped === "Y" && <span className="px-2 py-0.5 rounded-full font-semibold" style={{ background: "rgba(16,185,129,.15)", color: "var(--accent)" }}>Recouped</span>}
                 </div>
                 <div className="flex gap-2 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
-                  <button onClick={() => setEditCost(c)} className="flex-1 py-2 rounded-xl text-xs font-semibold" style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted)" }}>✏️ Edit</button>
-                  <button onClick={async () => { if (!confirm("Delete this cost?")) return; try { await deleteCost(c.id); toast.success("Cost deleted"); } catch { toast.error("Failed to delete"); } }}
+                  <button onClick={() => { setEditCostDate(c.transaction_date.slice(0, 10)); setEditCost(c); }} className="flex-1 py-2 rounded-xl text-xs font-semibold" style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted)" }}>✏️ Edit</button>
+                  <button onClick={async () => { if (!await confirm("Delete this cost?", "This cost record will be permanently removed.")) return; await runAction(() => deleteCost(c.id), toast, "Cost deleted"); }}
                     className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(239,68,68,.1)", color: "var(--red-c)" }}>🗑️</button>
                 </div>
               </div>
@@ -188,9 +196,9 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex gap-1">
-                          <button onClick={() => setEditCost(c)}
+                          <button onClick={() => { setEditCostDate(c.transaction_date.slice(0, 10)); setEditCost(c); }}
                             className="px-2 py-1 rounded text-xs" style={{ border: "1px solid var(--border)", background: "var(--card2)" }}>✏️</button>
-                          <button onClick={async () => { if (!confirm("Delete this cost?")) return; try { await deleteCost(c.id); toast.success("Cost deleted"); } catch { toast.error("Failed to delete"); } }}
+                          <button onClick={async () => { if (!await confirm("Delete this cost?", "This cost record will be permanently removed.")) return; await runAction(() => deleteCost(c.id), toast, "Cost deleted"); }}
                             className="px-2 py-1 rounded text-xs" style={{ border: "1px solid var(--border)", background: "var(--card2)" }}>🗑️</button>
                         </div>
                       </td>
@@ -266,7 +274,7 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Date *</label>
-                  <input name="transaction_date" type="date" required defaultValue={editCost.transaction_date} className={inputStyle} style={inputCss} />
+                  <DateInput name="transaction_date" value={editCostDate} onChange={setEditCostDate} placeholder="Select date" />
                 </div>
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Amount *</label>
@@ -326,7 +334,7 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Date *</label>
-                  <input name="transaction_date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} className={inputStyle} style={inputCss} />
+                  <DateInput name="transaction_date" value={createCostDate} onChange={setCreateCostDate} placeholder="Select date" />
                 </div>
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Amount *</label>
@@ -370,6 +378,7 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
           </div>
         </div>
       )}
+      <ConfirmDialog {...dialogProps} confirmLabel="Delete" />
     </div>
   );
 }

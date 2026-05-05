@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { DateInput } from "@/components/ui/DateInput";
 import { useConfirm } from "@/hooks/useConfirm";
 import { runAction } from "@/lib/action-utils";
 import { updateCustomer } from "@/server-actions/customers";
@@ -39,6 +40,7 @@ export function CustomerDetailClient({ customer, invoices, contacts, activities,
 }) {
   const toast = useToast();
   const { confirm, dialogProps } = useConfirm();
+  const [activityDueDate, setActivityDueDate] = useState("");
   const [tab, setTab] = useState<Tab>("Info");
   const [busy, setBusy] = useState(false);
   const [editInfo, setEditInfo] = useState(false);
@@ -240,7 +242,7 @@ export function CustomerDetailClient({ customer, invoices, contacts, activities,
         <div>
           <div className="flex justify-between items-center mb-3">
             <span className="text-sm font-semibold">{activities.length} activit{activities.length !== 1 ? "ies" : "y"}</span>
-            <button onClick={() => setActivityModal(true)}
+            <button onClick={() => { setActivityDueDate(""); setActivityModal(true); }}
               className="text-xs px-3 py-1.5 rounded font-semibold"
               style={{ background: "var(--accent)", color: "#fff" }}>+ Log Activity</button>
           </div>
@@ -351,7 +353,7 @@ export function CustomerDetailClient({ customer, invoices, contacts, activities,
                 </div>
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Due Date</label>
-                  <input name="due_date" type="date" className={inp} style={inpS} />
+                  <DateInput name="due_date" value={activityDueDate} onChange={setActivityDueDate} placeholder="Due date (optional)" />
                 </div>
                 <div className="col-span-2">
                   <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Subject *</label>

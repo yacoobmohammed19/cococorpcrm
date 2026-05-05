@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { DateInput } from "@/components/ui/DateInput";
 import { createLead } from "@/server-actions/leads";
 import { createInvoice } from "@/server-actions/invoices";
 import { createCost, recordCashflow } from "@/server-actions/costs";
@@ -25,12 +26,11 @@ type ModalType = "lead" | "invoice" | "cost" | "cashflow" | null;
 export function FAB({ accounts, customers, paymentTypes, statuses, costCategories }: Props) {
   const [open, setOpen] = useState(false);
   const [modal, setModal] = useState<ModalType>(null);
+  const [fabDate, setFabDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
   const router = useRouter();
 
-  const today = new Date().toISOString().slice(0, 10);
-
-  function openModal(type: ModalType) { setModal(type); setOpen(false); }
+  function openModal(type: ModalType) { setFabDate(new Date().toISOString().slice(0, 10)); setModal(type); setOpen(false); }
   function closeModal() { setModal(null); }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>, action: (fd: FormData) => Promise<void>) {
@@ -130,7 +130,7 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
             </div>
             <div>
               <label style={labelCss}>Date</label>
-              <input name="lead_date" type="date" defaultValue={today} className={inputCss} style={inputStyle} />
+              <DateInput name="lead_date" value={fabDate} onChange={setFabDate} placeholder="Lead date" />
             </div>
           </div>
           <div>
@@ -161,7 +161,7 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
             </div>
             <div>
               <label style={labelCss}>Date *</label>
-              <input name="transaction_date" type="date" required defaultValue={today} className={inputCss} style={inputStyle} />
+              <DateInput name="transaction_date" value={fabDate} onChange={setFabDate} placeholder="Date" />
             </div>
             <div>
               <label style={labelCss}>Amount *</label>
@@ -195,7 +195,7 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label style={labelCss}>Date *</label>
-              <input name="transaction_date" type="date" required defaultValue={today} className={inputCss} style={inputStyle} />
+              <DateInput name="transaction_date" value={fabDate} onChange={setFabDate} placeholder="Date" />
             </div>
             <div>
               <label style={labelCss}>Amount *</label>
@@ -231,7 +231,7 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label style={labelCss}>Date *</label>
-              <input name="record_date" type="date" required defaultValue={today} className={inputCss} style={inputStyle} />
+              <DateInput name="record_date" value={fabDate} onChange={setFabDate} placeholder="Date" />
             </div>
             <div>
               <label style={labelCss}>Account *</label>
