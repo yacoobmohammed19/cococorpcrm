@@ -125,6 +125,10 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
   const [cfType, setCfType] = useState<"in" | "out">("in");
   const [txnDate, setTxnDate] = useState(() => new Date().toISOString().slice(0, 10));
 
+  // Bank ledger search/filter state
+  const [ledgerSearch, setLedgerSearch] = useState("");
+  const [ledgerAccount, setLedgerAccount] = useState("");
+
   // ── IS / BS data ─────────────────────────────────────────────────────────
   const isData = useMemo(() => {
     const inPeriod = (d: string) => d >= start && d <= end;
@@ -786,21 +790,52 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
                 </table>
               </div>
 
-              {/* Recent entries list */}
-              <div className="rounded-lg overflow-hidden mt-4" style={{ border: "1px solid var(--border)" }}>
+              {/* Ledger search + filter */}
+              <div className="flex flex-wrap gap-2 mt-4 mb-2">
+                <input value={ledgerSearch} onChange={e => setLedgerSearch(e.target.value)} placeholder="Search entries…"
+                  className="px-3 py-1.5 text-xs rounded border outline-none flex-1 min-w-0"
+                  style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }} />
+                {accounts.length > 0 && (
+                  <select value={ledgerAccount} onChange={e => setLedgerAccount(e.target.value)}
+                    className="px-3 py-1.5 text-xs rounded border outline-none"
+                    style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--muted)" }}>
+                    <option value="">All Accounts</option>
+                    {accounts.map(a => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
+                  </select>
+                )}
+              </div>
+
+              {/* Ledger entries */}
+              <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
                 <div className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ background: "var(--card)", color: "var(--muted2)", borderBottom: "1px solid var(--border)" }}>
-                  Recent Entries
+                  Ledger Entries
                 </div>
                 <div style={{ background: "var(--card2)" }}>
-                  {bankTxns.slice(0, 20).map(t => (
-                    <div key={t.id} className="flex items-center gap-3 px-4 py-2.5 border-b text-xs" style={{ borderColor: "var(--border)" }}>
-                      <span style={{ color: "var(--muted2)", minWidth: 70 }}>{fdateShort(t.txn_date)}</span>
-                      <span className="flex-1 truncate font-medium">{t.description}</span>
-                      {t.credit > 0 && <span className="font-mono font-semibold" style={{ color: "var(--accent)" }}>+{currency} {fmt(t.credit)}</span>}
-                      {t.debit > 0 && <span className="font-mono font-semibold" style={{ color: "var(--red-c)" }}>-{currency} {fmt(t.debit)}</span>}
-                      <button onClick={() => handleDeleteTxn(t.id)} className="px-1.5 py-0.5 rounded" style={{ color: "var(--muted2)", border: "1px solid var(--border)", background: "var(--card)" }}>✕</button>
+                  {bankTxns
+                    .filter(t => {
+                      if (ledgerSearch && !t.description.toLowerCase().includes(ledgerSearch.toLowerCase())) return false;
+                      if (ledgerAccount && String(t.account_id) !== ledgerAccount) return false;
+                      return true;
+                    })
+                    .slice(0, 50)
+                    .map(t => (
+                      <div key={t.id} className="flex items-center gap-3 px-4 py-2.5 border-b text-xs" style={{ borderColor: "var(--border)" }}>
+                        <span style={{ color: "var(--muted2)", minWidth: 70 }}>{fdateShort(t.txn_date)}</span>
+                        <span className="flex-1 truncate font-medium">{t.description}</span>
+                        {t.credit > 0 && <span className="font-mono font-semibold" style={{ color: "var(--accent)" }}>+{currency} {fmt(t.credit)}</span>}
+                        {t.debit > 0 && <span className="font-mono font-semibold" style={{ color: "var(--red-c)" }}>-{currency} {fmt(t.debit)}</span>}
+                        <button onClick={() => handleDeleteTxn(t.id)} className="px-1.5 py-0.5 rounded" style={{ color: "var(--muted2)", border: "1px solid var(--border)", background: "var(--card)" }}>✕</button>
+                      </div>
+                    ))}
+                  {bankTxns.filter(t => {
+                    if (ledgerSearch && !t.description.toLowerCase().includes(ledgerSearch.toLowerCase())) return false;
+                    if (ledgerAccount && String(t.account_id) !== ledgerAccount) return false;
+                    return true;
+                  }).length === 0 && (
+                    <div className="px-4 py-8 text-center text-xs" style={{ color: "var(--muted2)" }}>
+                      {ledgerSearch || ledgerAccount ? "No entries match your filters" : "No entries yet"}
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
             </>
