@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { createServerClient } from "@/lib/supabase/server";
 import { setActiveOrganization, signout } from "@/server-actions/auth";
-import { SideNav, BotNav } from "@/components/SideNav";
+import { CollapsibleSidebar } from "@/components/CollapsibleSidebar";
+import { BotNav } from "@/components/SideNav";
 import { FAB } from "@/components/FAB";
 import { ToastProvider } from "@/components/Toast";
 
@@ -27,40 +28,30 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     supabase.from("dim_cost_categories").select("id, name").order("name"),
   ]);
 
+  // Resolve org name safely — Supabase returns joined records as objects for m:1 joins
+  const orgs = (memberships ?? []).map(m => {
+    const org = m.organizations;
+    const name = Array.isArray(org)
+      ? ((org[0] as { name?: string })?.name ?? "Organization")
+      : ((org as { name?: string } | null)?.name ?? "Organization");
+    return { org_id: String(m.org_id), name };
+  });
+
+  const userName = String(
+    user.user_metadata?.full_name ?? user.user_metadata?.name ?? ""
+  ).trim();
+
   return (
     <div className="flex min-h-screen" style={{ background: "var(--background)" }}>
-      {/* Sidebar */}
-      <aside className="hidden md:flex flex-col w-56 border-r shrink-0"
-        style={{ background: "var(--card)", borderColor: "var(--border)", position: "sticky", top: 0, height: "100vh", overflowY: "auto" }}>
-        <div className="p-4 border-b" style={{ borderColor: "var(--border)" }}>
-          <h1 className="text-lg font-bold tracking-widest">
-            <span style={{ color: "var(--pink)" }}>COCO</span>
-            <span className="text-white">CORP</span>
-          </h1>
-          <p className="text-xs mt-0.5" style={{ color: "var(--muted2)" }}>CRM Engine v2</p>
-        </div>
-        <SideNav />
-        <div className="p-3 border-t space-y-2" style={{ borderColor: "var(--border)" }}>
-          <p className="text-xs truncate" style={{ color: "var(--muted2)" }}>{user.email}</p>
-          <form action={setActiveOrganization}>
-            <select name="org_id" defaultValue={activeOrgId}
-              className="w-full text-xs rounded px-2 py-1.5 border"
-              style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--muted)" }}>
-              {memberships?.map(m => (
-                <option key={m.org_id} value={m.org_id}>
-                  {(m.organizations as { name: string }[])?.[0]?.name ?? m.org_id}
-                </option>
-              ))}
-            </select>
-          </form>
-          <form action={signout}>
-            <button className="w-full text-xs rounded px-2 py-1.5 border text-left transition-colors"
-              style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
-              Sign out
-            </button>
-          </form>
-        </div>
-      </aside>
+      {/* Collapsible Sidebar */}
+      <CollapsibleSidebar
+        userEmail={user.email ?? ""}
+        userName={userName}
+        orgs={orgs}
+        activeOrgId={activeOrgId}
+        setActiveOrganization={setActiveOrganization}
+        signout={signout}
+      />
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
@@ -76,10 +67,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <select name="org_id" defaultValue={activeOrgId}
                 className="text-xs rounded px-2 py-1 border"
                 style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--muted)" }}>
-                {memberships?.map(m => (
-                  <option key={m.org_id} value={m.org_id}>
-                    {(m.organizations as { name: string }[])?.[0]?.name ?? m.org_id}
-                  </option>
+                {orgs.map(o => (
+                  <option key={o.org_id} value={o.org_id}>{o.name}</option>
                 ))}
               </select>
             </form>
@@ -92,21 +81,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </header>
 
         <ToastProvider>
-        <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6">{children}</main>
+          <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6">{children}</main>
 
-        <FAB
-          accounts={accounts || []}
-          customers={customers || []}
-          paymentTypes={payTypes || []}
-          statuses={statuses || []}
-          costCategories={costCats || []}
-        />
+          <FAB
+            accounts={accounts || []}
+            customers={customers || []}
+            paymentTypes={payTypes || []}
+            statuses={statuses || []}
+            costCategories={costCats || []}
+          />
 
-        {/* Mobile bottom nav */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 flex border-t z-40"
-          style={{ background: "var(--card)", borderColor: "var(--border)" }}>
-          <BotNav />
-        </nav>
+          {/* Mobile bottom nav */}
+          <nav className="md:hidden fixed bottom-0 left-0 right-0 flex border-t z-40"
+            style={{ background: "var(--card)", borderColor: "var(--border)" }}>
+            <BotNav />
+          </nav>
         </ToastProvider>
       </div>
     </div>

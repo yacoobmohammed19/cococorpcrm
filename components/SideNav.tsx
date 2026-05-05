@@ -23,27 +23,32 @@ const sideNav: NavItem[] = [
 
 const groups = ["Overview", "CRM", "Catalog", "Finance", "Marketing", "Analytics", "Config"];
 
-export function SideNav() {
+export function SideNav({ collapsed = false }: { collapsed?: boolean }) {
   const pathname = usePathname();
   return (
-    <nav className="flex-1 p-3 space-y-4">
+    <nav className="flex-1 overflow-y-auto" style={{ padding: collapsed ? "0.5rem 0.375rem" : "0.75rem" }}>
       {groups.map(group => {
         const items = sideNav.filter(n => n.group === group);
         if (!items.length) return null;
         return (
-          <div key={group}>
-            <p className="text-xs font-semibold uppercase tracking-widest mb-1 px-2" style={{ color: "var(--muted2)" }}>{group}</p>
+          <div key={group} className={collapsed ? "mb-2" : "mb-4"}>
+            {!collapsed && (
+              <p className="text-xs font-semibold uppercase tracking-widest mb-1 px-2" style={{ color: "var(--muted2)" }}>
+                {group}
+              </p>
+            )}
             {items.map(item => {
               const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
               return (
                 <Link key={item.href} href={item.href}
-                  className="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium transition-colors mb-0.5"
+                  title={collapsed ? item.label : undefined}
+                  className={`flex items-center gap-2 rounded text-sm font-medium transition-colors mb-0.5 ${collapsed ? "justify-center px-2 py-2" : "px-3 py-2"}`}
                   style={{
                     background: isActive ? "var(--accent)" : "transparent",
                     color: isActive ? "#fff" : "var(--muted)",
                   }}>
-                  <span className="text-sm w-5 text-center">{item.icon}</span>
-                  {item.label}
+                  <span className="text-sm w-5 text-center shrink-0">{item.icon}</span>
+                  {!collapsed && item.label}
                 </Link>
               );
             })}
@@ -91,7 +96,6 @@ export function BotNav() {
         );
       })}
 
-      {/* More button */}
       <button onClick={() => setMoreOpen(true)}
         className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-colors relative"
         style={{ color: "var(--muted2)" }}>
@@ -99,7 +103,6 @@ export function BotNav() {
         <span className="text-[10px] font-semibold uppercase tracking-wide">More</span>
       </button>
 
-      {/* Full-screen More overlay */}
       {moreOpen && (
         <div className="fixed inset-0 z-[300] flex flex-col justify-end"
           style={{ background: "rgba(0,0,0,.65)", backdropFilter: "blur(6px)" }}
@@ -108,16 +111,13 @@ export function BotNav() {
             className="rounded-t-3xl px-5 pt-5 pb-10"
             style={{ background: "var(--card)", borderTop: "1px solid var(--border)" }}
             onClick={e => e.stopPropagation()}>
-            {/* Handle bar */}
             <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: "var(--border)" }} />
-
             <div className="flex items-center justify-between mb-5">
               <span className="text-sm font-bold uppercase tracking-widest" style={{ color: "var(--muted2)" }}>All Sections</span>
               <button onClick={() => setMoreOpen(false)}
                 className="w-8 h-8 rounded-full flex items-center justify-center"
                 style={{ background: "var(--card2)", color: "var(--muted2)" }}>✕</button>
             </div>
-
             <div className="grid grid-cols-4 gap-3">
               {moreNav.map(item => {
                 const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
