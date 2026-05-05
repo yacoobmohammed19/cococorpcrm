@@ -3,6 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { runAction } from "@/lib/action-utils";
 import { createCustomer, updateCustomer, deleteCustomer } from "@/server-actions/customers";
 
 type Customer = {
@@ -26,6 +29,7 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<{ open: boolean; customer: Customer | null }>({ open: false, customer: null });
   const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: number; name: string } | null>(null);
 
   const filtered = customers.filter(c => {
     if (!search) return true;
@@ -36,15 +40,12 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
   function open(c: Customer | null) { setModal({ open: true, customer: c }); }
   function close() { setModal({ open: false, customer: null }); }
 
-  async function handleDelete(id: number, name: string) {
-    if (!confirm(`Archive "${name}"?`)) return;
+  async function handleDeleteConfirmed() {
+    if (!confirmDelete) return;
     setBusy(true);
-    try {
-      await deleteCustomer(id);
-      toast.success("Customer archived");
-    } catch {
-      toast.error("Failed to archive customer");
-    } finally { setBusy(false); }
+    await runAction(() => deleteCustomer(confirmDelete.id), toast, "Customer archived");
+    setConfirmDelete(null);
+    setBusy(false);
   }
 
   return (
@@ -96,16 +97,18 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
               <Link href={`/customers/${c.id}`} className="flex-1 py-2 rounded-xl text-xs font-semibold text-center" style={{ background: "var(--accent)", color: "#fff" }}>
                 View →
               </Link>
-              <button onClick={() => handleDelete(c.id, c.name)} disabled={busy} className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(239,68,68,.1)", color: "var(--red-c)" }}>
+              <button onClick={() => setConfirmDelete({ id: c.id, name: c.name })} disabled={busy} className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(239,68,68,.1)", color: "var(--red-c)" }}>
                 🗑️
               </button>
             </div>
           </div>
         ))}
         {filtered.length === 0 && (
-          <div className="text-center py-16 text-sm" style={{ color: "var(--muted2)" }}>
-            {search ? "No customers match your search" : "No customers yet — tap + New to add one"}
-          </div>
+          <EmptyState icon="👥"
+            title={search ? "No customers match your search" : "No customers yet"}
+            description={search ? "Try a different search term." : "Add your first customer to get started."}
+            action={!search ? <button onClick={() => open(null)} className="px-4 py-2 text-sm font-semibold rounded-xl" style={{ background: "var(--accent)", color: "#fff" }}>+ New Customer</button> : undefined}
+          />
         )}
       </div>
 
@@ -143,7 +146,7 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
                       <button onClick={() => open(c)}
                         className="px-2 py-1 rounded text-xs"
                         style={{ border: "1px solid var(--border)", background: "var(--card)" }}>✏️</button>
-                      <button onClick={() => handleDelete(c.id, c.name)} disabled={busy}
+                      <button onClick={() => setConfirmDelete({ id: c.id, name: c.name })} disabled={busy}
                         className="px-2 py-1 rounded text-xs"
                         style={{ border: "1px solid var(--border)", background: "var(--card)" }}>🗑️</button>
                       <Link href={`/customers/${c.id}`}
@@ -154,8 +157,12 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={7} className="px-3 py-10 text-center text-sm" style={{ color: "var(--muted2)" }}>
-                  {search ? "No customers match your search" : "No customers yet — create your first one"}
+                <tr><td colSpan={7}>
+                  <EmptyState icon="👥"
+                    title={search ? "No customers match" : "No customers yet"}
+                    description={search ? "Try a different search term." : "Add your first customer to get started."}
+                    action={!search ? <button onClick={() => open(null)} className="px-4 py-2 text-sm font-semibold rounded-xl" style={{ background: "var(--accent)", color: "#fff" }}>+ New Customer</button> : undefined}
+                  />
                 </td></tr>
               )}
             </tbody>
@@ -177,18 +184,11 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
             <form className="p-5 space-y-3"
               action={async (fd: FormData) => {
                 setBusy(true);
-                try {
-                  if (modal.customer) {
-                    await updateCustomer(modal.customer.id, fd);
-                    toast.success("Customer updated");
-                  } else {
-                    await createCustomer(fd);
-                    toast.success("Customer created");
-                  }
-                  close();
-                } catch {
-                  toast.error("Something went wrong");
-                } finally { setBusy(false); }
+                const ok = modal.customer
+                  ? await runAction(() => updateCustomer(modal.customer!.id, fd), toast, "Customer updated")
+                  : await runAction(() => createCustomer(fd), toast, "Customer created");
+                if (ok) close();
+                setBusy(false);
               }}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="col-span-2">
@@ -232,6 +232,15 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title={`Archive "${confirmDelete?.name}"?`}
+        message="This customer will be archived and hidden from the list. You can restore it later."
+        confirmLabel="Archive"
+        onConfirm={handleDeleteConfirmed}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </div>
   );
 }
