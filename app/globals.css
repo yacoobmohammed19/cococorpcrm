@@ -42,3 +42,30 @@ input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="month"]::-webkit-calendar-picker-indicator {
   filter: invert(0.7);
 }
+
+/* Client-side form validation: highlight invalid fields after user interaction */
+input:user-invalid,
+select:user-invalid,
+textarea:user-invalid {
+  border-color: var(--red-c) !important;
+  outline: none;
+}
+
+input:user-invalid:focus,
+select:user-invalid:focus,
+textarea:user-invalid:focus {
+  box-shadow: 0 0 0 1px var(--red-c);
+}
+
+/* Accessible focus ring */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
