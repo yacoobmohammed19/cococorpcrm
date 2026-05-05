@@ -3,6 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { useConfirm } from "@/hooks/useConfirm";
+import { runAction } from "@/lib/action-utils";
 import { updateCustomer } from "@/server-actions/customers";
 import { createContact, updateContact, deleteContact } from "@/server-actions/contacts";
 import { createActivity, toggleActivity, deleteActivity } from "@/server-actions/activities";
@@ -35,6 +38,7 @@ export function CustomerDetailClient({ customer, invoices, contacts, activities,
   productsPurchased?: ProductPurchased[];
 }) {
   const toast = useToast();
+  const { confirm, dialogProps } = useConfirm();
   const [tab, setTab] = useState<Tab>("Info");
   const [busy, setBusy] = useState(false);
   const [editInfo, setEditInfo] = useState(false);
@@ -221,7 +225,7 @@ export function CustomerDetailClient({ customer, invoices, contacts, activities,
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <button onClick={() => setContactModal({ open: true, contact: c })} className="px-2 py-1 rounded text-xs" style={{ border: "1px solid var(--border)", background: "var(--card)" }}>✏️</button>
-                  <button onClick={async () => { if (!confirm(`Delete ${c.name}?`)) return; try { await deleteContact(c.id, customerId); toast.success("Contact deleted"); } catch { toast.error("Failed"); } }}
+                  <button onClick={async () => { if (!await confirm(`Delete ${c.name}?`, "This contact will be permanently removed.")) return; await runAction(() => deleteContact(c.id, customerId), toast, "Contact deleted"); }}
                     className="px-2 py-1 rounded text-xs" style={{ border: "1px solid var(--border)", background: "var(--card)" }}>🗑️</button>
                 </div>
               </div>
@@ -256,7 +260,7 @@ export function CustomerDetailClient({ customer, invoices, contacts, activities,
                   </div>
                   {a.notes && <p className="text-xs mt-0.5" style={{ color: "var(--muted2)" }}>{a.notes}</p>}
                 </div>
-                <button onClick={async () => { if (!confirm("Delete?")) return; try { await deleteActivity(a.id, undefined, customerId); } catch { toast.error("Failed"); } }}
+                <button onClick={async () => { if (!await confirm("Delete activity?", "This activity will be permanently removed.")) return; await runAction(() => deleteActivity(a.id, undefined, customerId), toast, "Activity deleted"); }}
                   className="px-2 py-1 rounded text-xs shrink-0" style={{ border: "1px solid var(--border)", background: "var(--card)" }}>🗑️</button>
               </div>
             ))}
@@ -368,6 +372,7 @@ export function CustomerDetailClient({ customer, invoices, contacts, activities,
           </div>
         </div>
       )}
+      <ConfirmDialog {...dialogProps} confirmLabel="Delete" />
     </div>
   );
 }

@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { useToast } from "@/components/Toast";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { useConfirm } from "@/hooks/useConfirm";
+import { runAction } from "@/lib/action-utils";
 import { createActivity, toggleActivity, deleteActivity } from "@/server-actions/activities";
 
 type Activity = { id: number; type: string; subject: string; notes: string | null; due_date: string | null; done: boolean; created_at: string };
@@ -33,6 +36,7 @@ export function LeadDetailClient({ lead, activities, currency, leadId }: {
   lead: Lead; activities: Activity[]; currency: string; leadId: number;
 }) {
   const toast = useToast();
+  const { confirm, dialogProps } = useConfirm();
   const [busy, setBusy] = useState(false);
   const [activityModal, setActivityModal] = useState(false);
   const weightedValue = ((lead.opportunity_value ?? 0) * ((lead.weight ?? 0) / 100));
@@ -96,7 +100,7 @@ export function LeadDetailClient({ lead, activities, currency, leadId }: {
                 </div>
                 {a.notes && <p className="text-xs mt-0.5" style={{ color: "var(--muted2)" }}>{a.notes}</p>}
               </div>
-              <button onClick={async () => { if (!confirm("Delete?")) return; try { await deleteActivity(a.id, leadId); } catch { toast.error("Failed"); } }}
+              <button onClick={async () => { if (!await confirm("Delete activity?", "This activity will be permanently removed.")) return; await runAction(() => deleteActivity(a.id, leadId), toast, "Activity deleted"); }}
                 className="px-2 py-1 rounded text-xs shrink-0" style={{ border: "1px solid var(--border)", background: "var(--card)" }}>🗑️</button>
             </div>
           ))}
@@ -155,6 +159,7 @@ export function LeadDetailClient({ lead, activities, currency, leadId }: {
           </div>
         </div>
       )}
+      <ConfirmDialog {...dialogProps} confirmLabel="Delete" />
     </div>
   );
 }

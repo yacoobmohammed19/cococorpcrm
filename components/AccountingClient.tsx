@@ -2,6 +2,9 @@
 
 import { useState, useMemo } from "react";
 import { useToast } from "@/components/Toast";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { useConfirm } from "@/hooks/useConfirm";
+import { runAction } from "@/lib/action-utils";
 import {
   createBankTransaction,
   deleteBankTransaction,
@@ -103,6 +106,7 @@ function calcSystemBalance(invoices: Invoice[], costs: Cost[], asOfDate: string)
 // ── Main component ───────────────────────────────────────────────────────────
 export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts, orgName, orgRegNo, currency, defaultStart, defaultEnd }: Props) {
   const toast = useToast();
+  const { confirm, dialogProps } = useConfirm();
   const [tab, setTab] = useState<"is" | "bs" | "bank" | "cashflow">("is");
   const [start, setStart] = useState(defaultStart);
   const [end, setEnd] = useState(defaultEnd);
@@ -169,9 +173,8 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   async function handleDeleteTxn(id: number) {
-    if (!confirm("Delete this entry?")) return;
-    try { await deleteBankTransaction(id); toast.success("Deleted"); }
-    catch { toast.error("Failed to delete"); }
+    if (!await confirm("Delete this entry?", "This bank transaction record will be permanently removed.")) return;
+    await runAction(() => deleteBankTransaction(id), toast, "Entry deleted");
   }
 
   function handleResolveClick(entry: Cashflow) {
@@ -445,9 +448,8 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
                           )}
                           <button
                             onClick={async () => {
-                              if (!confirm("Delete this snapshot?")) return;
-                              try { await deleteBankBalance(entry.id); toast.success("Deleted"); }
-                              catch { toast.error("Failed to delete"); }
+                              if (!await confirm("Delete this snapshot?", "This bank balance record will be permanently removed.")) return;
+                              await runAction(() => deleteBankBalance(entry.id), toast, "Snapshot deleted");
                             }}
                             className="w-10 h-10 rounded-xl flex items-center justify-center"
                             style={{ border: "1px solid var(--border)", background: "var(--card)", color: "var(--muted2)" }}>🗑️</button>
@@ -497,9 +499,8 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
                                 )}
                                 <button
                                   onClick={async () => {
-                                    if (!confirm("Delete this snapshot?")) return;
-                                    try { await deleteBankBalance(entry.id); toast.success("Deleted"); }
-                                    catch { toast.error("Failed to delete"); }
+                                    if (!await confirm("Delete this snapshot?", "This bank balance record will be permanently removed.")) return;
+                                    await runAction(() => deleteBankBalance(entry.id), toast, "Snapshot deleted");
                                   }}
                                   className="px-2 py-1 rounded text-xs"
                                   style={{ border: "1px solid var(--border)", background: "var(--card)" }}>🗑️</button>
