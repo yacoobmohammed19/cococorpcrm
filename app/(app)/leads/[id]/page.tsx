@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { createServerClient } from "@/lib/supabase/server";
+import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { LeadDetailClient } from "@/components/LeadDetailClient";
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -30,11 +30,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
 
   return (
     <section className="space-y-6 max-w-4xl">
-      <div className="flex items-center gap-2 text-xs" style={{ color: "var(--muted2)" }}>
-        <Link href="/leads" style={{ color: "var(--accent)" }}>Leads</Link>
-        <span>/</span>
-        <span>{lead.name}</span>
-      </div>
+      <Breadcrumb crumbs={[{ label: "Leads", href: "/leads" }, { label: lead.name }]} />
 
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
@@ -46,8 +42,6 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             </span>
           )}
         </div>
-        <Link href="/leads" className="text-sm px-3 py-1.5 rounded border"
-          style={{ borderColor: "var(--border)", color: "var(--muted)" }}>← Back</Link>
       </div>
 
       <LeadDetailClient lead={lead} activities={activities} currency={cur} leadId={leadId} />

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { createServerClient } from "@/lib/supabase/server";
+import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { CustomerDetailClient } from "@/components/CustomerDetailClient";
 
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -66,12 +66,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
   return (
     <section className="space-y-6 max-w-4xl">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-xs" style={{ color: "var(--muted2)" }}>
-        <Link href="/customers" style={{ color: "var(--accent)" }}>Customers</Link>
-        <span>/</span>
-        <span>{customer.name}</span>
-      </div>
+      <Breadcrumb crumbs={[{ label: "Customers", href: "/customers" }, { label: customer.name }]} />
 
       {/* Header */}
       <div className="flex items-start justify-between">
