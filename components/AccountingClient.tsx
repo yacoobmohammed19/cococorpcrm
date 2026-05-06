@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Trash2, X } from "lucide-react";
+import { Trash2, X, Printer, RefreshCw } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
@@ -13,6 +13,7 @@ import {
   saveBankBalance,
   deleteBankBalance,
   createReconAdjustment,
+  generateMonthlyCashflow,
 } from "@/server-actions/banking";
 
 type Invoice = { id: number; amount: number; status: string; transaction_date: string; customer_id: number };
@@ -123,6 +124,7 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
 
   // Cashflow quick-entry state
   const [cfBusy, setCfBusy] = useState(false);
+  const [genBusy, setGenBusy] = useState(false);
   const [cfType, setCfType] = useState<"in" | "out">("in");
   const [txnDate, setTxnDate] = useState(() => new Date().toISOString().slice(0, 10));
 
@@ -210,7 +212,7 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
           <p className="text-sm mt-0.5" style={{ color: "var(--muted2)" }}>Financial statements & reconciliation</p>
         </div>
       </div>
-      <div className="flex gap-2 overflow-x-auto pb-0.5 mb-4">
+      <div className="flex gap-2 overflow-x-auto pb-0.5 mb-4 print:hidden">
         {tabBtn("is", "Income Statement")}
         {tabBtn("bs", "Balance Sheet")}
         {tabBtn("bank", "Bank Recon")}
@@ -220,7 +222,7 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
       {/* ── Income Statement ─────────────────────────────────────────────── */}
       {tab === "is" && (
         <>
-          <div className="flex flex-wrap gap-3 items-center mb-4 p-3 rounded-lg" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
+          <div className="flex flex-wrap gap-3 items-center mb-4 p-3 rounded-lg print:hidden" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
             <div className="flex items-center gap-2">
               <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Start</label>
               <input type="date" value={start} onChange={e => setStart(e.target.value)}
@@ -233,6 +235,11 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
                 className="px-2 py-1.5 text-xs rounded border outline-none"
                 style={{ background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" }} />
             </div>
+            <button onClick={() => window.print()}
+              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold"
+              style={{ background: "var(--card3)", border: "1px solid var(--border)", color: "var(--muted)" }}>
+              <Printer size={12} /> Print
+            </button>
           </div>
           <div className="rounded-lg overflow-hidden" style={{ background: "#fff", color: "#111", boxShadow: "0 4px 20px rgba(0,0,0,.15)" }}>
             <div className="px-8 py-6" style={{ background: "#1a1a2e", color: "#fff" }}>
@@ -263,6 +270,14 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
 
       {/* ── Balance Sheet ────────────────────────────────────────────────── */}
       {tab === "bs" && (
+        <>
+          <div className="flex justify-end mb-3 print:hidden">
+            <button onClick={() => window.print()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold"
+              style={{ background: "var(--card2)", border: "1px solid var(--border)", color: "var(--muted)" }}>
+              <Printer size={12} /> Print
+            </button>
+          </div>
         <div className="rounded-lg overflow-hidden" style={{ background: "#fff", color: "#111", boxShadow: "0 4px 20px rgba(0,0,0,.15)" }}>
           <div className="px-8 py-6" style={{ background: "#1a1a2e", color: "#fff" }}>
             <h2 className="text-lg font-bold">{orgName}</h2>
@@ -280,6 +295,7 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
             Note: Simplified view. Use a dedicated accounting system for PPE, loans, and other adjustments.
           </div>
         </div>
+        </>
       )}
 
       {/* ── Bank Reconciliation ──────────────────────────────────────────── */}
@@ -645,6 +661,28 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
       {/* ── Cashflow ─────────────────────────────────────────────────────── */}
       {tab === "cashflow" && (
         <div>
+          {/* Auto-generate banner */}
+          <div className="flex items-center justify-between gap-3 rounded-lg px-4 py-3 mb-4" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
+            <div>
+              <p className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>Auto-populate from Records</p>
+              <p className="text-xs mt-0.5" style={{ color: "var(--muted2)" }}>Generate monthly cashflow entries from your invoices & costs — adds one debit and one credit per month.</p>
+            </div>
+            <button
+              disabled={genBusy}
+              onClick={async () => {
+                setGenBusy(true);
+                try {
+                  const count = await generateMonthlyCashflow();
+                  toast.success(count > 0 ? `${count} entries generated` : "No new data to generate");
+                } catch { toast.error("Failed to generate"); }
+                finally { setGenBusy(false); }
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded text-xs font-semibold shrink-0"
+              style={{ background: "var(--accent)", color: "#fff", opacity: genBusy ? .6 : 1 }}>
+              <RefreshCw size={12} className={genBusy ? "animate-spin" : ""} />
+              {genBusy ? "Generating…" : "Generate"}
+            </button>
+          </div>
           {/* Quick-entry form */}
           <form
             onSubmit={async e => {

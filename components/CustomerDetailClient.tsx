@@ -8,6 +8,7 @@ import { DateInput } from "@/components/ui/DateInput";
 import { useConfirm } from "@/hooks/useConfirm";
 import { runAction } from "@/lib/action-utils";
 import { updateCustomer } from "@/server-actions/customers";
+import { updateInvoiceStatus } from "@/server-actions/invoices";
 import { createContact, updateContact, deleteContact } from "@/server-actions/contacts";
 import { createActivity, toggleActivity, deleteActivity } from "@/server-actions/activities";
 
@@ -46,6 +47,7 @@ export function CustomerDetailClient({ customer, invoices, contacts, activities,
   const [editInfo, setEditInfo] = useState(false);
   const [contactModal, setContactModal] = useState<{ open: boolean; contact: Contact | null }>({ open: false, contact: null });
   const [activityModal, setActivityModal] = useState(false);
+  const [invModal, setInvModal] = useState<{ open: boolean; invoice: Invoice | null; status: string }>({ open: false, invoice: null, status: "" });
 
   return (
     <div>
@@ -154,9 +156,11 @@ export function CustomerDetailClient({ customer, invoices, contacts, activities,
                 {invoices.map(inv => {
                   const col = STATUS_COLORS[inv.status] || "var(--muted2)";
                   return (
-                    <tr key={inv.id} className="border-b hover:bg-[var(--card3)]" style={{ borderColor: "var(--border)" }}>
+                    <tr key={inv.id} className="border-b hover:bg-[var(--card3)] cursor-pointer" style={{ borderColor: "var(--border)" }}
+                      onClick={() => setInvModal({ open: true, invoice: inv, status: inv.status })}>
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: "var(--muted2)" }}>{fdate(inv.transaction_date)}</td>
-                      <td className="px-3 py-2 font-semibold" style={{ color: "var(--accent)" }}>
+                      <td className="px-3 py-2 font-semibold" style={{ color: "var(--accent)" }}
+                        onClick={e => e.stopPropagation()}>
                         <Link href={`/invoices/${inv.id}/print`} target="_blank">{inv.invoice_number || `#${inv.id}`}</Link>
                       </td>
                       <td className="px-3 py-2 font-mono font-semibold">{currency} {fmt(inv.amount)}</td>
@@ -371,6 +375,65 @@ export function CustomerDetailClient({ customer, invoices, contacts, activities,
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Invoice Status Modal */}
+      {invModal.open && invModal.invoice && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-16"
+          style={{ background: "rgba(0,0,0,.6)", backdropFilter: "blur(4px)" }}
+          onClick={e => { if (e.target === e.currentTarget) setInvModal({ open: false, invoice: null, status: "" }); }}>
+          <div className="w-full max-w-sm rounded-xl" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
+            <div className="flex justify-between items-center px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
+              <h3 className="font-semibold">Update Invoice</h3>
+              <button onClick={() => setInvModal({ open: false, invoice: null, status: "" })} style={{ color: "var(--muted2)" }}>✕</button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <p className="font-semibold uppercase tracking-wider mb-0.5" style={{ color: "var(--muted2)" }}>Invoice</p>
+                  <p className="font-semibold" style={{ color: "var(--accent)" }}>{invModal.invoice.invoice_number || `#${invModal.invoice.id}`}</p>
+                </div>
+                <div>
+                  <p className="font-semibold uppercase tracking-wider mb-0.5" style={{ color: "var(--muted2)" }}>Amount</p>
+                  <p className="font-mono font-bold">{currency} {fmt(invModal.invoice.amount)}</p>
+                </div>
+                <div>
+                  <p className="font-semibold uppercase tracking-wider mb-0.5" style={{ color: "var(--muted2)" }}>Date</p>
+                  <p>{fdate(invModal.invoice.transaction_date)}</p>
+                </div>
+                <div>
+                  <p className="font-semibold uppercase tracking-wider mb-0.5" style={{ color: "var(--muted2)" }}>Due</p>
+                  <p>{fdate(invModal.invoice.due_date)}</p>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wider block mb-1.5" style={{ color: "var(--muted2)" }}>Status</label>
+                <select value={invModal.status}
+                  onChange={e => setInvModal(m => ({ ...m, status: e.target.value }))}
+                  className={inp} style={inpS}>
+                  {["Pending", "Completed", "Written Off"].map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => setInvModal({ open: false, invoice: null, status: "" })}
+                  className="flex-1 py-2 text-sm rounded border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>Cancel</button>
+                <button disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      await updateInvoiceStatus(invModal.invoice!.id, invModal.status);
+                      toast.success("Status updated");
+                      setInvModal({ open: false, invoice: null, status: "" });
+                    } catch { toast.error("Failed to update"); }
+                    finally { setBusy(false); }
+                  }}
+                  className="flex-1 py-2 text-sm font-semibold rounded"
+                  style={{ background: "var(--accent)", color: "#fff", opacity: busy ? .6 : 1 }}>
+                  {busy ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

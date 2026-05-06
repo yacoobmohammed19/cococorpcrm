@@ -27,6 +27,23 @@ export async function updateOrgSettings(formData: FormData) {
   revalidatePath("/settings");
 }
 
+export async function updateLogoUrl(url: string | null) {
+  const orgId = await getCurrentOrgId();
+  const supabase = await createServerClient();
+  const { error } = await supabase.from("organizations").update({ logo_url: url }).eq("id", orgId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/settings");
+  revalidatePath("/invoices", "layout");
+}
+
+export async function updateFeatureFlags(flags: Record<string, boolean | undefined>) {
+  const orgId = await getCurrentOrgId();
+  const supabase = await createServerClient();
+  const { error } = await supabase.from("organizations").update({ feature_flags: flags }).eq("id", orgId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/settings");
+}
+
 export async function createStatus(formData: FormData) {
   const orgId = await getCurrentOrgId();
   const supabase = await createServerClient();

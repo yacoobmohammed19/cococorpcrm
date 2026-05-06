@@ -64,6 +64,66 @@ export async function deleteBankBalance(id: number) {
   revalidatePath("/accounting");
 }
 
+// ── Auto-generate monthly cashflow from invoices + costs ─────────────────────
+
+export async function generateMonthlyCashflow() {
+  const supabase = await createServerClient();
+  const org_id = await getCurrentOrgId();
+
+  const [{ data: invData }, { data: costData }] = await Promise.all([
+    supabase
+      .from("fact_invoices")
+      .select("amount, transaction_date")
+      .eq("org_id", org_id)
+      .eq("status", "Completed")
+      .is("deleted_at", null),
+    supabase
+      .from("fact_costs")
+      .select("amount, transaction_date")
+      .eq("org_id", org_id)
+      .gt("amount", 0),
+  ]);
+
+  const byMonth: Record<string, { credit: number; debit: number }> = {};
+  for (const inv of invData ?? []) {
+    const m = (inv.transaction_date as string).slice(0, 7);
+    if (!byMonth[m]) byMonth[m] = { credit: 0, debit: 0 };
+    byMonth[m].credit += Number(inv.amount);
+  }
+  for (const cost of costData ?? []) {
+    const m = (cost.transaction_date as string).slice(0, 7);
+    if (!byMonth[m]) byMonth[m] = { credit: 0, debit: 0 };
+    byMonth[m].debit += Number(cost.amount);
+  }
+
+  const rows = [];
+  for (const [month, v] of Object.entries(byMonth)) {
+    const label = new Date(month + "-01").toLocaleDateString("en-ZA", { month: "long", year: "numeric" });
+    if (v.credit > 0) rows.push({
+      org_id, account_id: null,
+      txn_date: month + "-28",
+      description: `Auto: ${label} Revenue`,
+      reference: null, debit: 0, credit: v.credit,
+      balance: null, reconciled: false,
+      notes: "Auto-generated from invoice records",
+    });
+    if (v.debit > 0) rows.push({
+      org_id, account_id: null,
+      txn_date: month + "-28",
+      description: `Auto: ${label} Costs`,
+      reference: null, debit: v.debit, credit: 0,
+      balance: null, reconciled: false,
+      notes: "Auto-generated from cost records",
+    });
+  }
+
+  if (rows.length === 0) return 0;
+  const { error } = await supabase.from("fact_bank_transactions").insert(rows);
+  if (error) throw new Error(error.message);
+  revalidatePath("/accounting");
+  return rows.length;
+}
+
 // ── Reconciliation adjustments ────────────────────────────────────────────────
 // income type: negative cost amount (reduces total costs = effectively adds to system balance)
 // cost type: positive cost amount (increases total costs = reduces system balance)

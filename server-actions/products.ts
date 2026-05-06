@@ -17,7 +17,10 @@ export async function createProduct(formData: FormData) {
     category: formData.get("category") || undefined,
     is_active: formData.get("is_active") !== "false",
   });
-  const { error } = await supabase.from("dim_products").insert(parsed);
+  const { error } = await supabase.from("dim_products").insert({
+    ...parsed,
+    location: (formData.get("location") as string) || null,
+  });
   if (error) throw new Error(error.message);
   revalidatePath("/products");
 }
@@ -31,6 +34,7 @@ export async function updateProduct(id: number, formData: FormData) {
     unit_price: Number(formData.get("unit_price")),
     category: formData.get("category") || null,
     is_active: formData.get("is_active") !== "false",
+    location: (formData.get("location") as string) || null,
   }).eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/products");

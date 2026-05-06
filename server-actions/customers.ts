@@ -66,6 +66,17 @@ export async function updateCustomer(id: number, formData: FormData) {
   revalidatePath(`/customers/${id}`);
 }
 
+export async function bulkDeleteCustomers(ids: number[]) {
+  if (ids.length === 0) return;
+  const supabase = await createServerClient();
+  const { error } = await supabase
+    .from("dim_customers")
+    .update({ deleted_at: new Date().toISOString() })
+    .in("id", ids);
+  if (error) throw new Error(error.message);
+  revalidatePath("/customers");
+}
+
 export async function restoreCustomer(id: number) {
   const supabase = await createServerClient();
   const { error } = await supabase

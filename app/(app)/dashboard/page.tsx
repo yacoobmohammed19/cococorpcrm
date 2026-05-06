@@ -25,7 +25,7 @@ export default async function DashboardPage() {
     supabase.from("dim_payment_types").select("id, name"),
     supabase.from("dim_cost_categories").select("id, name"),
     supabase.from("dim_accounts").select("id, name"),
-    supabase.from("organizations").select("currency, name").single(),
+    supabase.from("organizations").select("currency, name, fiscal_year_start").single(),
   ]);
 
   // Bank balance: sum latest snapshot per account
@@ -60,6 +60,7 @@ export default async function DashboardPage() {
         orgName={org?.name || "CocoCRM"}
         bankBalance={bankBalance}
         bankLastDate={bankLastDate}
+        fiscalYearStart={org?.fiscal_year_start ?? 3}
       />
     </section>
   );

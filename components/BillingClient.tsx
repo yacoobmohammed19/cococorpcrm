@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Receipt, Printer } from "lucide-react";
+import { Receipt, Printer, Trash2 } from "lucide-react";
 import { MultiSelect } from "@/components/ui/MultiSelect";
+import { useToast } from "@/components/Toast";
+import { runAction } from "@/lib/action-utils";
+import { bulkDeleteInvoices } from "@/server-actions/invoices";
 
 type Invoice = {
   id: number; customer_id: number; transaction_date: string;
@@ -41,6 +44,9 @@ function defaultRange(months = 12) {
 
 export function BillingClient({ invoices, customers, currency, fiscalYearFrom }: Props) {
   const cur = currency === "ZAR" ? "R" : "$";
+  const toast = useToast();
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [preset, setPreset] = useState("ytd");
   const [billFrom, setBillFrom] = useState(fiscalYearFrom);
   const [billTo, setBillTo] = useState(defaultRange(1).to);
@@ -112,6 +118,20 @@ export function BillingClient({ invoices, customers, currency, fiscalYearFrom }:
     if (search) rows = rows.filter(i => JSON.stringify(i).toLowerCase().includes(search.toLowerCase()));
     return rows;
   }, [invoices, statusFilter, customerFilter, search]);
+
+  function toggleSelect(id: number) {
+    setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  }
+  function toggleAll() {
+    setSelected(prev => prev.size === allInvoices.length ? new Set() : new Set(allInvoices.map(i => i.id)));
+  }
+  async function handleBulkDelete() {
+    if (selected.size === 0) return;
+    setBulkBusy(true);
+    await runAction(() => bulkDeleteInvoices(Array.from(selected)), toast, `${selected.size} invoice${selected.size > 1 ? "s" : ""} deleted`);
+    setSelected(new Set());
+    setBulkBusy(false);
+  }
 
   const statBadge = (s: string) => {
     const m: Record<string, string> = { Completed: "var(--accent)", Pending: "var(--amber-c)", "Written Off": "var(--red-c)" };
@@ -223,7 +243,16 @@ export function BillingClient({ invoices, customers, currency, fiscalYearFrom }:
       {/* All Invoices List */}
       <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
         <div className="px-4 py-3 border-b flex flex-wrap justify-between items-center gap-2" style={{ borderColor: "var(--border)", background: "var(--card2)" }}>
-          <h3 className="text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--muted2)" }}><Receipt size={12} /> All Invoices <span style={{ color: "var(--muted2)", fontWeight: 400 }}>({allInvoices.length})</span></h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--muted2)" }}><Receipt size={12} /> All Invoices <span style={{ color: "var(--muted2)", fontWeight: 400 }}>({allInvoices.length})</span></h3>
+            {selected.size > 0 && (
+              <button onClick={handleBulkDelete} disabled={bulkBusy}
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold"
+                style={{ background: "var(--danger-bg)", color: "var(--red-c)", border: "1px solid var(--red-c)", opacity: bulkBusy ? .6 : 1 }}>
+                <Trash2 size={11} />{bulkBusy ? "Deleting…" : `Delete (${selected.size})`}
+              </button>
+            )}
+          </div>
           <div className="flex flex-wrap gap-2 items-center">
             <MultiSelect
               label="Customer"
@@ -271,6 +300,10 @@ export function BillingClient({ invoices, customers, currency, fiscalYearFrom }:
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
+                <th className="px-3 py-2.5 w-8">
+                  <input type="checkbox" checked={allInvoices.length > 0 && selected.size === allInvoices.length}
+                    onChange={toggleAll} className="cursor-pointer" />
+                </th>
                 {["Date", "Invoice #", "Customer", "Description", "Amount", "Pay Type", "Status", ""].map(h => (
                   <th key={h} className="px-3 py-2.5 text-left font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: "var(--muted2)" }}>{h}</th>
                 ))}
@@ -280,7 +313,8 @@ export function BillingClient({ invoices, customers, currency, fiscalYearFrom }:
               {allInvoices.map(inv => {
                 const cust = customers.find(c => c.id === inv.customer_id);
                 return (
-                  <tr key={inv.id} className="border-b hover:bg-[var(--card3)]" style={{ borderColor: "var(--border)" }}>
+                  <tr key={inv.id} className="border-b hover:bg-[var(--card3)]" style={{ borderColor: "var(--border)", background: selected.has(inv.id) ? "color-mix(in srgb, var(--accent) 6%, var(--card2))" : undefined }}>
+                    <td className="px-3 py-2 w-8"><input type="checkbox" checked={selected.has(inv.id)} onChange={() => toggleSelect(inv.id)} className="cursor-pointer" /></td>
                     <td className="px-3 py-2 whitespace-nowrap" style={{ color: "var(--muted2)" }}>{inv.transaction_date}</td>
                     <td className="px-3 py-2 font-semibold" style={{ color: inv.invoice_number ? "var(--accent)" : "var(--muted2)" }}>{inv.invoice_number || <span style={{ color: "var(--muted2)", fontStyle: "italic" }}>—</span>}</td>
                     <td className="px-3 py-2 font-medium max-w-[140px] truncate">{cust?.name ?? `#${inv.customer_id}`}</td>
@@ -296,7 +330,7 @@ export function BillingClient({ invoices, customers, currency, fiscalYearFrom }:
                   </tr>
                 );
               })}
-              {allInvoices.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center" style={{ color: "var(--muted2)" }}>No invoices found</td></tr>}
+              {allInvoices.length === 0 && <tr><td colSpan={9} className="px-3 py-6 text-center" style={{ color: "var(--muted2)" }}>No invoices found</td></tr>}
             </tbody>
           </table>
         </div>

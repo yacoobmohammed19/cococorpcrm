@@ -8,7 +8,7 @@ import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { runAction } from "@/lib/action-utils";
-import { createCustomer, updateCustomer, deleteCustomer } from "@/server-actions/customers";
+import { createCustomer, updateCustomer, deleteCustomer, bulkDeleteCustomers } from "@/server-actions/customers";
 
 type Customer = {
   id: number; name: string; email: string | null; phone: string | null;
@@ -68,6 +68,8 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
   const [modal, setModal] = useState<{ open: boolean; customer: Customer | null }>({ open: false, customer: null });
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; name: string } | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   function togStr(arr: string[], v: string) { return arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]; }
 
@@ -94,6 +96,20 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
     setBusy(false);
   }
 
+  function toggleSelect(id: number) {
+    setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  }
+  function toggleAll() {
+    setSelected(prev => prev.size === filtered.length ? new Set() : new Set(filtered.map(c => c.id)));
+  }
+  async function handleBulkDelete() {
+    if (selected.size === 0) return;
+    setBulkBusy(true);
+    await runAction(() => bulkDeleteCustomers(Array.from(selected)), toast, `${selected.size} customer${selected.size > 1 ? "s" : ""} archived`);
+    setSelected(new Set());
+    setBulkBusy(false);
+  }
+
   return (
     <div>
       {/* ── Page header ── */}
@@ -104,14 +120,24 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
             {customers.length} {customers.length === 1 ? "customer" : "customers"} total
           </p>
         </div>
-        <button
-          onClick={() => open(null)}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all hover:opacity-90 active:scale-[.98]"
-          style={{ background: "var(--primary)", color: "var(--primary-fg)" }}
-        >
-          <Plus size={15} />
-          New Customer
-        </button>
+        <div className="flex items-center gap-2">
+          {selected.size > 0 && (
+            <button onClick={handleBulkDelete} disabled={bulkBusy}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-lg"
+              style={{ background: "var(--danger-bg)", color: "var(--red-c)", border: "1px solid var(--red-c)", opacity: bulkBusy ? .6 : 1 }}>
+              <Trash2 size={14} />
+              {bulkBusy ? "Archiving…" : `Archive (${selected.size})`}
+            </button>
+          )}
+          <button
+            onClick={() => open(null)}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all hover:opacity-90 active:scale-[.98]"
+            style={{ background: "var(--primary)", color: "var(--primary-fg)" }}
+          >
+            <Plus size={15} />
+            New Customer
+          </button>
+        </div>
       </div>
 
       {/* ── Stats row ── */}
@@ -236,6 +262,10 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr style={{ background: "var(--card2)", borderBottom: "1px solid var(--border)" }}>
+              <th className="px-3 py-3 w-8">
+                <input type="checkbox" checked={filtered.length > 0 && selected.size === filtered.length}
+                  onChange={toggleAll} className="cursor-pointer" />
+              </th>
               {["Customer", "Status", "Contact", "Phone", "Source", "Added", ""].map(h => (
                 <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-widest whitespace-nowrap"
                   style={{ color: "var(--muted2)" }}>
@@ -249,8 +279,11 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
               <tr
                 key={c.id}
                 className="transition-colors hover:bg-[var(--card2)]"
-                style={{ borderBottom: i < filtered.length - 1 ? "1px solid var(--border)" : "none" }}
+                style={{ borderBottom: i < filtered.length - 1 ? "1px solid var(--border)" : "none", background: selected.has(c.id) ? "color-mix(in srgb, var(--accent) 6%, var(--card))" : undefined }}
               >
+                <td className="px-3 py-3 w-8">
+                  <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleSelect(c.id)} className="cursor-pointer" />
+                </td>
                 <td className="px-4 py-3">
                   <div>
                     <Link href={`/customers/${c.id}`} className="font-semibold hover:underline" style={{ color: "var(--accent)" }}>

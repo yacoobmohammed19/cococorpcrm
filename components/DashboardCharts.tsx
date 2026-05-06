@@ -27,6 +27,7 @@ type Props = {
   rawLeads: RawLead[]; rawInvoices: RawInvoice[]; rawCosts: RawCost[]; rawCashflow: RawCashflow[];
   customers: Dim[]; statuses: Dim[]; paymentTypes: Dim[]; costCategories: Dim[]; accounts: Dim[];
   currency: string; orgName: string; bankBalance: number; bankLastDate: string | null;
+  fiscalYearStart?: number;
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -143,9 +144,10 @@ const EMPTY_FILTERS: Filters = {
   invoiceStatuses: [], paymentTypeIds: [],
 };
 
-function FilterBar({ filters, setFilters, statuses, customers, costCategories, accounts, paymentTypes }: {
+function FilterBar({ filters, setFilters, statuses, customers, costCategories, accounts, paymentTypes, fiscalYearStart }: {
   filters: Filters; setFilters: (f: Filters) => void;
   statuses: Dim[]; customers: Dim[]; costCategories: Dim[]; accounts: Dim[]; paymentTypes: Dim[];
+  fiscalYearStart?: number;
 }) {
   const [open, setOpen] = useState(false);
   const activeCount = [
@@ -178,19 +180,25 @@ function FilterBar({ filters, setFilters, statuses, customers, costCategories, a
           {activeCount > 0 && <span className="px-1.5 py-0.5 rounded-full text-xs font-bold" style={{ background: "rgba(255,255,255,.25)" }}>{activeCount}</span>}
         </button>
         {/* Quick date presets */}
-        {(["7d", "30d", "90d", "YTD", "All"] as const).map(p => {
+        {(["30d", "90d", "12M", "YTD", "FY", "All"] as const).map(p => {
           const now = new Date();
-          const getFrom = () => {
-            if (p === "7d") { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10); }
-            if (p === "30d") { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); }
-            if (p === "90d") { const d = new Date(); d.setDate(d.getDate() - 90); return d.toISOString().slice(0, 10); }
-            if (p === "YTD") return `${now.getFullYear()}-01-01`;
-            return "";
+          const fyMonth = (fiscalYearStart ?? 3) - 1; // 0-indexed month
+          const getFyStart = () => {
+            const y = now.getMonth() >= fyMonth ? now.getFullYear() : now.getFullYear() - 1;
+            return new Date(y, fyMonth, 1).toISOString().slice(0, 10);
           };
-          const from = getFrom();
-          const active = p === "All" ? !filters.dateFrom && !filters.dateTo : filters.dateFrom === from && !filters.dateTo;
+          const getRange = (): { from: string; to: string } => {
+            if (p === "30d") { const d = new Date(); d.setDate(d.getDate() - 30); return { from: d.toISOString().slice(0, 10), to: "" }; }
+            if (p === "90d") { const d = new Date(); d.setDate(d.getDate() - 90); return { from: d.toISOString().slice(0, 10), to: "" }; }
+            if (p === "12M") { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return { from: d.toISOString().slice(0, 10), to: "" }; }
+            if (p === "YTD") return { from: `${now.getFullYear()}-01-01`, to: "" };
+            if (p === "FY") return { from: getFyStart(), to: "" };
+            return { from: "", to: "" };
+          };
+          const { from, to } = getRange();
+          const active = p === "All" ? !filters.dateFrom && !filters.dateTo : filters.dateFrom === from && filters.dateTo === to;
           return (
-            <button key={p} onClick={() => set({ dateFrom: from, dateTo: "" })}
+            <button key={p} onClick={() => set({ dateFrom: from, dateTo: to })}
               className="px-2.5 py-1.5 rounded text-xs font-semibold transition-colors"
               style={{ background: active ? "rgba(16,185,129,.15)" : "var(--card2)", color: active ? "var(--accent)" : "var(--muted2)", border: `1px solid ${active ? "var(--accent)" : "var(--border)"}` }}>
               {p}
@@ -376,7 +384,7 @@ function readLS<T>(key: string, fallback: T): T {
 export function DashboardCharts({
   rawLeads, rawInvoices, rawCosts, rawCashflow,
   customers, statuses, paymentTypes, costCategories, accounts,
-  currency, orgName, bankBalance, bankLastDate,
+  currency, orgName, bankBalance, bankLastDate, fiscalYearStart,
 }: Props) {
   const cur = currency === "ZAR" ? "R" : currency === "USD" ? "$" : currency === "EUR" ? "€" : "R";
 
@@ -683,7 +691,8 @@ export function DashboardCharts({
 
       {/* Filters */}
       <FilterBar filters={filters} setFilters={setFilters}
-        statuses={statuses} customers={customers} costCategories={costCategories} accounts={accounts} paymentTypes={paymentTypes} />
+        statuses={statuses} customers={customers} costCategories={costCategories} accounts={accounts} paymentTypes={paymentTypes}
+        fiscalYearStart={fiscalYearStart} />
 
       {/* Sections in order */}
       {sectionOrder.map((sectionId, idx) => {

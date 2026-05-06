@@ -12,6 +12,7 @@ import { createProduct, updateProduct, deleteProduct } from "@/server-actions/pr
 type Product = {
   id: number; name: string; sku: string | null; description: string | null;
   unit_price: number; category: string | null; is_active: boolean; created_at: string;
+  location?: string | null;
 };
 
 const CATEGORIES = ["Software", "Hardware", "Service", "Consulting", "Subscription", "License", "Other"];
@@ -111,7 +112,7 @@ export function ProductsClient({ products, currency }: { products: Product[]; cu
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
-                {["Name", "SKU", "Category", "Unit Price", "Status", ""].map(h => (
+                {["Name", "SKU", "Category", "Location", "Unit Price", "Status", ""].map(h => (
                   <th key={h} className="px-3 py-2.5 text-left font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: "var(--muted2)" }}>{h}</th>
                 ))}
               </tr>
@@ -131,6 +132,7 @@ export function ProductsClient({ products, currency }: { products: Product[]; cu
                       </span>
                     )}
                   </td>
+                  <td className="px-3 py-2.5 max-w-[120px] truncate" style={{ color: "var(--muted2)" }}>{p.location || "—"}</td>
                   <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: "var(--accent)" }}>
                     {cur} {fmt(p.unit_price)}
                   </td>
@@ -211,6 +213,11 @@ export function ProductsClient({ products, currency }: { products: Product[]; cu
                   <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Description</label>
                   <textarea name="description" rows={3} defaultValue={modal.product?.description || ""}
                     className={inp + " resize-none"} style={inpS} />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Site / Location</label>
+                  <input name="location" defaultValue={modal.product?.location || ""} className={inp} style={inpS}
+                    placeholder="e.g. Warehouse A, Cape Town Office" />
                 </div>
               </div>
               <div className="flex gap-3 pt-2">
