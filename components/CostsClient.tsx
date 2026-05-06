@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
@@ -89,6 +90,24 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
 
   return (
     <div>
+      {/* ── Page header ── */}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Costs</h1>
+          <p className="text-sm mt-0.5" style={{ color: "var(--muted2)" }}>
+            {filtered.length} entries · {cur} {fmt(total)} filtered OPEX
+          </p>
+        </div>
+        <button
+          onClick={() => { setCreateCostDate(new Date().toISOString().slice(0, 10)); setModal(true); }}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all hover:opacity-90"
+          style={{ background: "var(--primary)", color: "var(--primary-fg)" }}
+        >
+          <Plus size={15} />
+          New Cost
+        </button>
+      </div>
+
       {/* Summary KPI */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
         <div className="rounded-xl p-4" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
@@ -140,7 +159,6 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
               className="px-3 py-1.5 text-xs rounded-xl border outline-none" style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--muted)" }} />
           </>
         )}
-        <button onClick={() => { setCreateCostDate(new Date().toISOString().slice(0, 10)); setModal(true); }} className="ml-auto px-4 py-1.5 text-xs font-semibold rounded-xl" style={{ background: "var(--accent)", color: "#fff" }}>+ New Cost</button>
       </div>
 
       {/* TABLE VIEW */}

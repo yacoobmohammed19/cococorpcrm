@@ -15,7 +15,6 @@ export default async function QuotesPage() {
 
   return (
     <section>
-      <h1 className="text-2xl font-semibold mb-6">Quotes &amp; Proposals</h1>
       <QuotesClient
         quotes={quotes || []}
         customers={customers || []}

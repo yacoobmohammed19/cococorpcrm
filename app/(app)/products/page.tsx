@@ -13,7 +13,6 @@ export default async function ProductsPage() {
 
   return (
     <section>
-      <h1 className="text-2xl font-semibold mb-6">Products &amp; Services</h1>
       <ProductsClient products={products || []} currency={currency} />
     </section>
   );

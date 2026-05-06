@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Plus, Pencil, Trash2, FileOutput } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
@@ -105,6 +106,24 @@ export function QuotesClient({ quotes, customers, products, currency }: {
 
   return (
     <div>
+      {/* ── Page header ── */}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Quotes</h1>
+          <p className="text-sm mt-0.5" style={{ color: "var(--muted2)" }}>
+            {quotes.length} quotes · {cur} {fmt(totals.accepted)} accepted
+          </p>
+        </div>
+        <button
+          onClick={() => setModal(true)}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all hover:opacity-90"
+          style={{ background: "var(--primary)", color: "var(--primary-fg)" }}
+        >
+          <Plus size={15} />
+          New Quote
+        </button>
+      </div>
+
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
         {[["Total Quoted", totals.total, "var(--purple-c)"], ["Accepted", totals.accepted, "var(--accent)"], ["In Progress", totals.pending, "var(--amber-c)"]].map(([l, v, c]) => (
@@ -126,11 +145,6 @@ export function QuotesClient({ quotes, customers, products, currency }: {
           <option value="">All Statuses</option>
           {[...STATUSES, "Invoiced"].map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        <button onClick={() => { setValidUntil(""); setModal(true); }}
-          className="px-4 py-2 text-sm font-semibold rounded"
-          style={{ background: "var(--accent)", color: "#fff" }}>
-          + New Quote
-        </button>
       </div>
 
       {/* Table */}

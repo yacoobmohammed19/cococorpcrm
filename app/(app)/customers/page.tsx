@@ -11,7 +11,6 @@ export default async function CustomersPage() {
 
   return (
     <section>
-      <h1 className="text-2xl font-semibold mb-6">Customers</h1>
       <CustomersClient customers={customers || []} />
     </section>
   );

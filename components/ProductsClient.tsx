@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -54,6 +55,24 @@ export function ProductsClient({ products, currency }: { products: Product[]; cu
 
   return (
     <div>
+      {/* ── Page header ── */}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Products</h1>
+          <p className="text-sm mt-0.5" style={{ color: "var(--muted2)" }}>
+            {products.filter(p => p.is_active).length} active · {products.length} total
+          </p>
+        </div>
+        <button
+          onClick={() => setModal({ open: true, product: null })}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all hover:opacity-90"
+          style={{ background: "var(--primary)", color: "var(--primary-fg)" }}
+        >
+          <Plus size={15} />
+          New Product
+        </button>
+      </div>
+
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         {[
@@ -84,11 +103,6 @@ export function ProductsClient({ products, currency }: { products: Product[]; cu
           <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
           Show inactive
         </label>
-        <button onClick={() => open(null)}
-          className="px-4 py-2 text-sm font-semibold rounded"
-          style={{ background: "var(--accent)", color: "#fff" }}>
-          + New Product
-        </button>
       </div>
 
       {/* Table */}

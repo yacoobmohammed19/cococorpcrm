@@ -29,9 +29,6 @@ export default async function CostsPage() {
 
   return (
     <section>
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-semibold">Costs</h1>
-      </div>
       <CostsClient
         costs={mappedCosts}
         categories={categories || []}

@@ -30,9 +30,6 @@ export default async function InvoicesPage() {
 
   return (
     <section>
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-semibold">Invoices</h1>
-      </div>
       <InvoicesClient
         invoices={mappedInvoices}
         customers={customers || []}

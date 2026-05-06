@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Plus, Pencil, Trash2, Phone, Mail, User, ChevronRight, Users } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -16,12 +17,29 @@ type Customer = {
 
 const SOURCES = ["Referral", "Website", "Cold Call", "Social Media", "Event", "Other"];
 
-const inp = "w-full px-3 py-2 rounded border text-sm outline-none focus:ring-1 focus:ring-[var(--accent)]";
-const inpS = { background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" } as const;
+const SOURCE_COLORS: Record<string, string> = {
+  Referral:     "var(--accent)",
+  Website:      "var(--cyan-c)",
+  "Cold Call":  "var(--amber-c)",
+  "Social Media":"var(--purple-c)",
+  Event:        "var(--pink)",
+  Other:        "var(--muted2)",
+};
 
 function fdate(d: string | null) {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", year: "2-digit" });
+}
+
+function SourceBadge({ source }: { source: string | null }) {
+  if (!source) return null;
+  const color = SOURCE_COLORS[source] ?? "var(--muted2)";
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium"
+      style={{ background: `color-mix(in srgb, ${color} 12%, transparent)`, color }}>
+      {source}
+    </span>
+  );
 }
 
 export function CustomersClient({ customers }: { customers: Customer[] }) {
@@ -34,7 +52,7 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
   const filtered = customers.filter(c => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return (c.name + (c.email || "") + (c.phone || "") + (c.contact_person || "")).toLowerCase().includes(q);
+    return (c.name + (c.email ?? "") + (c.phone ?? "") + (c.contact_person ?? "")).toLowerCase().includes(q);
   });
 
   function open(c: Customer | null) { setModal({ open: true, customer: c }); }
@@ -50,138 +68,247 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
 
   return (
     <div>
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+      {/* ── Page header ── */}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Customers</h1>
+          <p className="text-sm mt-0.5" style={{ color: "var(--muted2)" }}>
+            {customers.length} {customers.length === 1 ? "customer" : "customers"} total
+          </p>
+        </div>
+        <button
+          onClick={() => open(null)}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all hover:opacity-90 active:scale-[.98]"
+          style={{ background: "var(--primary)", color: "var(--primary-fg)" }}
+        >
+          <Plus size={15} />
+          New Customer
+        </button>
+      </div>
+
+      {/* ── Stats row ── */}
+      <div className="grid grid-cols-2 gap-3 mb-5">
         {[
-          ["Total Customers", customers.length, "var(--accent)"],
-          ["Active", customers.length, "var(--purple-c)"],
-        ].map(([l, v, c]) => (
-          <div key={l as string} className="rounded-xl p-3" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
-            <div className="text-xs uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>{l}</div>
-            <div className="text-2xl font-bold font-mono" style={{ color: c as string }}>{v}</div>
+          { label: "Total", value: customers.length, color: "var(--accent)" },
+          { label: "Showing", value: filtered.length, color: "var(--cyan-c)" },
+        ].map(({ label, value, color }) => (
+          <div key={label} className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}>
+            <p className="text-[11px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--muted2)" }}>{label}</p>
+            <p className="text-2xl font-bold font-mono" style={{ color }}>{value}</p>
           </div>
         ))}
       </div>
 
-      {/* Controls */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search customers…"
-          className="px-3 py-2 text-sm rounded-xl border outline-none flex-1 min-w-0"
-          style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }} />
-        <span className="text-xs" style={{ color: "var(--muted2)" }}>{filtered.length}/{customers.length}</span>
-        <button onClick={() => open(null)}
-          className="px-4 py-2 text-sm font-semibold rounded-xl"
-          style={{ background: "var(--accent)", color: "#fff" }}>
-          + New
-        </button>
+      {/* ── Search bar ── */}
+      <div className="mb-4">
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name, email, phone…"
+          className="w-full px-4 py-2.5 text-sm rounded-lg border outline-none transition-colors"
+          style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
+        />
       </div>
 
-      {/* Mobile Cards */}
+      {/* ── Mobile Cards ── */}
       <div className="sm:hidden space-y-3">
         {filtered.map(c => (
-          <div key={c.id} className="rounded-2xl p-4" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
-            <div className="flex items-start justify-between mb-2">
-              <Link href={`/customers/${c.id}`} className="font-bold text-base leading-tight" style={{ color: "var(--accent)" }}>{c.name}</Link>
-              {c.source && <span className="ml-2 shrink-0 px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: "rgba(16,185,129,.12)", color: "var(--accent)" }}>{c.source}</span>}
+          <div key={c.id} className="rounded-xl" style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}>
+            <div className="p-4">
+              <div className="flex items-start justify-between mb-3">
+                <Link href={`/customers/${c.id}`} className="font-semibold text-base leading-tight hover:underline" style={{ color: "var(--accent)" }}>
+                  {c.name}
+                </Link>
+                <SourceBadge source={c.source} />
+              </div>
+              <div className="space-y-1.5">
+                {c.phone && (
+                  <p className="flex items-center gap-2 text-sm" style={{ color: "var(--muted)" }}>
+                    <Phone size={13} className="shrink-0" style={{ color: "var(--muted2)" }} />
+                    {c.phone}
+                  </p>
+                )}
+                {c.email && (
+                  <p className="flex items-center gap-2 text-sm truncate" style={{ color: "var(--muted)" }}>
+                    <Mail size={13} className="shrink-0" style={{ color: "var(--muted2)" }} />
+                    {c.email}
+                  </p>
+                )}
+                {c.contact_person && (
+                  <p className="flex items-center gap-2 text-sm" style={{ color: "var(--muted2)" }}>
+                    <User size={13} className="shrink-0" style={{ color: "var(--muted2)" }} />
+                    {c.contact_person}
+                  </p>
+                )}
+              </div>
             </div>
-            <div className="space-y-0.5 mb-3">
-              {c.phone && <p className="text-sm" style={{ color: "var(--muted)" }}>📞 {c.phone}</p>}
-              {c.email && <p className="text-sm truncate" style={{ color: "var(--muted)" }}>✉️ {c.email}</p>}
-              {c.contact_person && <p className="text-sm" style={{ color: "var(--muted2)" }}>👤 {c.contact_person}</p>}
-              {!c.phone && !c.email && !c.contact_person && <p className="text-xs italic" style={{ color: "var(--muted2)" }}>No contact details</p>}
-            </div>
-            <div className="flex items-center gap-2 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
-              <button onClick={() => open(c)} className="flex-1 py-2 rounded-xl text-xs font-semibold" style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted)" }}>
-                ✏️ Edit
+            <div className="flex gap-2 px-4 pb-4">
+              <button
+                onClick={() => open(c)}
+                className="flex items-center gap-1.5 flex-1 justify-center py-2 rounded-lg text-xs font-semibold transition-colors"
+                style={{ background: "var(--card2)", border: "1px solid var(--border)", color: "var(--muted)" }}
+              >
+                <Pencil size={12} /> Edit
               </button>
-              <Link href={`/customers/${c.id}`} className="flex-1 py-2 rounded-xl text-xs font-semibold text-center" style={{ background: "var(--accent)", color: "#fff" }}>
-                View →
+              <Link
+                href={`/customers/${c.id}`}
+                className="flex items-center gap-1.5 flex-1 justify-center py-2 rounded-lg text-xs font-semibold"
+                style={{ background: "var(--accent)", color: "#fff" }}
+              >
+                View <ChevronRight size={12} />
               </Link>
-              <button onClick={() => setConfirmDelete({ id: c.id, name: c.name })} disabled={busy} className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(239,68,68,.1)", color: "var(--red-c)" }}>
-                🗑️
+              <button
+                onClick={() => setConfirmDelete({ id: c.id, name: c.name })}
+                disabled={busy}
+                className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors"
+                style={{ background: "var(--danger-bg)", color: "var(--red-c)" }}
+              >
+                <Trash2 size={14} />
               </button>
             </div>
           </div>
         ))}
         {filtered.length === 0 && (
-          <EmptyState icon="👥"
-            title={search ? "No customers match your search" : "No customers yet"}
+          <EmptyState
+            icon="👥"
+            title={search ? "No customers match" : "No customers yet"}
             description={search ? "Try a different search term." : "Add your first customer to get started."}
-            action={!search ? <button onClick={() => open(null)} className="px-4 py-2 text-sm font-semibold rounded-xl" style={{ background: "var(--accent)", color: "#fff" }}>+ New Customer</button> : undefined}
+            action={!search ? (
+              <button onClick={() => open(null)}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg"
+                style={{ background: "var(--primary)", color: "var(--primary-fg)" }}>
+                <Plus size={15} /> New Customer
+              </button>
+            ) : undefined}
           />
         )}
       </div>
 
-      {/* Desktop Table */}
-      <div className="hidden sm:block rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
-        <div className="overflow-x-auto" style={{ background: "var(--card2)" }}>
-          <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
-                {["Name", "Email", "Phone", "Contact Person", "Source", "Added", ""].map(h => (
-                  <th key={h} className="px-3 py-2.5 text-left font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: "var(--muted2)" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(c => (
-                <tr key={c.id} className="border-b hover:bg-[var(--card3)] transition-colors" style={{ borderColor: "var(--border)" }}>
-                  <td className="px-3 py-2.5 font-semibold">
-                    <Link href={`/customers/${c.id}`} style={{ color: "var(--accent)" }}>{c.name}</Link>
-                  </td>
-                  <td className="px-3 py-2.5" style={{ color: "var(--muted)" }}>{c.email || "—"}</td>
-                  <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--muted)" }}>{c.phone || "—"}</td>
-                  <td className="px-3 py-2.5" style={{ color: "var(--muted)" }}>{c.contact_person || "—"}</td>
-                  <td className="px-3 py-2.5">
-                    {c.source && (
-                      <span className="px-2 py-0.5 rounded-full text-xs font-medium"
-                        style={{ background: "rgba(16,185,129,.12)", color: "var(--accent)" }}>
-                        {c.source}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--muted2)" }}>{fdate(c.created_at)}</td>
-                  <td className="px-3 py-2.5 whitespace-nowrap">
-                    <div className="flex gap-1">
-                      <button onClick={() => open(c)}
-                        className="px-2 py-1 rounded text-xs"
-                        style={{ border: "1px solid var(--border)", background: "var(--card)" }}>✏️</button>
-                      <button onClick={() => setConfirmDelete({ id: c.id, name: c.name })} disabled={busy}
-                        className="px-2 py-1 rounded text-xs"
-                        style={{ border: "1px solid var(--border)", background: "var(--card)" }}>🗑️</button>
-                      <Link href={`/customers/${c.id}`}
-                        className="px-2 py-1 rounded text-xs font-semibold"
-                        style={{ border: "1px solid var(--border)", background: "var(--card)", color: "var(--muted)" }}>→</Link>
-                    </div>
-                  </td>
-                </tr>
+      {/* ── Desktop Table ── */}
+      <div className="hidden sm:block rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}>
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr style={{ background: "var(--card2)", borderBottom: "1px solid var(--border)" }}>
+              {["Customer", "Contact", "Phone", "Source", "Added", ""].map(h => (
+                <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-widest whitespace-nowrap"
+                  style={{ color: "var(--muted2)" }}>
+                  {h}
+                </th>
               ))}
-              {filtered.length === 0 && (
-                <tr><td colSpan={7}>
-                  <EmptyState icon="👥"
+            </tr>
+          </thead>
+          <tbody style={{ background: "var(--card)" }}>
+            {filtered.map((c, i) => (
+              <tr
+                key={c.id}
+                className="transition-colors hover:bg-[var(--card2)]"
+                style={{ borderBottom: i < filtered.length - 1 ? "1px solid var(--border)" : "none" }}
+              >
+                <td className="px-4 py-3">
+                  <div>
+                    <Link href={`/customers/${c.id}`} className="font-semibold hover:underline" style={{ color: "var(--accent)" }}>
+                      {c.name}
+                    </Link>
+                    {c.email && (
+                      <p className="text-xs mt-0.5 truncate" style={{ color: "var(--muted2)" }}>{c.email}</p>
+                    )}
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-sm" style={{ color: "var(--muted)" }}>
+                  {c.contact_person || "—"}
+                </td>
+                <td className="px-4 py-3 text-sm whitespace-nowrap" style={{ color: "var(--muted)" }}>
+                  {c.phone || "—"}
+                </td>
+                <td className="px-4 py-3">
+                  <SourceBadge source={c.source} />
+                </td>
+                <td className="px-4 py-3 text-xs whitespace-nowrap" style={{ color: "var(--muted2)" }}>
+                  {fdate(c.created_at)}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => open(c)}
+                      title="Edit"
+                      className="w-8 h-8 rounded-md flex items-center justify-center transition-colors hover:bg-[var(--card3)]"
+                      style={{ color: "var(--muted2)", border: "1px solid var(--border)" }}
+                    >
+                      <Pencil size={13} />
+                    </button>
+                    <button
+                      onClick={() => setConfirmDelete({ id: c.id, name: c.name })}
+                      disabled={busy}
+                      title="Archive"
+                      className="w-8 h-8 rounded-md flex items-center justify-center transition-colors"
+                      style={{ color: "var(--red-c)", background: "var(--danger-bg)" }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                    <Link
+                      href={`/customers/${c.id}`}
+                      title="View details"
+                      className="w-8 h-8 rounded-md flex items-center justify-center transition-colors hover:bg-[var(--card3)]"
+                      style={{ color: "var(--muted2)", border: "1px solid var(--border)" }}
+                    >
+                      <ChevronRight size={13} />
+                    </Link>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={6}>
+                  <EmptyState
+                    icon="👥"
                     title={search ? "No customers match" : "No customers yet"}
                     description={search ? "Try a different search term." : "Add your first customer to get started."}
-                    action={!search ? <button onClick={() => open(null)} className="px-4 py-2 text-sm font-semibold rounded-xl" style={{ background: "var(--accent)", color: "#fff" }}>+ New Customer</button> : undefined}
+                    action={!search ? (
+                      <button onClick={() => open(null)}
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg"
+                        style={{ background: "var(--primary)", color: "var(--primary-fg)" }}>
+                        <Plus size={15} /> New Customer
+                      </button>
+                    ) : undefined}
                   />
-                </td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
-      {/* Modal — bottom sheet on mobile, centered on desktop */}
+      {/* ── Modal ── */}
       {modal.open && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-start sm:justify-center sm:p-4 sm:pt-16 overflow-y-auto"
-          style={{ background: "rgba(0,0,0,.6)", backdropFilter: "blur(4px)" }}
-          onClick={e => { if (e.target === e.currentTarget) close(); }}>
-          <div className="w-full sm:max-w-lg rounded-t-2xl sm:rounded-xl max-h-[92vh] overflow-y-auto" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
-            <div className="sm:hidden w-10 h-1 rounded-full mx-auto mt-3 mb-1" style={{ background: "var(--border)" }} />
-            <div className="flex justify-between items-center px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
+          style={{ background: "rgba(0,0,0,.5)", backdropFilter: "blur(6px)" }}
+          onClick={e => { if (e.target === e.currentTarget) close(); }}
+        >
+          <div
+            className="w-full sm:max-w-lg rounded-t-2xl sm:rounded-xl max-h-[92vh] overflow-y-auto"
+            style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xl)" }}
+          >
+            <div className="sm:hidden w-10 h-1 rounded-full mx-auto mt-3 mb-2" style={{ background: "var(--border2)" }} />
+
+            {/* Modal header */}
+            <div className="flex items-center gap-3 px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "var(--success-bg)", color: "var(--accent)" }}>
+                <Users size={16} />
+              </div>
               <h3 className="font-semibold">{modal.customer ? `Edit — ${modal.customer.name}` : "New Customer"}</h3>
-              <button onClick={close} style={{ color: "var(--muted2)" }}>✕</button>
+              <button
+                onClick={close}
+                className="ml-auto w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-[var(--card2)]"
+                style={{ color: "var(--muted2)" }}
+              >
+                ✕
+              </button>
             </div>
-            <form className="p-5 space-y-3"
+
+            <form
+              className="p-5 space-y-4"
               action={async (fd: FormData) => {
                 setBusy(true);
                 const ok = modal.customer
@@ -189,43 +316,76 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
                   : await runAction(() => createCustomer(fd), toast, "Customer created");
                 if (ok) close();
                 setBusy(false);
-              }}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="col-span-2">
-                  <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Name *</label>
-                  <input name="name" required defaultValue={modal.customer?.name || ""} className={inp} style={inpS} />
+              }}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--muted2)" }}>Name *</label>
+                  <input
+                    name="name" required defaultValue={modal.customer?.name ?? ""}
+                    className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-colors"
+                    style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }}
+                  />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Email</label>
-                  <input name="email" type="email" defaultValue={modal.customer?.email || ""} className={inp} style={inpS} />
+                  <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--muted2)" }}>Email</label>
+                  <input
+                    name="email" type="email" defaultValue={modal.customer?.email ?? ""}
+                    className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-colors"
+                    style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }}
+                  />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Phone</label>
-                  <input name="phone" defaultValue={modal.customer?.phone || ""} className={inp} style={inpS} />
+                  <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--muted2)" }}>Phone</label>
+                  <input
+                    name="phone" defaultValue={modal.customer?.phone ?? ""}
+                    className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-colors"
+                    style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }}
+                  />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Contact Person</label>
-                  <input name="contact_person" defaultValue={modal.customer?.contact_person || ""} className={inp} style={inpS} />
+                  <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--muted2)" }}>Contact Person</label>
+                  <input
+                    name="contact_person" defaultValue={modal.customer?.contact_person ?? ""}
+                    className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-colors"
+                    style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }}
+                  />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Source</label>
-                  <select name="source" defaultValue={modal.customer?.source || ""} className={inp} style={inpS}>
+                  <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--muted2)" }}>Source</label>
+                  <select
+                    name="source" defaultValue={modal.customer?.source ?? ""}
+                    className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-colors"
+                    style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }}
+                  >
                     <option value="">— None —</option>
                     {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
-                <div className="col-span-2">
-                  <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Notes</label>
-                  <textarea name="notes" rows={3} defaultValue={modal.customer?.notes || ""}
-                    className={inp + " resize-none"} style={inpS} />
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--muted2)" }}>Notes</label>
+                  <textarea
+                    name="notes" rows={3} defaultValue={modal.customer?.notes ?? ""}
+                    className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-colors resize-none"
+                    style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }}
+                  />
                 </div>
               </div>
-              <div className="flex gap-3 pt-2 pb-2">
-                <button type="button" onClick={close} className="flex-1 py-2.5 text-sm rounded-xl border"
-                  style={{ borderColor: "var(--border)", color: "var(--muted)" }}>Cancel</button>
-                <button type="submit" disabled={busy} className="flex-1 py-2.5 text-sm font-semibold rounded-xl"
-                  style={{ background: "var(--accent)", color: "#fff", opacity: busy ? .6 : 1 }}>
-                  {busy ? "Saving…" : modal.customer ? "Update" : "Create Customer"}
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button" onClick={close}
+                  className="flex-1 py-2.5 text-sm rounded-lg border font-medium transition-colors hover:bg-[var(--card2)]"
+                  style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit" disabled={busy}
+                  className="flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all"
+                  style={{ background: "var(--accent)", color: "#fff", opacity: busy ? 0.6 : 1 }}
+                >
+                  {busy ? "Saving…" : modal.customer ? "Save Changes" : "Create Customer"}
                 </button>
               </div>
             </form>

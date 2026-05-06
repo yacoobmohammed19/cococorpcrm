@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Plus, Pencil, Trash2, Printer } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
@@ -121,32 +122,53 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
 
   return (
     <div>
-      {/* KPI Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-        {[["Collected", totals.completed, "var(--accent)"], ["Pending", totals.pending, "var(--amber-c)"], ["Written Off", totals.writtenOff, "var(--red-c)"]].map(([l, v, c]) => (
-          <div key={l as string} className="rounded-xl p-4" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
-            <div className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>{l}</div>
-            <div className="text-xl font-bold font-mono" style={{ color: c as string }}>{cur} {fmt(v as number)}</div>
+      {/* ── Page header ── */}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Invoices</h1>
+          <p className="text-sm mt-0.5" style={{ color: "var(--muted2)" }}>
+            {invoices.length} invoices · {cur} {fmt(totals.completed)} collected
+          </p>
+        </div>
+        <button
+          onClick={() => { setCreateTxDate(today); setCreateDueDate(""); setModal(true); }}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all hover:opacity-90 active:scale-[.98]"
+          style={{ background: "var(--primary)", color: "var(--primary-fg)" }}
+        >
+          <Plus size={15} />
+          New Invoice
+        </button>
+      </div>
+
+      {/* ── KPI Row ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+        {[
+          { label: "Collected", value: totals.completed, color: "var(--accent)", bg: "var(--success-bg)" },
+          { label: "Pending", value: totals.pending, color: "var(--amber-c)", bg: "var(--warning-bg)" },
+          { label: "Written Off", value: totals.writtenOff, color: "var(--red-c)", bg: "var(--danger-bg)" },
+        ].map(({ label, value, color }) => (
+          <div key={label} className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}>
+            <div className="text-[11px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--muted2)" }}>{label}</div>
+            <div className="text-2xl font-bold font-mono" style={{ color }}>{cur} {fmt(value)}</div>
           </div>
         ))}
       </div>
 
-      {/* Controls */}
+      {/* ── Controls ── */}
       <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center mb-4">
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search invoices…"
-          className="px-3 py-2 text-sm rounded-xl border outline-none flex-1 min-w-0"
-          style={inputStyle} />
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          className="px-3 py-2 text-sm rounded-xl border outline-none"
-          style={inputStyle}>
+        <input
+          value={search} onChange={e => setSearch(e.target.value)} placeholder="Search invoices…"
+          className="px-3 py-2.5 text-sm rounded-lg border outline-none flex-1 min-w-0"
+          style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
+        />
+        <select
+          value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+          className="px-3 py-2.5 text-sm rounded-lg border outline-none"
+          style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--muted)" }}
+        >
           <option value="">All Statuses</option>
           {["Completed", "Pending", "Written Off"].map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        <button onClick={() => { setCreateTxDate(today); setCreateDueDate(""); setModal(true); }}
-          className="px-4 py-2.5 rounded-xl text-sm font-semibold"
-          style={{ background: "var(--accent)", color: "#fff" }}>
-          + Invoice
-        </button>
       </div>
 
       {/* Mobile Cards */}
@@ -186,9 +208,15 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
                 )}
               </div>
               <div className="flex gap-2 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
-                <button onClick={() => openEdit(inv)} className="flex-1 py-2 rounded-xl text-xs font-semibold" style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted)" }}>✏️ Edit</button>
-                <Link href={`/invoices/${inv.id}/print`} target="_blank" className="flex-1 py-2 rounded-xl text-xs font-semibold text-center" style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted)" }}>🖨️ Print</Link>
-                <button onClick={() => handleDelete(inv.id)} className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(239,68,68,.1)", color: "var(--red-c)" }}>✕</button>
+                <button onClick={() => openEdit(inv)} className="flex items-center gap-1.5 flex-1 justify-center py-2 rounded-lg text-xs font-semibold" style={{ background: "var(--card2)", border: "1px solid var(--border)", color: "var(--muted)" }}>
+                  <Pencil size={12} /> Edit
+                </button>
+                <Link href={`/invoices/${inv.id}/print`} target="_blank" className="flex items-center gap-1.5 flex-1 justify-center py-2 rounded-lg text-xs font-semibold" style={{ background: "var(--card2)", border: "1px solid var(--border)", color: "var(--muted)" }}>
+                  <Printer size={12} /> Print
+                </Link>
+                <button onClick={() => handleDelete(inv.id)} className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: "var(--danger-bg)", color: "var(--red-c)" }}>
+                  <Trash2 size={13} />
+                </button>
               </div>
             </div>
           );
@@ -235,16 +263,16 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
                       </select>
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">
-                      <div className="flex gap-1">
-                        <button onClick={() => openEdit(inv)}
-                          className="px-2 py-1 rounded text-xs"
-                          style={{ background: "var(--card3)", color: "var(--muted)", border: "1px solid var(--border)" }}>✏️</button>
-                        <Link href={`/invoices/${inv.id}/print`} target="_blank"
-                          className="px-2 py-1 rounded text-xs font-semibold"
-                          style={{ background: "var(--card3)", color: "var(--muted)", border: "1px solid var(--border)" }}>🖨️</Link>
-                        <button onClick={() => handleDelete(inv.id)}
-                          className="px-2 py-1 rounded text-xs font-semibold"
-                          style={{ background: "rgba(239,68,68,.1)", color: "var(--red-c)" }}>✕</button>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => openEdit(inv)} title="Edit" className="w-7 h-7 rounded-md flex items-center justify-center transition-colors hover:bg-[var(--card3)]" style={{ color: "var(--muted2)", border: "1px solid var(--border)" }}>
+                          <Pencil size={12} />
+                        </button>
+                        <Link href={`/invoices/${inv.id}/print`} target="_blank" title="Print" className="w-7 h-7 rounded-md flex items-center justify-center transition-colors hover:bg-[var(--card3)]" style={{ color: "var(--muted2)", border: "1px solid var(--border)" }}>
+                          <Printer size={12} />
+                        </Link>
+                        <button onClick={() => handleDelete(inv.id)} title="Archive" className="w-7 h-7 rounded-md flex items-center justify-center" style={{ color: "var(--red-c)", background: "var(--danger-bg)" }}>
+                          <Trash2 size={12} />
+                        </button>
                       </div>
                     </td>
                   </tr>

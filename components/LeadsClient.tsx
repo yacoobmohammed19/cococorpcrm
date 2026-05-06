@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { Plus, Pencil, Trash2, UserCheck } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
@@ -307,8 +308,28 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
   const inputStyle = "w-full px-3 py-2 rounded border text-sm outline-none focus:ring-1 focus:ring-[var(--accent)]";
   const inputCss = { background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" };
 
+  const pipelineTotal = leads.reduce((s, l) => s + (l.opportunity_weighted ?? 0), 0);
+
   return (
     <div>
+      {/* ── Page header ── */}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Leads</h1>
+          <p className="text-sm mt-0.5" style={{ color: "var(--muted2)" }}>
+            {leads.length} leads · {cur} {fmt(pipelineTotal)} weighted pipeline
+          </p>
+        </div>
+        <button
+          onClick={() => openModal(null)}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all hover:opacity-90 active:scale-[.98]"
+          style={{ background: "var(--primary)", color: "var(--primary-fg)" }}
+        >
+          <Plus size={15} />
+          New Lead
+        </button>
+      </div>
+
       {/* Controls */}
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <div className="flex rounded overflow-hidden border" style={{ borderColor: "var(--border)" }}>
@@ -330,11 +351,6 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
           {statuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
         <span className="text-xs ml-auto" style={{ color: "var(--muted2)" }}>{filtered.length}/{leads.length}</span>
-        <button onClick={() => openModal(null)}
-          className="px-4 py-2 text-xs font-semibold rounded"
-          style={{ background: "var(--accent)", color: "#fff" }}>
-          + New Lead
-        </button>
       </div>
 
       {/* TABLE VIEW */}
@@ -377,9 +393,15 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
                     ))}
                   </div>
                   <div className="flex gap-2 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
-                    <button onClick={() => openModal(l)} className="flex-1 py-2 rounded-xl text-xs font-semibold" style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted)" }}>✏️ Edit</button>
-                    <button onClick={() => handleConvert(l.id)} className="flex-1 py-2 rounded-xl text-xs font-semibold" style={{ background: "rgba(16,185,129,.1)", border: "1px solid rgba(16,185,129,.3)", color: "var(--accent)" }}>🔄 Convert</button>
-                    <button onClick={() => handleDelete(l.id)} className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(239,68,68,.1)", color: "var(--red-c)" }}>🗑️</button>
+                    <button onClick={() => openModal(l)} className="flex items-center gap-1.5 flex-1 justify-center py-2 rounded-lg text-xs font-semibold" style={{ background: "var(--card2)", border: "1px solid var(--border)", color: "var(--muted)" }}>
+                      <Pencil size={12} /> Edit
+                    </button>
+                    <button onClick={() => handleConvert(l.id)} className="flex items-center gap-1.5 flex-1 justify-center py-2 rounded-lg text-xs font-semibold" style={{ background: "var(--success-bg)", border: "1px solid rgba(16,185,129,.3)", color: "var(--accent)" }}>
+                      <UserCheck size={12} /> Convert
+                    </button>
+                    <button onClick={() => handleDelete(l.id)} className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: "var(--danger-bg)", color: "var(--red-c)" }}>
+                      <Trash2 size={13} />
+                    </button>
                   </div>
                 </div>
               );
@@ -423,11 +445,17 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
                         <td className="px-3 py-2 font-mono whitespace-nowrap" style={{ color: "var(--purple-c)" }}>{cur} {fmt(l.opportunity_weighted)}</td>
                         <td className="px-3 py-2">{dot(l.contacted)}{dot(l.responded)}{dot(l.developed)}{dot(l.completed)}</td>
                         <td className="px-3 py-2 whitespace-nowrap">
-                          <button onClick={() => openModal(l)} className="mr-1 px-2 py-1 rounded text-xs" style={{ border: "1px solid var(--border)", background: "var(--card2)" }}>✏️</button>
-                          {!leads.find(x => x.id === l.id)?.contact && (
-                            <button onClick={() => handleConvert(l.id)} className="mr-1 px-2 py-1 rounded text-xs" style={{ border: "1px solid var(--border)", background: "var(--card2)" }} title="Convert to Customer">🔄</button>
-                          )}
-                          <button onClick={() => handleDelete(l.id)} className="px-2 py-1 rounded text-xs" style={{ border: "1px solid var(--border)", background: "var(--card2)" }}>🗑️</button>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => openModal(l)} title="Edit" className="w-7 h-7 rounded-md flex items-center justify-center transition-colors hover:bg-[var(--card3)]" style={{ color: "var(--muted2)", border: "1px solid var(--border)" }}>
+                              <Pencil size={12} />
+                            </button>
+                            <button onClick={() => handleConvert(l.id)} title="Convert to Customer" className="w-7 h-7 rounded-md flex items-center justify-center" style={{ color: "var(--accent)", background: "var(--success-bg)" }}>
+                              <UserCheck size={12} />
+                            </button>
+                            <button onClick={() => handleDelete(l.id)} title="Archive" className="w-7 h-7 rounded-md flex items-center justify-center" style={{ color: "var(--red-c)", background: "var(--danger-bg)" }}>
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
