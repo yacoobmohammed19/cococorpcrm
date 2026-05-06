@@ -199,6 +199,49 @@ function SwipeView({ leads, statuses, cur, onStatusChange }: {
   );
 }
 
+type FunnelState = { contacted: boolean; responded: boolean; developed: boolean; completed: boolean };
+const FUNNEL_STEPS = ["contacted", "responded", "developed", "completed"] as const;
+const FUNNEL_LABELS = ["Called", "Responded", "Developed", "Closed"];
+
+function FunnelStepper({ state, onChange }: { state: FunnelState; onChange: (s: FunnelState) => void }) {
+  const activeCount = FUNNEL_STEPS.reduce((n, s, i) => state[s] ? i + 1 : n, 0);
+  function clickStep(idx: number) {
+    const newCount = activeCount === idx + 1 ? idx : idx + 1;
+    const next = { contacted: false, responded: false, developed: false, completed: false };
+    FUNNEL_STEPS.slice(0, newCount).forEach(s => { next[s] = true; });
+    onChange(next);
+  }
+  return (
+    <div className="flex items-center w-full">
+      {FUNNEL_STEPS.map((step, i) => (
+        <div key={step} className="flex items-center flex-1">
+          <button type="button" onClick={() => clickStep(i)} className="flex flex-col items-center gap-1 flex-shrink-0 group w-full">
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all mx-auto"
+              style={{ background: state[step] ? "var(--accent)" : "var(--card3)", color: state[step] ? "#fff" : "var(--muted2)", border: `2px solid ${state[step] ? "var(--accent)" : "var(--border)"}` }}>
+              {state[step] ? "✓" : i + 1}
+            </div>
+            <span className="text-[10px] font-semibold" style={{ color: state[step] ? "var(--accent)" : "var(--muted2)" }}>{FUNNEL_LABELS[i]}</span>
+          </button>
+          {i < FUNNEL_STEPS.length - 1 && (
+            <div className="h-0.5 flex-1 mx-1 -mt-4 rounded-full" style={{ background: state[FUNNEL_STEPS[i + 1]] ? "var(--accent)" : "var(--border)" }} />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MiniStepper({ lead }: { lead: { contacted: boolean; responded: boolean; developed: boolean; completed: boolean } }) {
+  const activeIdx = FUNNEL_STEPS.reduce((n, s, i) => lead[s] ? i : n, -1);
+  return (
+    <div className="flex items-center gap-0.5">
+      {FUNNEL_STEPS.map((s, i) => (
+        <div key={s} className="w-4 h-1.5 rounded-full" style={{ background: i <= activeIdx ? "var(--accent)" : "var(--card3)" }} />
+      ))}
+    </div>
+  );
+}
+
 type Status = { id: number; name: string };
 type Lead = {
   id: number; name: string; phone: string | null; contact: string | null;
@@ -223,7 +266,6 @@ const STATUS_COLORS: Record<number, string> = { 1: "var(--pink)", 2: "var(--ambe
 function fmt(n: number | null) { return n == null ? "0" : Number(n).toLocaleString("en-ZA", { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
 function fdate(d: string | null) { if (!d) return "—"; try { return new Date(d).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", year: "2-digit" }); } catch { return "—"; } }
 function pct(n: number | null) { if (!n) return "0%"; return `${Number(n)}%`; }
-const dot = (v: boolean) => <span style={{ color: v ? "var(--accent)" : "var(--muted2)", marginRight: 1 }}>{v ? "●" : "○"}</span>;
 
 export function LeadsClient({ leads, statuses, customers, products = [], currency }: Props) {
   const cur = currency === "ZAR" ? "R" : "$";
@@ -237,7 +279,6 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
   const [kanbanMode, setKanbanMode] = useState<"standard" | "pipeline">("standard");
   const dragId = useRef<number | null>(null);
 
-  type FunnelState = { contacted: boolean; responded: boolean; developed: boolean; completed: boolean };
   const [funnelState, setFunnelState] = useState<FunnelState>({ contacted: false, responded: false, developed: false, completed: false });
   const [modalWeight, setModalWeight] = useState(0);
   const [modalLeadDate, setModalLeadDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -381,16 +422,8 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
                       <p className="font-bold font-mono text-sm" style={{ color: "var(--purple-c)" }}>{cur} {fmt(l.opportunity_weighted)}</p>
                     </div>
                   </div>
-                  <div className="flex gap-2 mb-3">
-                    {(["contacted", "responded", "developed", "completed"] as const).map(f => (
-                      <div key={f} className="flex-1 text-center">
-                        <div className="w-6 h-6 mx-auto rounded-full flex items-center justify-center text-xs font-bold"
-                          style={{ background: l[f] ? "rgba(16,185,129,.2)" : "var(--card)", color: l[f] ? "var(--accent)" : "var(--muted2)", border: `1px solid ${l[f] ? "var(--accent)" : "var(--border)"}` }}>
-                          {l[f] ? "✓" : "○"}
-                        </div>
-                        <p className="text-[10px] mt-0.5 capitalize" style={{ color: "var(--muted2)" }}>{f.slice(0, 4)}</p>
-                      </div>
-                    ))}
+                  <div className="mb-3 px-1">
+                    <MiniStepper lead={l} />
                   </div>
                   <div className="flex gap-2 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
                     <button onClick={() => openModal(l)} className="flex items-center gap-1.5 flex-1 justify-center py-2 rounded-lg text-xs font-semibold" style={{ background: "var(--card2)", border: "1px solid var(--border)", color: "var(--muted)" }}>
@@ -443,7 +476,7 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
                         <td className="px-3 py-2 font-mono whitespace-nowrap">{cur} {fmt(l.opportunity_value)}</td>
                         <td className="px-3 py-2">{pct(l.weight)}</td>
                         <td className="px-3 py-2 font-mono whitespace-nowrap" style={{ color: "var(--purple-c)" }}>{cur} {fmt(l.opportunity_weighted)}</td>
-                        <td className="px-3 py-2">{dot(l.contacted)}{dot(l.responded)}{dot(l.developed)}{dot(l.completed)}</td>
+                        <td className="px-3 py-2"><MiniStepper lead={l} /></td>
                         <td className="px-3 py-2 whitespace-nowrap">
                           <div className="flex items-center gap-1">
                             <button onClick={() => openModal(l)} title="Edit" className="w-7 h-7 rounded-md flex items-center justify-center transition-colors hover:bg-[var(--card3)]" style={{ color: "var(--muted2)", border: "1px solid var(--border)" }}>
@@ -671,15 +704,11 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
                   <input name="secured_revenue" type="number" step="0.01" defaultValue={modal.lead?.secured_revenue || ""} className={inputStyle} style={inputCss} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {(["contacted", "responded", "developed", "completed"] as const).map(f => (
-                  <div key={f} className="flex flex-col items-center gap-1">
-                    <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>{f}</label>
-                    <select name={f} value={String(funnelState[f])} onChange={e => handleFunnelChange(f, e.target.value === "true")} className="w-full px-2 py-1.5 text-xs rounded border outline-none" style={inputCss}>
-                      <option value="false">No</option>
-                      <option value="true">Yes</option>
-                    </select>
-                  </div>
+              <div className="rounded-lg p-3" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                <label className="text-xs font-semibold uppercase tracking-wider block mb-3" style={{ color: "var(--muted2)" }}>Activity Progress</label>
+                <FunnelStepper state={funnelState} onChange={next => { setFunnelState(next); setModalWeight(computeDefaultWeight(next)); }} />
+                {FUNNEL_STEPS.map(f => (
+                  <input key={f} type="hidden" name={f} value={String(funnelState[f])} />
                 ))}
               </div>
               <div className="flex gap-3 pt-2">
