@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Plus, Pencil, Trash2, Phone, Mail, User, ChevronRight, Users } from "lucide-react";
+import { MultiSelect } from "@/components/ui/MultiSelect";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -62,15 +63,25 @@ function SourceBadge({ source }: { source: string | null }) {
 export function CustomersClient({ customers }: { customers: Customer[] }) {
   const toast = useToast();
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [sourceFilter, setSourceFilter] = useState<string[]>([]);
   const [modal, setModal] = useState<{ open: boolean; customer: Customer | null }>({ open: false, customer: null });
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; name: string } | null>(null);
 
+  function togStr(arr: string[], v: string) { return arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]; }
+
   const filtered = customers.filter(c => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (c.name + (c.email ?? "") + (c.phone ?? "") + (c.contact_person ?? "")).toLowerCase().includes(q);
+    if (statusFilter.length > 0 && !statusFilter.includes(c.status || "Active")) return false;
+    if (sourceFilter.length > 0 && !sourceFilter.includes(c.source || "")) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return (c.name + (c.email ?? "") + (c.phone ?? "") + (c.contact_person ?? "")).toLowerCase().includes(q);
+    }
+    return true;
   });
+
+  const activeFilters = statusFilter.length + sourceFilter.length + (search ? 1 : 0);
 
   function open(c: Customer | null) { setModal({ open: true, customer: c }); }
   function close() { setModal({ open: false, customer: null }); }
@@ -104,10 +115,11 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
       </div>
 
       {/* ── Stats row ── */}
-      <div className="grid grid-cols-2 gap-3 mb-5">
+      <div className="grid grid-cols-3 gap-3 mb-5">
         {[
           { label: "Total", value: customers.length, color: "var(--accent)" },
           { label: "Showing", value: filtered.length, color: "var(--cyan-c)" },
+          { label: "Filters", value: activeFilters, color: activeFilters > 0 ? "var(--amber-c)" : "var(--muted2)" },
         ].map(({ label, value, color }) => (
           <div key={label} className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}>
             <p className="text-[11px] font-semibold uppercase tracking-widest mb-1" style={{ color: "var(--muted2)" }}>{label}</p>
@@ -116,15 +128,33 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
         ))}
       </div>
 
-      {/* ── Search bar ── */}
-      <div className="mb-4">
+      {/* ── Search + filter bar ── */}
+      <div className="mb-3">
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search by name, email, phone…"
-          className="w-full px-4 py-2.5 text-sm rounded-lg border outline-none transition-colors"
+          className="w-full px-4 py-2.5 text-sm rounded-lg border outline-none transition-colors mb-2"
           style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
         />
+        <div className="flex flex-wrap gap-2 items-center">
+          <MultiSelect
+            label="Status"
+            options={STATUSES.map(s => ({ label: s, value: s, color: STATUS_COLORS[s] }))}
+            value={statusFilter}
+            onChange={setStatusFilter}
+          />
+          <MultiSelect
+            label="Source"
+            options={SOURCES.map(s => ({ label: s, value: s, color: SOURCE_COLORS[s] }))}
+            value={sourceFilter}
+            onChange={setSourceFilter}
+          />
+          {(statusFilter.length > 0 || sourceFilter.length > 0) && (
+            <button onClick={() => { setStatusFilter([]); setSourceFilter([]); }}
+              className="text-xs px-2 py-1.5 rounded" style={{ color: "var(--muted2)" }}>✕ Clear</button>
+          )}
+        </div>
       </div>
 
       {/* ── Mobile Cards ── */}

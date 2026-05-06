@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
+import { MultiSelect } from "@/components/ui/MultiSelect";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
@@ -34,8 +35,9 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
   const cur = currency === "ZAR" ? "R" : "$";
   const [view, setView] = useState<"table" | "monthly">("table");
   const [search, setSearch] = useState("");
-  const [catFilter, setCatFilter] = useState("");
-  const [acctFilter, setAcctFilter] = useState("");
+  const [catFilter, setCatFilter] = useState<string[]>([]);
+  const [acctFilter, setAcctFilter] = useState<string[]>([]);
+  const [recoupedFilter, setRecoupedFilter] = useState<"" | "Y" | "N">("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [modal, setModal] = useState(false);
@@ -50,15 +52,19 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
   const [mFrom, setMFrom] = useState(`${now.getFullYear() - 1}-${String(now.getMonth() + 1).padStart(2, "0")}`);
   const [mTo, setMTo] = useState(now.toISOString().slice(0, 7));
 
+  function togStr(arr: string[], v: string) { return arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]; }
+
   const filtered = useMemo(() => {
     let rows = costs.slice().sort((a, b) => b.transaction_date.localeCompare(a.transaction_date));
     if (dateFrom) rows = rows.filter(c => c.transaction_date >= dateFrom);
     if (dateTo) rows = rows.filter(c => c.transaction_date <= dateTo);
-    if (catFilter) rows = rows.filter(c => String(c.cost_category_id) === catFilter);
-    if (acctFilter) rows = rows.filter(c => String(c.account_id) === acctFilter);
+    if (catFilter.length > 0) rows = rows.filter(c => catFilter.includes(String(c.cost_category_id)));
+    if (acctFilter.length > 0) rows = rows.filter(c => acctFilter.includes(String(c.account_id)));
+    if (recoupedFilter === "Y") rows = rows.filter(c => c.recouped === "Y");
+    if (recoupedFilter === "N") rows = rows.filter(c => c.recouped !== "Y");
     if (search) rows = rows.filter(c => (c.cost_details || "").toLowerCase().includes(search.toLowerCase()));
     return rows;
-  }, [costs, dateFrom, dateTo, catFilter, acctFilter, search]);
+  }, [costs, dateFrom, dateTo, catFilter, acctFilter, recoupedFilter, search]);
 
   const total = filtered.reduce((s, c) => s + Number(c.amount), 0);
 
@@ -118,7 +124,7 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
       </div>
 
       {/* Controls */}
-      <div className="flex flex-wrap gap-3 items-center mb-4">
+      <div className="flex flex-wrap gap-3 items-center mb-2">
         <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: "var(--border)" }}>
           {[["table", "Table"], ["monthly", "Monthly"]].map(([k, l]) => (
             <button key={k} onClick={() => setView(k as typeof view)} className="px-3 py-1.5 text-xs font-semibold transition-colors"
@@ -130,24 +136,10 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…"
               className="px-3 py-1.5 text-xs rounded-xl border outline-none" style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }} />
             <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-              className="px-3 py-1.5 text-xs rounded-xl border outline-none" style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--muted)" }} />
-            <span className="text-xs" style={{ color: "var(--muted2)" }}>to</span>
+              className="px-3 py-1.5 text-xs rounded-xl border outline-none" style={{ background: "var(--card2)", borderColor: dateFrom ? "var(--accent)" : "var(--border)", color: "var(--muted)" }} />
+            <span className="text-xs" style={{ color: "var(--muted2)" }}>→</span>
             <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-              className="px-3 py-1.5 text-xs rounded-xl border outline-none" style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--muted)" }} />
-            <select value={catFilter} onChange={e => setCatFilter(e.target.value)}
-              className="px-3 py-1.5 text-xs rounded-xl border outline-none" style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--muted)" }}>
-              <option value="">All Categories</option>
-              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <select value={acctFilter} onChange={e => setAcctFilter(e.target.value)}
-              className="px-3 py-1.5 text-xs rounded-xl border outline-none" style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--muted)" }}>
-              <option value="">All Accounts</option>
-              {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
-            {(catFilter || acctFilter || dateFrom || dateTo || search) && (
-              <button onClick={() => { setCatFilter(""); setAcctFilter(""); setDateFrom(""); setDateTo(""); setSearch(""); }}
-                className="text-xs px-2 py-1 rounded-xl border" style={{ borderColor: "var(--red-c)", color: "var(--red-c)" }}>✕ Clear</button>
-            )}
+              className="px-3 py-1.5 text-xs rounded-xl border outline-none" style={{ background: "var(--card2)", borderColor: dateTo ? "var(--accent)" : "var(--border)", color: "var(--muted)" }} />
           </>
         )}
         {view === "monthly" && (
@@ -160,6 +152,37 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
           </>
         )}
       </div>
+      {view === "table" && (
+        <div className="flex flex-wrap gap-2 items-center mb-4">
+          {categories.length > 0 && (
+            <MultiSelect
+              label="Category"
+              options={categories.map(c => ({ label: c.name, value: String(c.id) }))}
+              value={catFilter}
+              onChange={setCatFilter}
+            />
+          )}
+          {accounts.length > 0 && (
+            <MultiSelect
+              label="Account"
+              options={accounts.map(a => ({ label: a.name, value: String(a.id) }))}
+              value={acctFilter}
+              onChange={setAcctFilter}
+            />
+          )}
+          <MultiSelect
+            label="Recouped"
+            options={[{ label: "Yes", value: "Y" }, { label: "No", value: "N" }]}
+            value={recoupedFilter ? [recoupedFilter] : []}
+            onChange={vals => setRecoupedFilter((vals[vals.length - 1] ?? "") as typeof recoupedFilter)}
+            minWidth={120}
+          />
+          {(catFilter.length > 0 || acctFilter.length > 0 || recoupedFilter || dateFrom || dateTo || search) && (
+            <button onClick={() => { setCatFilter([]); setAcctFilter([]); setRecoupedFilter(""); setDateFrom(""); setDateTo(""); setSearch(""); }}
+              className="text-xs px-2 py-1.5 rounded" style={{ color: "var(--muted2)" }}>✕ Clear</button>
+          )}
+        </div>
+      )}
 
       {/* TABLE VIEW */}
       {view === "table" && (
@@ -187,7 +210,7 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
                 </div>
               </div>
             ))}
-            {filtered.length === 0 && <EmptyState icon="💸" title={search || catFilter || acctFilter || dateFrom || dateTo ? "No costs match your filters" : "No costs yet"} description={search || catFilter || acctFilter || dateFrom || dateTo ? "Try adjusting your filters." : "Record your first cost to start tracking expenses."} />}
+            {filtered.length === 0 && <EmptyState icon="💸" title={search || catFilter.length > 0 || acctFilter.length > 0 || dateFrom || dateTo || recoupedFilter ? "No costs match your filters" : "No costs yet"} description={search || catFilter.length > 0 || acctFilter.length > 0 || dateFrom || dateTo || recoupedFilter ? "Try adjusting your filters." : "Record your first cost to start tracking expenses."} />}
           </div>
 
           {/* Desktop Table */}
@@ -222,7 +245,7 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
                       </td>
                     </tr>
                   ))}
-                  {filtered.length === 0 && <tr><td colSpan={7}><EmptyState icon="💸" title={search || catFilter || acctFilter || dateFrom || dateTo ? "No costs match your filters" : "No costs yet"} description={search || catFilter || acctFilter || dateFrom || dateTo ? "Try adjusting your filters." : "Record your first cost to start tracking expenses."} /></td></tr>}
+                  {filtered.length === 0 && <tr><td colSpan={7}><EmptyState icon="💸" title={search || catFilter.length > 0 || acctFilter.length > 0 || dateFrom || dateTo || recoupedFilter ? "No costs match your filters" : "No costs yet"} description={search || catFilter.length > 0 || acctFilter.length > 0 || dateFrom || dateTo || recoupedFilter ? "Try adjusting your filters." : "Record your first cost to start tracking expenses."} /></td></tr>}
                 </tbody>
               </table>
             </div>

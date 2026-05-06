@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Plus, Pencil, Trash2, UserCheck } from "lucide-react";
+import { MultiSelect } from "@/components/ui/MultiSelect";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
@@ -273,7 +274,10 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
   const { confirm, dialogProps } = useConfirm();
   const [view, setView] = useState<"table" | "kanban" | "cards">("table");
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [funnelFilter, setFunnelFilter] = useState<"" | "contacted" | "responded" | "developed" | "completed">("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [modal, setModal] = useState<{ open: boolean; lead: Lead | null }>({ open: false, lead: null });
   const [busy, setBusy] = useState(false);
   const [kanbanMode, setKanbanMode] = useState<"standard" | "pipeline">("standard");
@@ -313,7 +317,13 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
   }
 
   const filtered = leads.filter(l => {
-    if (statusFilter && String(l.status_id) !== statusFilter) return false;
+    if (statusFilter.length > 0 && !statusFilter.includes(String(l.status_id))) return false;
+    if (funnelFilter === "contacted" && !l.contacted) return false;
+    if (funnelFilter === "responded" && !l.responded) return false;
+    if (funnelFilter === "developed" && !l.developed) return false;
+    if (funnelFilter === "completed" && !l.completed) return false;
+    if (dateFrom && l.lead_date && l.lead_date < dateFrom) return false;
+    if (dateTo && l.lead_date && l.lead_date > dateTo) return false;
     if (search) {
       const q = search.toLowerCase();
       return (l.name + (l.phone || "") + (l.contact || "")).toLowerCase().includes(q);
@@ -372,7 +382,7 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
       </div>
 
       {/* Controls */}
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
+      <div className="flex items-center gap-3 mb-3 flex-wrap">
         <div className="flex rounded overflow-hidden border" style={{ borderColor: "var(--border)" }}>
           {([["table", "Table"], ["kanban", "Board"], ["cards", "Cards"]] as const).map(([v, label]) => (
             <button key={v} onClick={() => setView(v)}
@@ -385,13 +395,41 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…"
           className="px-3 py-2 text-xs rounded border outline-none"
           style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }} />
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          className="px-3 py-2 text-xs rounded border outline-none"
-          style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--muted)" }}>
-          <option value="">All Statuses</option>
-          {statuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
         <span className="text-xs ml-auto" style={{ color: "var(--muted2)" }}>{filtered.length}/{leads.length}</span>
+      </div>
+      {/* Filter bar */}
+      <div className="flex flex-wrap gap-2 items-center mb-4">
+        <MultiSelect
+          label="Status"
+          options={statuses.map(s => ({ label: s.name, value: String(s.id) }))}
+          value={statusFilter}
+          onChange={setStatusFilter}
+        />
+        <MultiSelect
+          label="Funnel Stage"
+          options={[
+            { label: "Called", value: "contacted" },
+            { label: "Responded", value: "responded" },
+            { label: "Developed", value: "developed" },
+            { label: "Closed", value: "completed" },
+          ]}
+          value={funnelFilter ? [funnelFilter] : []}
+          onChange={vals => setFunnelFilter((vals[vals.length - 1] ?? "") as typeof funnelFilter)}
+          minWidth={160}
+        />
+        <div className="flex items-center gap-1.5">
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+            className="px-2 py-1.5 rounded text-xs border outline-none"
+            style={{ background: "var(--card2)", borderColor: dateFrom ? "var(--accent)" : "var(--border)", color: "var(--muted)" }} />
+          <span className="text-xs" style={{ color: "var(--muted2)" }}>→</span>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+            className="px-2 py-1.5 rounded text-xs border outline-none"
+            style={{ background: "var(--card2)", borderColor: dateTo ? "var(--accent)" : "var(--border)", color: "var(--muted)" }} />
+        </div>
+        {(statusFilter.length > 0 || funnelFilter || dateFrom || dateTo) && (
+          <button onClick={() => { setStatusFilter([]); setFunnelFilter(""); setDateFrom(""); setDateTo(""); }}
+            className="text-xs px-2 py-1.5 rounded" style={{ color: "var(--muted2)" }}>✕ Clear</button>
+        )}
       </div>
 
       {/* TABLE VIEW */}

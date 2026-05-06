@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { Receipt, Printer } from "lucide-react";
+import { MultiSelect } from "@/components/ui/MultiSelect";
 
 type Invoice = {
   id: number; customer_id: number; transaction_date: string;
@@ -45,6 +46,7 @@ export function BillingClient({ invoices, customers, currency, fiscalYearFrom }:
   const [billTo, setBillTo] = useState(defaultRange(1).to);
   const [billView, setBillView] = useState<"total" | "collected" | "secured">("total");
   const [statusFilter, setStatusFilter] = useState("");
+  const [customerFilter, setCustomerFilter] = useState<string[]>([]);
   const [search, setSearch] = useState("");
 
   function applyPreset(p: string) {
@@ -106,9 +108,10 @@ export function BillingClient({ invoices, customers, currency, fiscalYearFrom }:
   const allInvoices = useMemo(() => {
     let rows = invoices.slice().sort((a, b) => b.transaction_date.localeCompare(a.transaction_date));
     if (statusFilter) rows = rows.filter(i => i.status === statusFilter);
+    if (customerFilter.length > 0) rows = rows.filter(i => customerFilter.includes(String(i.customer_id)));
     if (search) rows = rows.filter(i => JSON.stringify(i).toLowerCase().includes(search.toLowerCase()));
     return rows;
-  }, [invoices, statusFilter, search]);
+  }, [invoices, statusFilter, customerFilter, search]);
 
   const statBadge = (s: string) => {
     const m: Record<string, string> = { Completed: "var(--accent)", Pending: "var(--amber-c)", "Written Off": "var(--red-c)" };
@@ -219,10 +222,22 @@ export function BillingClient({ invoices, customers, currency, fiscalYearFrom }:
 
       {/* All Invoices List */}
       <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
-        <div className="px-4 py-3 border-b flex justify-between items-center flex-wrap gap-3" style={{ borderColor: "var(--border)", background: "var(--card2)" }}>
-          <h3 className="text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--muted2)" }}><Receipt size={12} /> All Invoices</h3>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…"
-            className="px-3 py-1.5 text-xs rounded border outline-none flex-1 sm:flex-none sm:w-48" style={{ background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" }} />
+        <div className="px-4 py-3 border-b flex flex-wrap justify-between items-center gap-2" style={{ borderColor: "var(--border)", background: "var(--card2)" }}>
+          <h3 className="text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--muted2)" }}><Receipt size={12} /> All Invoices <span style={{ color: "var(--muted2)", fontWeight: 400 }}>({allInvoices.length})</span></h3>
+          <div className="flex flex-wrap gap-2 items-center">
+            <MultiSelect
+              label="Customer"
+              options={customers.map(c => ({ label: c.name, value: String(c.id) }))}
+              value={customerFilter}
+              onChange={setCustomerFilter}
+              minWidth={180}
+            />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…"
+              className="px-3 py-1.5 text-xs rounded border outline-none w-36" style={{ background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" }} />
+            {(customerFilter.length > 0 || search) && (
+              <button onClick={() => { setCustomerFilter([]); setSearch(""); }} className="text-xs px-1.5 py-1" style={{ color: "var(--muted2)" }}>✕</button>
+            )}
+          </div>
         </div>
 
         {/* Mobile Cards */}

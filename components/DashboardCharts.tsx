@@ -5,6 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   PieChart, Pie, Cell, Legend, AreaChart, Area,
 } from "recharts";
+import { MultiSelect } from "@/components/ui/MultiSelect";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -129,31 +130,43 @@ function Section({ id, title, children, order, totalSections, onMove, defaultOpe
 
 type Filters = {
   dateFrom: string; dateTo: string;
-  statusIds: number[]; customerId: string;
-  costCategoryId: string; accountId: string;
+  statusIds: number[];
+  customerIds: number[];
+  costCategoryIds: number[];
+  accountIds: number[];
+  invoiceStatuses: string[];
+  paymentTypeIds: number[];
+};
+const EMPTY_FILTERS: Filters = {
+  dateFrom: "", dateTo: "", statusIds: [],
+  customerIds: [], costCategoryIds: [], accountIds: [],
+  invoiceStatuses: [], paymentTypeIds: [],
 };
 
-function FilterBar({ filters, setFilters, statuses, customers, costCategories, accounts }: {
+function FilterBar({ filters, setFilters, statuses, customers, costCategories, accounts, paymentTypes }: {
   filters: Filters; setFilters: (f: Filters) => void;
-  statuses: Dim[]; customers: Dim[]; costCategories: Dim[]; accounts: Dim[];
+  statuses: Dim[]; customers: Dim[]; costCategories: Dim[]; accounts: Dim[]; paymentTypes: Dim[];
 }) {
   const [open, setOpen] = useState(false);
   const activeCount = [
     filters.dateFrom || filters.dateTo,
     filters.statusIds.length > 0,
-    filters.customerId,
-    filters.costCategoryId,
-    filters.accountId,
+    filters.customerIds.length > 0,
+    filters.costCategoryIds.length > 0,
+    filters.accountIds.length > 0,
+    filters.invoiceStatuses.length > 0,
+    filters.paymentTypeIds.length > 0,
   ].filter(Boolean).length;
 
   const set = (partial: Partial<Filters>) => setFilters({ ...filters, ...partial });
-  const toggleStatus = (id: number) => {
-    const next = filters.statusIds.includes(id)
-      ? filters.statusIds.filter(x => x !== id)
-      : [...filters.statusIds, id];
-    set({ statusIds: next });
-  };
-  const clear = () => setFilters({ dateFrom: "", dateTo: "", statusIds: [], customerId: "", costCategoryId: "", accountId: "" });
+  function tog<T>(arr: T[], v: T) { return arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]; }
+  const toggleStatus = (id: number) => set({ statusIds: tog(filters.statusIds, id) });
+  const toggleCustomer = (id: number) => set({ customerIds: tog(filters.customerIds, id) });
+  const toggleCostCat = (id: number) => set({ costCategoryIds: tog(filters.costCategoryIds, id) });
+  const toggleAccount = (id: number) => set({ accountIds: tog(filters.accountIds, id) });
+  const toggleInvStatus = (s: string) => set({ invoiceStatuses: tog(filters.invoiceStatuses, s) });
+  const togglePayType = (id: number) => set({ paymentTypeIds: tog(filters.paymentTypeIds, id) });
+  const clear = () => setFilters(EMPTY_FILTERS);
 
   return (
     <div className="mb-4">
@@ -190,65 +203,90 @@ function FilterBar({ filters, setFilters, statuses, customers, costCategories, a
       </div>
 
       {open && (
-        <div className="mt-2 p-4 rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4"
+        <div className="mt-2 p-3 rounded-xl flex flex-wrap gap-3 items-end"
           style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
           {/* Date range */}
-          <div className="sm:col-span-2 lg:col-span-1 xl:col-span-2 grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-xs mb-1" style={{ color: "var(--muted2)" }}>From</label>
-              <input type="date" value={filters.dateFrom} onChange={e => set({ dateFrom: e.target.value })}
-                className="w-full px-2 py-1.5 rounded text-xs" style={{ background: "var(--card3)", border: "1px solid var(--border)", color: "var(--foreground)" }} />
-            </div>
-            <div>
-              <label className="block text-xs mb-1" style={{ color: "var(--muted2)" }}>To</label>
-              <input type="date" value={filters.dateTo} onChange={e => set({ dateTo: e.target.value })}
-                className="w-full px-2 py-1.5 rounded text-xs" style={{ background: "var(--card3)", border: "1px solid var(--border)", color: "var(--foreground)" }} />
-            </div>
-          </div>
-          {/* Status multi */}
           <div>
-            <label className="block text-xs mb-1" style={{ color: "var(--muted2)" }}>Lead Status</label>
-            <div className="flex flex-wrap gap-1">
-              {statuses.map(s => {
-                const active = filters.statusIds.includes(s.id);
-                return (
-                  <button key={s.id} onClick={() => toggleStatus(s.id)}
-                    className="px-2 py-0.5 rounded text-xs transition-colors"
-                    style={{ background: active ? "rgba(16,185,129,.15)" : "var(--card3)", color: active ? "var(--accent)" : "var(--muted2)", border: `1px solid ${active ? "var(--accent)" : "var(--border)"}` }}>
-                    {s.name}
-                  </button>
-                );
-              })}
-            </div>
+            <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>From</p>
+            <input type="date" value={filters.dateFrom} onChange={e => set({ dateFrom: e.target.value })}
+              className="px-2 py-1.5 rounded text-xs border outline-none"
+              style={{ background: "var(--card3)", borderColor: filters.dateFrom ? "var(--accent)" : "var(--border)", color: "var(--foreground)" }} />
           </div>
-          {/* Customer */}
           <div>
-            <label className="block text-xs mb-1" style={{ color: "var(--muted2)" }}>Customer</label>
-            <select value={filters.customerId} onChange={e => set({ customerId: e.target.value })}
-              className="w-full px-2 py-1.5 rounded text-xs" style={{ background: "var(--card3)", border: "1px solid var(--border)", color: "var(--foreground)" }}>
-              <option value="">All customers</option>
-              {customers.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
-            </select>
+            <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>To</p>
+            <input type="date" value={filters.dateTo} onChange={e => set({ dateTo: e.target.value })}
+              className="px-2 py-1.5 rounded text-xs border outline-none"
+              style={{ background: "var(--card3)", borderColor: filters.dateTo ? "var(--accent)" : "var(--border)", color: "var(--foreground)" }} />
           </div>
-          {/* Cost Category + Account */}
-          <div className="grid grid-cols-1 gap-2">
+          {statuses.length > 0 && (
             <div>
-              <label className="block text-xs mb-1" style={{ color: "var(--muted2)" }}>Cost Category</label>
-              <select value={filters.costCategoryId} onChange={e => set({ costCategoryId: e.target.value })}
-                className="w-full px-2 py-1.5 rounded text-xs" style={{ background: "var(--card3)", border: "1px solid var(--border)", color: "var(--foreground)" }}>
-                <option value="">All categories</option>
-                {costCategories.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
-              </select>
+              <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Lead Status</p>
+              <MultiSelect
+                label="All Statuses"
+                options={statuses.map(s => ({ label: s.name, value: String(s.id) }))}
+                value={filters.statusIds.map(String)}
+                onChange={vals => set({ statusIds: vals.map(Number) })}
+              />
             </div>
-            <div>
-              <label className="block text-xs mb-1" style={{ color: "var(--muted2)" }}>Account</label>
-              <select value={filters.accountId} onChange={e => set({ accountId: e.target.value })}
-                className="w-full px-2 py-1.5 rounded text-xs" style={{ background: "var(--card3)", border: "1px solid var(--border)", color: "var(--foreground)" }}>
-                <option value="">All accounts</option>
-                {accounts.map(a => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
-              </select>
-            </div>
+          )}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Invoice Status</p>
+            <MultiSelect
+              label="All Statuses"
+              options={[
+                { label: "Completed", value: "Completed", color: "var(--accent)" },
+                { label: "Pending", value: "Pending", color: "var(--amber-c)" },
+                { label: "Written Off", value: "Written Off", color: "var(--red-c)" },
+              ]}
+              value={filters.invoiceStatuses}
+              onChange={vals => set({ invoiceStatuses: vals })}
+            />
           </div>
+          {customers.length > 0 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Customer</p>
+              <MultiSelect
+                label="All Customers"
+                options={customers.map(c => ({ label: c.name, value: String(c.id) }))}
+                value={filters.customerIds.map(String)}
+                onChange={vals => set({ customerIds: vals.map(Number) })}
+                minWidth={180}
+              />
+            </div>
+          )}
+          {paymentTypes.length > 0 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Payment Type</p>
+              <MultiSelect
+                label="All Types"
+                options={paymentTypes.map(p => ({ label: p.name, value: String(p.id) }))}
+                value={filters.paymentTypeIds.map(String)}
+                onChange={vals => set({ paymentTypeIds: vals.map(Number) })}
+              />
+            </div>
+          )}
+          {costCategories.length > 0 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Cost Category</p>
+              <MultiSelect
+                label="All Categories"
+                options={costCategories.map(c => ({ label: c.name, value: String(c.id) }))}
+                value={filters.costCategoryIds.map(String)}
+                onChange={vals => set({ costCategoryIds: vals.map(Number) })}
+              />
+            </div>
+          )}
+          {accounts.length > 0 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Account</p>
+              <MultiSelect
+                label="All Accounts"
+                options={accounts.map(a => ({ label: a.name, value: String(a.id) }))}
+                value={filters.accountIds.map(String)}
+                onChange={vals => set({ accountIds: vals.map(Number) })}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -343,7 +381,7 @@ export function DashboardCharts({
   const cur = currency === "ZAR" ? "R" : currency === "USD" ? "$" : currency === "EUR" ? "€" : "R";
 
   // ── Persisted state (lazy initializers avoid useEffect setState) ─────────
-  const [filters, setFilters] = useState<Filters>({ dateFrom: "", dateTo: "", statusIds: [], customerId: "", costCategoryId: "", accountId: "" });
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [sectionOrder, setSectionOrder] = useState<string[]>(() => readLS(LS_SECTION_ORDER, DEFAULT_SECTIONS));
   const [customKpis, setCustomKpis] = useState<CustomKpi[]>(() => readLS(LS_CUSTOM_KPIS, [] as CustomKpi[]));
   const [hiddenKpis, setHiddenKpis] = useState<string[]>(() => readLS(LS_KPI_HIDDEN, [] as string[]));
@@ -406,27 +444,26 @@ export function DashboardCharts({
   const fLeads = useMemo(() => rawLeads.filter(l => {
     if (filters.statusIds.length > 0 && !filters.statusIds.includes(l.status_id)) return false;
     if (!dateInRange(l.lead_date, filters.dateFrom, filters.dateTo)) return false;
-    if (filters.customerId) {
-      // leads don't have customer_id directly — skip customer filter for leads
-    }
     return true;
   }), [rawLeads, filters]);
 
   const fInvoices = useMemo(() => rawInvoices.filter(inv => {
     if (!dateInRange(inv.transaction_date, filters.dateFrom, filters.dateTo)) return false;
-    if (filters.customerId && String(inv.customer_id) !== filters.customerId) return false;
+    if (filters.customerIds.length > 0 && !filters.customerIds.includes(inv.customer_id!)) return false;
+    if (filters.invoiceStatuses.length > 0 && !filters.invoiceStatuses.includes(inv.status!)) return false;
+    if (filters.paymentTypeIds.length > 0 && !filters.paymentTypeIds.includes(inv.payment_type_id!)) return false;
     return true;
   }), [rawInvoices, filters]);
 
   const fCosts = useMemo(() => rawCosts.filter(c => {
     if (!dateInRange(c.transaction_date, filters.dateFrom, filters.dateTo)) return false;
-    if (filters.costCategoryId && String(c.cost_category_id) !== filters.costCategoryId) return false;
+    if (filters.costCategoryIds.length > 0 && !filters.costCategoryIds.includes(c.cost_category_id!)) return false;
     return true;
   }), [rawCosts, filters]);
 
   const fCashflow = useMemo(() => {
-    if (!filters.accountId) return rawCashflow;
-    return rawCashflow.filter(e => String(e.account_id) === filters.accountId);
+    if (filters.accountIds.length === 0) return rawCashflow;
+    return rawCashflow.filter(e => filters.accountIds.includes(e.account_id!));
   }, [rawCashflow, filters]);
 
   // ── Derived KPIs ─────────────────────────────────────────────────────────
@@ -456,7 +493,7 @@ export function DashboardCharts({
       revenue, opex, profit, margin_pct, pipeline, avg_deal, pending,
       total_leads: fLeads.length, won_leads: wonLeads.length, open_leads: openLeads.length,
       conversion_pct, total_customers: customers.length, total_invoices: fInvoices.length,
-      bank_balance: filters.accountId ? bank_balance_filtered : bankBalance,
+      bank_balance: filters.accountIds.length > 0 ? bank_balance_filtered : bankBalance,
       completedInv, pendingInv, openLeads, wonLeads,
     };
   }, [fLeads, fInvoices, fCosts, fCashflow, wonStatusId, lostStatusId, customers, bankBalance, filters]);
@@ -646,7 +683,7 @@ export function DashboardCharts({
 
       {/* Filters */}
       <FilterBar filters={filters} setFilters={setFilters}
-        statuses={statuses} customers={customers} costCategories={costCategories} accounts={accounts} />
+        statuses={statuses} customers={customers} costCategories={costCategories} accounts={accounts} paymentTypes={paymentTypes} />
 
       {/* Sections in order */}
       {sectionOrder.map((sectionId, idx) => {
