@@ -47,6 +47,16 @@ export async function deleteStatus(id: number) {
   revalidatePath("/settings");
 }
 
+export async function updateStatus(id: number, formData: FormData) {
+  const supabase = await createServerClient();
+  const { error } = await supabase.from("dim_statuses").update({
+    name: formData.get("name"),
+    category: formData.get("category") || null,
+  }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/settings");
+}
+
 export async function createPaymentType(formData: FormData) {
   const orgId = await getCurrentOrgId();
   const supabase = await createServerClient();
@@ -62,6 +72,16 @@ export async function createPaymentType(formData: FormData) {
 export async function deletePaymentType(id: number) {
   const supabase = await createServerClient();
   const { error } = await supabase.from("dim_payment_types").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/settings");
+}
+
+export async function updatePaymentType(id: number, formData: FormData) {
+  const supabase = await createServerClient();
+  const { error } = await supabase.from("dim_payment_types").update({
+    name: formData.get("name"),
+    description: formData.get("description") || null,
+  }).eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/settings");
 }
@@ -86,6 +106,17 @@ export async function deleteCostCategory(id: number) {
   revalidatePath("/settings");
 }
 
+export async function updateCostCategory(id: number, formData: FormData) {
+  const supabase = await createServerClient();
+  const { error } = await supabase.from("dim_cost_categories").update({
+    name: formData.get("name"),
+    description: formData.get("description") || null,
+  }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/settings");
+  revalidatePath("/costs");
+}
+
 export async function createAccount(formData: FormData) {
   const orgId = await getCurrentOrgId();
   const supabase = await createServerClient();
@@ -101,6 +132,16 @@ export async function createAccount(formData: FormData) {
 export async function deleteAccount(id: number) {
   const supabase = await createServerClient();
   const { error } = await supabase.from("dim_accounts").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/settings");
+}
+
+export async function updateAccount(id: number, formData: FormData) {
+  const supabase = await createServerClient();
+  const { error } = await supabase.from("dim_accounts").update({
+    name: formData.get("name"),
+    account_type: formData.get("account_type") || null,
+  }).eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/settings");
 }

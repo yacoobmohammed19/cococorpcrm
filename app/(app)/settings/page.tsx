@@ -1,11 +1,6 @@
 import { createServerClient } from "@/lib/supabase/server";
-import {
-  updateOrgSettings, createStatus, deleteStatus,
-  createPaymentType, deletePaymentType,
-  createCostCategory, deleteCostCategory,
-  createAccount, deleteAccount,
-  seedDefaults,
-} from "@/server-actions/settings";
+import { updateOrgSettings, seedDefaults } from "@/server-actions/settings";
+import { SettingsDimensions } from "@/components/SettingsDimensions";
 
 export default async function SettingsPage() {
   const supabase = await createServerClient();
@@ -117,109 +112,12 @@ export default async function SettingsPage() {
         </form>
       </div>
 
-      {/* Lead Statuses */}
-      <div className="rounded-lg overflow-hidden mb-6" style={{ border: "1px solid var(--border)" }}>
-        <div className="px-4 py-3 border-b" style={{ borderColor: "var(--border)", background: "var(--card2)" }}>
-          <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Lead Statuses</h2>
-        </div>
-        <div className="p-4 space-y-2" style={{ background: "var(--card2)" }}>
-          {(statuses || []).map(s => (
-            <div key={s.id} className="flex items-center justify-between px-3 py-2 rounded" style={{ background: "var(--card3)", border: "1px solid var(--border)" }}>
-              <div>
-                <span className="text-sm font-medium">{s.name}</span>
-                {s.category && <span className="ml-2 text-xs" style={{ color: "var(--muted2)" }}>{s.category}</span>}
-              </div>
-              <form action={deleteStatus.bind(null, s.id)}>
-                <button className="text-xs px-2 py-1 rounded" style={{ color: "var(--red-c)", background: "rgba(239,68,68,.1)" }}>Delete</button>
-              </form>
-            </div>
-          ))}
-          <form action={createStatus} className="flex gap-2 mt-3 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
-            <input name="name" placeholder="Status name" required className={inputCss} style={inputStyle} />
-            <input name="category" placeholder="Category (e.g. Active)" className={inputCss} style={inputStyle} />
-            <button className="px-4 py-2 rounded text-sm font-semibold whitespace-nowrap"
-              style={{ background: "var(--accent)", color: "#fff" }}>+ Add</button>
-          </form>
-        </div>
-      </div>
-
-      {/* Payment Types */}
-      <div className="rounded-lg overflow-hidden mb-6" style={{ border: "1px solid var(--border)" }}>
-        <div className="px-4 py-3 border-b" style={{ borderColor: "var(--border)", background: "var(--card2)" }}>
-          <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Payment Types</h2>
-        </div>
-        <div className="p-4 space-y-2" style={{ background: "var(--card2)" }}>
-          {(payTypes || []).map(p => (
-            <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded" style={{ background: "var(--card3)", border: "1px solid var(--border)" }}>
-              <div>
-                <span className="text-sm font-medium">{p.name}</span>
-                {p.description && <span className="ml-2 text-xs" style={{ color: "var(--muted2)" }}>{p.description}</span>}
-              </div>
-              <form action={deletePaymentType.bind(null, p.id)}>
-                <button className="text-xs px-2 py-1 rounded" style={{ color: "var(--red-c)", background: "rgba(239,68,68,.1)" }}>Delete</button>
-              </form>
-            </div>
-          ))}
-          <form action={createPaymentType} className="flex gap-2 mt-3 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
-            <input name="name" placeholder="Payment type name" required className={inputCss} style={inputStyle} />
-            <input name="description" placeholder="Description" className={inputCss} style={inputStyle} />
-            <button className="px-4 py-2 rounded text-sm font-semibold whitespace-nowrap"
-              style={{ background: "var(--accent)", color: "#fff" }}>+ Add</button>
-          </form>
-        </div>
-      </div>
-
-      {/* Cost Categories */}
-      <div className="rounded-lg overflow-hidden mb-6" style={{ border: "1px solid var(--border)" }}>
-        <div className="px-4 py-3 border-b" style={{ borderColor: "var(--border)", background: "var(--card2)" }}>
-          <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Cost Categories</h2>
-        </div>
-        <div className="p-4 space-y-2" style={{ background: "var(--card2)" }}>
-          {(costCats || []).map(c => (
-            <div key={c.id} className="flex items-center justify-between px-3 py-2 rounded" style={{ background: "var(--card3)", border: "1px solid var(--border)" }}>
-              <div>
-                <span className="text-sm font-medium">{c.name}</span>
-                {c.description && <span className="ml-2 text-xs" style={{ color: "var(--muted2)" }}>{c.description}</span>}
-              </div>
-              <form action={deleteCostCategory.bind(null, c.id)}>
-                <button className="text-xs px-2 py-1 rounded" style={{ color: "var(--red-c)", background: "rgba(239,68,68,.1)" }}>Delete</button>
-              </form>
-            </div>
-          ))}
-          <form action={createCostCategory} className="flex gap-2 mt-3 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
-            <input name="name" placeholder="Category name" required className={inputCss} style={inputStyle} />
-            <input name="description" placeholder="Description" className={inputCss} style={inputStyle} />
-            <button className="px-4 py-2 rounded text-sm font-semibold whitespace-nowrap"
-              style={{ background: "var(--accent)", color: "#fff" }}>+ Add</button>
-          </form>
-        </div>
-      </div>
-
-      {/* Accounts */}
-      <div className="rounded-lg overflow-hidden mb-6" style={{ border: "1px solid var(--border)" }}>
-        <div className="px-4 py-3 border-b" style={{ borderColor: "var(--border)", background: "var(--card2)" }}>
-          <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Cash Accounts</h2>
-        </div>
-        <div className="p-4 space-y-2" style={{ background: "var(--card2)" }}>
-          {(accounts || []).map(a => (
-            <div key={a.id} className="flex items-center justify-between px-3 py-2 rounded" style={{ background: "var(--card3)", border: "1px solid var(--border)" }}>
-              <div>
-                <span className="text-sm font-medium">{a.name}</span>
-                {a.account_type && <span className="ml-2 text-xs" style={{ color: "var(--muted2)" }}>{a.account_type}</span>}
-              </div>
-              <form action={deleteAccount.bind(null, a.id)}>
-                <button className="text-xs px-2 py-1 rounded" style={{ color: "var(--red-c)", background: "rgba(239,68,68,.1)" }}>Delete</button>
-              </form>
-            </div>
-          ))}
-          <form action={createAccount} className="flex gap-2 mt-3 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
-            <input name="name" placeholder="Account name" required className={inputCss} style={inputStyle} />
-            <input name="account_type" placeholder="Type (e.g. Bank)" className={inputCss} style={inputStyle} />
-            <button className="px-4 py-2 rounded text-sm font-semibold whitespace-nowrap"
-              style={{ background: "var(--accent)", color: "#fff" }}>+ Add</button>
-          </form>
-        </div>
-      </div>
+      <SettingsDimensions
+        statuses={statuses || []}
+        payTypes={payTypes || []}
+        costCats={costCats || []}
+        accounts={accounts || []}
+      />
     </section>
   );
 }
