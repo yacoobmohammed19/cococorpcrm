@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   PieChart, Pie, Cell, Legend, AreaChart, Area,
@@ -31,8 +31,6 @@ type Props = {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const COLORS = ["#10b981", "#e84393", "#8b5cf6", "#f59e0b", "#06b6d4", "#ef4444", "#84cc16", "#f97316"];
-const TT_STYLE = { background: "#171535", border: "1px solid #2d2860", borderRadius: 6, color: "#f0f0fc", fontSize: 11 };
-const TICK_STYLE = { fill: "#8a84b0", fontSize: 10 };
 const LS_SECTION_ORDER = "crm_dash_section_order";
 const LS_CUSTOM_KPIS = "crm_dash_custom_kpis";
 const LS_KPI_HIDDEN = "crm_dash_kpi_hidden";
@@ -352,6 +350,24 @@ export function DashboardCharts({
   const [showKpiConfig, setShowKpiConfig] = useState(false);
   const [showKpiBuilder, setShowKpiBuilder] = useState(false);
   const [nowMs] = useState(() => Date.now());
+
+  // Reactive theme detection so recharts colours update when user toggles theme
+  const [isDark, setIsDark] = useState(() =>
+    typeof document !== "undefined" ? document.documentElement.classList.contains("dark") : false
+  );
+  useEffect(() => {
+    const obs = new MutationObserver(() =>
+      setIsDark(document.documentElement.classList.contains("dark"))
+    );
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
+  const TT_STYLE = isDark
+    ? { background: "#171535", border: "1px solid #2D2860", borderRadius: 6, color: "#f0f0fc", fontSize: 11 }
+    : { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 6, color: "#0F172A", fontSize: 11, boxShadow: "0 4px 12px rgba(0,0,0,0.08)" };
+  const TICK_STYLE = { fill: isDark ? "#8a84b0" : "#94A3B8", fontSize: 10 };
+  const GRID_COLOR = isDark ? "#1e1b45" : "#E2E8F0";
+  const LEGEND_STYLE = { fontSize: 10, color: isDark ? "#8a84b0" : "#94A3B8" };
 
   const saveCustomKpis = (kpis: CustomKpi[]) => {
     setCustomKpis(kpis);
@@ -677,7 +693,7 @@ export function DashboardCharts({
               <ChartBox title="Monthly Revenue vs Costs (12 months)">
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={monthlyData} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e1b45" />
+                    <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
                     <XAxis dataKey="month" tick={TICK_STYLE} axisLine={false} tickLine={false} />
                     <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
                     <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
@@ -689,7 +705,7 @@ export function DashboardCharts({
               <ChartBox title="Monthly Profit">
                 <ResponsiveContainer width="100%" height={200}>
                   <AreaChart data={monthlyData} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e1b45" />
+                    <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
                     <XAxis dataKey="month" tick={TICK_STYLE} axisLine={false} tickLine={false} />
                     <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
                     <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
@@ -714,7 +730,7 @@ export function DashboardCharts({
                       {revenueByPayType.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                     </Pie>
                     <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
-                    <Legend iconSize={8} wrapperStyle={{ fontSize: 10, color: "#8a84b0" }} />
+                    <Legend iconSize={8} wrapperStyle={LEGEND_STYLE} />
                   </PieChart>
                 </ResponsiveContainer>
               </ChartBox>
@@ -782,7 +798,7 @@ export function DashboardCharts({
                       {leadsByStatus.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                     </Pie>
                     <Tooltip contentStyle={TT_STYLE} />
-                    <Legend iconSize={8} wrapperStyle={{ fontSize: 10, color: "#8a84b0" }} />
+                    <Legend iconSize={8} wrapperStyle={LEGEND_STYLE} />
                   </PieChart>
                 </ResponsiveContainer>
               </ChartBox>
@@ -792,13 +808,13 @@ export function DashboardCharts({
               <ChartBox title="Pipeline Weighted Value by Status">
                 <ResponsiveContainer width="100%" height={180}>
                   <BarChart data={pipelineByStatus} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e1b45" />
+                    <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
                     <XAxis dataKey="name" tick={TICK_STYLE} axisLine={false} tickLine={false} />
                     <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
                     <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
                     <Bar dataKey="weighted" name="Weighted" fill="#8b5cf6" radius={[3, 3, 0, 0]} />
                     <Bar dataKey="value" name="Total Value" fill="rgba(139,92,246,.3)" radius={[3, 3, 0, 0]} />
-                    <Legend iconSize={8} wrapperStyle={{ fontSize: 10, color: "#8a84b0" }} />
+                    <Legend iconSize={8} wrapperStyle={LEGEND_STYLE} />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartBox>
@@ -816,7 +832,7 @@ export function DashboardCharts({
                       {costsByCategory.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                     </Pie>
                     <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
-                    <Legend iconSize={8} wrapperStyle={{ fontSize: 10, color: "#8a84b0" }} />
+                    <Legend iconSize={8} wrapperStyle={LEGEND_STYLE} />
                   </PieChart>
                 </ResponsiveContainer>
               </ChartBox>
@@ -859,7 +875,7 @@ export function DashboardCharts({
               <ChartBox title="Bank Balance Trend (last 30 snapshots)">
                 <ResponsiveContainer width="100%" height={180}>
                   <AreaChart data={cashflowTrend} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e1b45" />
+                    <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
                     <XAxis dataKey="date" tick={TICK_STYLE} axisLine={false} tickLine={false} />
                     <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
                     <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />

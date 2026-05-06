@@ -43,7 +43,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-screen" style={{ background: "var(--background)" }}>
-      {/* Collapsible Sidebar */}
       <CollapsibleSidebar
         userEmail={user.email ?? ""}
         userName={userName}
@@ -57,23 +56,23 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <div className="flex-1 flex flex-col min-w-0">
         {/* Mobile header */}
         <header className="md:hidden flex items-center justify-between p-3 border-b"
-          style={{ background: "var(--card)", borderColor: "var(--border)" }}>
+          style={{ background: "var(--sidebar-bg)", borderColor: "var(--sidebar-border)" }}>
           <h1 className="text-base font-bold tracking-widest">
-            <span style={{ color: "var(--pink)" }}>COCO</span>
-            <span className="text-white">CORP</span>
+            <span style={{ color: "var(--sidebar-indicator)" }}>COCO</span>
+            <span style={{ color: "var(--sidebar-fg-active)" }}>CORP</span>
           </h1>
           <div className="flex items-center gap-2">
             <form action={setActiveOrganization}>
               <select name="org_id" defaultValue={activeOrgId}
                 className="text-xs rounded px-2 py-1 border"
-                style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--muted)" }}>
+                style={{ background: "rgba(255,255,255,0.08)", borderColor: "var(--sidebar-border)", color: "var(--sidebar-fg)" }}>
                 {orgs.map(o => (
                   <option key={o.org_id} value={o.org_id}>{o.name}</option>
                 ))}
               </select>
             </form>
             <form action={signout}>
-              <button className="text-xs rounded border px-2 py-1" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
+              <button className="text-xs rounded border px-2 py-1" style={{ borderColor: "var(--sidebar-border)", color: "var(--sidebar-fg)" }}>
                 Out
               </button>
             </form>
@@ -93,7 +92,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
           {/* Mobile bottom nav */}
           <nav className="md:hidden fixed bottom-0 left-0 right-0 flex border-t z-40"
-            style={{ background: "var(--card)", borderColor: "var(--border)" }}>
+            style={{ background: "var(--sidebar-bg)", borderColor: "var(--sidebar-border)" }}>
             <BotNav />
           </nav>
         </ToastProvider>
