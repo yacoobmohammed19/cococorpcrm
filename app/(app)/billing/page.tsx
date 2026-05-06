@@ -11,8 +11,14 @@ export default async function BillingPage() {
       .is("deleted_at", null)
       .order("transaction_date", { ascending: false }),
     supabase.from("dim_customers").select("id, name").is("deleted_at", null).order("name"),
-    supabase.from("organizations").select("currency").single(),
+    supabase.from("organizations").select("currency, fiscal_year_start").single(),
   ]);
+
+  const fiscalStart = org?.fiscal_year_start ?? 3;
+  const now = new Date();
+  const fyMonth = fiscalStart - 1; // 0-indexed
+  const fyYear = now.getMonth() >= fyMonth ? now.getFullYear() : now.getFullYear() - 1;
+  const fiscalYearFrom = `${fyYear}-${String(fiscalStart).padStart(2, "0")}`;
 
   const mappedInvoices = (invoices || []).map(inv => ({
     id: inv.id,
@@ -31,6 +37,7 @@ export default async function BillingPage() {
         invoices={mappedInvoices}
         customers={customers || []}
         currency={org?.currency || "ZAR"}
+        fiscalYearFrom={fiscalYearFrom}
       />
     </section>
   );

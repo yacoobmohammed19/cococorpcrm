@@ -11,7 +11,7 @@ export default async function SettingsPage() {
   const supabase = await createServerClient();
 
   const [{ data: org }, { data: statuses }, { data: payTypes }, { data: costCats }, { data: accounts }] = await Promise.all([
-    supabase.from("organizations").select("name, reg_no, vat_no, address, phone, email, bank_holder, bank_name, bank_account, bank_branch, currency").single(),
+    supabase.from("organizations").select("name, reg_no, vat_no, address, phone, email, bank_holder, bank_name, bank_account, bank_branch, currency, fiscal_year_start").single(),
     supabase.from("dim_statuses").select("id, name, category").order("id"),
     supabase.from("dim_payment_types").select("id, name, description").order("id"),
     supabase.from("dim_cost_categories").select("id, name, description").order("id"),
@@ -58,6 +58,14 @@ export default async function SettingsPage() {
                 <option value="USD">USD ($)</option>
                 <option value="EUR">EUR (€)</option>
                 <option value="GBP">GBP (£)</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelCss}>Financial Year Start</label>
+              <select name="fiscal_year_start" defaultValue={org?.fiscal_year_start ?? 3} className={inputCss} style={inputStyle}>
+                {["January","February","March","April","May","June","July","August","September","October","November","December"].map((m, i) => (
+                  <option key={i+1} value={i+1}>{m}</option>
+                ))}
               </select>
             </div>
             <div>

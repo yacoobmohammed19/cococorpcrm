@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { DateInput } from "@/components/ui/DateInput";
+import { useToast } from "@/components/Toast";
 import { createLead } from "@/server-actions/leads";
 import { createInvoice } from "@/server-actions/invoices";
 import { createCost, recordCashflow } from "@/server-actions/costs";
@@ -23,12 +24,17 @@ type Props = {
 
 type ModalType = "lead" | "invoice" | "cost" | "cashflow" | null;
 
+const MODAL_LABELS: Record<NonNullable<ModalType>, string> = {
+  lead: "Lead", invoice: "Invoice", cost: "Cost", cashflow: "Balance snapshot",
+};
+
 export function FAB({ accounts, customers, paymentTypes, statuses, costCategories }: Props) {
   const [open, setOpen] = useState(false);
   const [modal, setModal] = useState<ModalType>(null);
   const [fabDate, setFabDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
   const router = useRouter();
+  const toast = useToast();
 
   function openModal(type: ModalType) { setFabDate(new Date().toISOString().slice(0, 10)); setModal(type); setOpen(false); }
   function closeModal() { setModal(null); }
@@ -38,8 +44,12 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
     setBusy(true);
     try {
       await action(new FormData(e.currentTarget));
+      toast.success(`${MODAL_LABELS[modal!]} saved`);
       closeModal();
       router.refresh();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Something went wrong";
+      toast.error(msg.includes("23503") || msg.includes("foreign key") ? "Cannot save — linked data missing." : "Failed to save. Please try again.");
     } finally {
       setBusy(false);
     }

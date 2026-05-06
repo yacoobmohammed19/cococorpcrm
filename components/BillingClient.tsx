@@ -10,7 +10,7 @@ type Invoice = {
 };
 type Customer = { id: number; name: string };
 
-type Props = { invoices: Invoice[]; customers: Customer[]; currency: string };
+type Props = { invoices: Invoice[]; customers: Customer[]; currency: string; fiscalYearFrom: string };
 
 function fmt(n: number) { return Number(n).toLocaleString("en-ZA", { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
 
@@ -38,11 +38,11 @@ function defaultRange(months = 12) {
   };
 }
 
-export function BillingClient({ invoices, customers, currency }: Props) {
+export function BillingClient({ invoices, customers, currency, fiscalYearFrom }: Props) {
   const cur = currency === "ZAR" ? "R" : "$";
-  const [preset, setPreset] = useState("12m");
-  const [billFrom, setBillFrom] = useState(defaultRange(12).from);
-  const [billTo, setBillTo] = useState(defaultRange(12).to);
+  const [preset, setPreset] = useState("ytd");
+  const [billFrom, setBillFrom] = useState(fiscalYearFrom);
+  const [billTo, setBillTo] = useState(defaultRange(1).to);
   const [billView, setBillView] = useState<"total" | "collected" | "secured">("total");
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
@@ -51,7 +51,7 @@ export function BillingClient({ invoices, customers, currency }: Props) {
     setPreset(p);
     if (p === "6m") { const r = defaultRange(6); setBillFrom(r.from); setBillTo(r.to); }
     else if (p === "12m") { const r = defaultRange(12); setBillFrom(r.from); setBillTo(r.to); }
-    else if (p === "ytd") { const now = new Date(); setBillFrom(`${now.getFullYear()}-01`); setBillTo(now.toISOString().slice(0, 7)); }
+    else if (p === "ytd") { setBillFrom(fiscalYearFrom); setBillTo(new Date().toISOString().slice(0, 7)); }
     else if (p === "all") { setBillFrom("2025-01"); setBillTo(new Date().toISOString().slice(0, 7)); }
   }
 

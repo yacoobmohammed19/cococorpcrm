@@ -20,6 +20,7 @@ export async function updateOrgSettings(formData: FormData) {
     bank_account: formData.get("bank_account") || null,
     bank_branch: formData.get("bank_branch") || null,
     currency: formData.get("currency") || "ZAR",
+    fiscal_year_start: Number(formData.get("fiscal_year_start") || 3),
   }).eq("id", orgId);
 
   if (error) throw new Error(error.message);

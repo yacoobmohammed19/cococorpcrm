@@ -45,6 +45,12 @@ export default async function PerformancePage() {
     return { pct: d, up: d >= 0 };
   }
 
+  function avg(key: string) {
+    if (snaps.length < 2) return null;
+    const vals = snaps.slice(1).map(s => Number((s as Record<string, unknown>)[key] || 0));
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
+  }
+
   return (
     <section>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
@@ -71,15 +77,23 @@ export default async function PerformancePage() {
             {kpiKeys.map(({ key, label, format, color }) => {
               const val = Number((latest as Record<string, unknown>)[key] || 0);
               const d = delta(key);
+              const a = avg(key);
               return (
                 <div key={key} className="rounded-lg p-4" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
                   <div className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>{label}</div>
                   <div className="text-xl font-bold font-mono" style={{ color }}>{format(val)}</div>
-                  {d !== null && (
-                    <div className="text-xs mt-1" style={{ color: d.up ? "var(--accent)" : "var(--red-c)" }}>
-                      {d.up ? "▲" : "▼"} {Math.abs(d.pct).toFixed(1)}% vs prev
-                    </div>
-                  )}
+                  <div className="flex items-center gap-3 mt-1">
+                    {d !== null && (
+                      <span className="text-xs" style={{ color: d.up ? "var(--accent)" : "var(--red-c)" }}>
+                        {d.up ? "▲" : "▼"} {Math.abs(d.pct).toFixed(1)}% vs prev
+                      </span>
+                    )}
+                    {a !== null && (
+                      <span className="text-xs" style={{ color: "var(--muted2)" }}>
+                        avg {format(a)}
+                      </span>
+                    )}
+                  </div>
                 </div>
               );
             })}

@@ -89,7 +89,7 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
   async function handleCreateCampaign(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
-    await createCampaign(new FormData(e.currentTarget));
+    await runAction(() => createCampaign(new FormData(e.currentTarget)), toast, "Campaign created");
     setBusy(false);
     setCampModal(false);
   }
@@ -99,7 +99,7 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
     setBusy(true);
     const fd = new FormData(e.currentTarget);
     fd.set("campaign_id", String(cid));
-    await logCampaignUpdate(fd);
+    await runAction(() => logCampaignUpdate(fd), toast, "Results logged");
     setBusy(false);
     setLogModal(null);
   }
@@ -120,7 +120,7 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
 
   async function handleStatusChange(id: number, status: string) {
     setBusy(true);
-    await updateCampaignStatus(id, status);
+    await runAction(() => updateCampaignStatus(id, status), toast, "Status updated");
     setBusy(false);
   }
 
