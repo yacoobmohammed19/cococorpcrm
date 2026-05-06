@@ -12,10 +12,27 @@ import { createCustomer, updateCustomer, deleteCustomer } from "@/server-actions
 type Customer = {
   id: number; name: string; email: string | null; phone: string | null;
   contact_person: string | null; source: string | null; notes: string | null;
+  status: string; payment_method: string | null; reg_no: string | null; vat_no: string | null;
   created_at: string | null;
 };
 
 const SOURCES = ["Referral", "Website", "Cold Call", "Social Media", "Event", "Other"];
+const STATUSES = ["Active", "Inactive", "Churned", "Prospect"];
+const PAYMENT_METHODS = ["EFT", "Payfast", "Credit Card", "Debit Order", "Cash", "Other"];
+
+const STATUS_COLORS: Record<string, string> = {
+  Active: "var(--accent)", Prospect: "var(--cyan-c)", Inactive: "var(--amber-c)", Churned: "var(--red-c)",
+};
+
+function StatusBadge({ status }: { status: string }) {
+  const color = STATUS_COLORS[status] ?? "var(--muted2)";
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium"
+      style={{ background: `color-mix(in srgb, ${color} 12%, transparent)`, color }}>
+      {status}
+    </span>
+  );
+}
 
 const SOURCE_COLORS: Record<string, string> = {
   Referral:     "var(--accent)",
@@ -189,7 +206,7 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr style={{ background: "var(--card2)", borderBottom: "1px solid var(--border)" }}>
-              {["Customer", "Contact", "Phone", "Source", "Added", ""].map(h => (
+              {["Customer", "Status", "Contact", "Phone", "Source", "Added", ""].map(h => (
                 <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-widest whitespace-nowrap"
                   style={{ color: "var(--muted2)" }}>
                   {h}
@@ -214,6 +231,7 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
                     )}
                   </div>
                 </td>
+                <td className="px-4 py-3"><StatusBadge status={c.status || "Active"} /></td>
                 <td className="px-4 py-3 text-sm" style={{ color: "var(--muted)" }}>
                   {c.contact_person || "—"}
                 </td>
@@ -259,7 +277,7 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={6}>
+                <td colSpan={7}>
                   <EmptyState
                     icon="👥"
                     title={search ? "No customers match" : "No customers yet"}
@@ -361,6 +379,43 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
                     <option value="">— None —</option>
                     {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--muted2)" }}>Status</label>
+                  <select
+                    name="status" defaultValue={modal.customer?.status ?? "Active"}
+                    className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-colors"
+                    style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }}
+                  >
+                    {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--muted2)" }}>Payment Method</label>
+                  <select
+                    name="payment_method" defaultValue={modal.customer?.payment_method ?? ""}
+                    className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-colors"
+                    style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }}
+                  >
+                    <option value="">— None —</option>
+                    {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--muted2)" }}>Reg Number</label>
+                  <input
+                    name="reg_no" defaultValue={modal.customer?.reg_no ?? ""}
+                    className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-colors"
+                    style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--muted2)" }}>VAT Number</label>
+                  <input
+                    name="vat_no" defaultValue={modal.customer?.vat_no ?? ""}
+                    className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-colors"
+                    style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }}
+                  />
                 </div>
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--muted2)" }}>Notes</label>

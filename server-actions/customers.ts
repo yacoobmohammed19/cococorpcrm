@@ -17,6 +17,10 @@ export async function createCustomer(formData: FormData) {
     email: formData.get("email"),
     source: formData.get("source"),
     notes: formData.get("notes"),
+    status: formData.get("status") || "Active",
+    payment_method: formData.get("payment_method"),
+    reg_no: formData.get("reg_no"),
+    vat_no: formData.get("vat_no"),
   });
 
   const payload = {
@@ -51,6 +55,10 @@ export async function updateCustomer(id: number, formData: FormData) {
     email: email || null,
     source: formData.get("source") || null,
     notes: formData.get("notes") || null,
+    status: formData.get("status") || "Active",
+    payment_method: formData.get("payment_method") || null,
+    reg_no: formData.get("reg_no") || null,
+    vat_no: formData.get("vat_no") || null,
     updated_at: new Date().toISOString(),
   }).eq("id", id);
   if (error) throw new Error(error.message);

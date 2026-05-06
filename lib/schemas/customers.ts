@@ -8,6 +8,10 @@ export const CustomerSchema = z.object({
   email: z.string().email().optional().or(z.literal("")),
   source: z.string().optional(),
   notes: z.string().optional(),
+  status: z.string().optional(),
+  payment_method: z.string().optional(),
+  reg_no: z.string().optional(),
+  vat_no: z.string().optional(),
 });
 
 export type CustomerInput = z.infer<typeof CustomerSchema>;

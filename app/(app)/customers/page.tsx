@@ -5,7 +5,7 @@ export default async function CustomersPage() {
   const supabase = await createServerClient();
   const { data: customers } = await supabase
     .from("dim_customers")
-    .select("id, name, email, phone, contact_person, source, notes, created_at")
+    .select("id, name, email, phone, contact_person, source, notes, status, payment_method, reg_no, vat_no, created_at")
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
