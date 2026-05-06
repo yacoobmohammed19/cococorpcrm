@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { Trash2, X } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
@@ -203,14 +204,17 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <h1 className="text-2xl font-semibold">Accounting</h1>
-        <div className="flex gap-2 overflow-x-auto pb-0.5">
-          {tabBtn("is", "📊 IS")}
-          {tabBtn("bs", "📋 BS")}
-          {tabBtn("bank", "🏦 Bank")}
-          {tabBtn("cashflow", "💸 Cashflow")}
+      <div className="flex items-start justify-between mb-2 flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Accounting</h1>
+          <p className="text-sm mt-0.5" style={{ color: "var(--muted2)" }}>Financial statements & reconciliation</p>
         </div>
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-0.5 mb-4">
+        {tabBtn("is", "Income Statement")}
+        {tabBtn("bs", "Balance Sheet")}
+        {tabBtn("bank", "Bank Recon")}
+        {tabBtn("cashflow", "Cashflow")}
       </div>
 
       {/* ── Income Statement ─────────────────────────────────────────────── */}
@@ -443,7 +447,7 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
                         </div>
                         {(entry.notes || acc) && (
                           <p className="text-xs mb-3" style={{ color: "var(--muted2)" }}>
-                            {acc && <span>🏦 {acc.name} </span>}{entry.notes}
+                            {acc && <span>{acc.name} </span>}{entry.notes}
                           </p>
                         )}
                         <div className="flex gap-2 pt-2 border-t" style={{ borderColor: "var(--border)" }}>
@@ -460,7 +464,7 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
                               await runAction(() => deleteBankBalance(entry.id), toast, "Snapshot deleted");
                             }}
                             className="w-10 h-10 rounded-xl flex items-center justify-center"
-                            style={{ border: "1px solid var(--border)", background: "var(--card)", color: "var(--muted2)" }}>🗑️</button>
+                            style={{ background: "var(--danger-bg)", color: "var(--red-c)" }}><Trash2 size={14} /></button>
                         </div>
                       </div>
                     );
@@ -510,8 +514,8 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
                                     if (!await confirm("Delete this snapshot?", "This bank balance record will be permanently removed.")) return;
                                     await runAction(() => deleteBankBalance(entry.id), toast, "Snapshot deleted");
                                   }}
-                                  className="px-2 py-1 rounded text-xs"
-                                  style={{ border: "1px solid var(--border)", background: "var(--card)" }}>🗑️</button>
+                                  className="w-7 h-7 flex items-center justify-center rounded-lg"
+                                  style={{ background: "var(--danger-bg)", color: "var(--red-c)" }}><Trash2 size={13} /></button>
                               </div>
                             </td>
                           </tr>
@@ -540,7 +544,7 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
                     <div className="sm:hidden w-10 h-1 rounded-full mx-auto mt-3 mb-1" style={{ background: "var(--border)" }} />
                     <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
                       <h2 className="text-base font-semibold">Resolve Variance</h2>
-                      <button onClick={() => setResolveEntry(null)} style={{ color: "var(--muted2)" }}>✕</button>
+                      <button onClick={() => setResolveEntry(null)} className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--card3)] transition-colors" style={{ color: "var(--muted2)" }}><X size={18} /></button>
                     </div>
                     <div className="p-5">
                       {/* Summary */}
@@ -824,7 +828,7 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
                         <span className="flex-1 truncate font-medium">{t.description}</span>
                         {t.credit > 0 && <span className="font-mono font-semibold" style={{ color: "var(--accent)" }}>+{currency} {fmt(t.credit)}</span>}
                         {t.debit > 0 && <span className="font-mono font-semibold" style={{ color: "var(--red-c)" }}>-{currency} {fmt(t.debit)}</span>}
-                        <button onClick={() => handleDeleteTxn(t.id)} className="px-1.5 py-0.5 rounded" style={{ color: "var(--muted2)", border: "1px solid var(--border)", background: "var(--card)" }}>✕</button>
+                        <button onClick={() => handleDeleteTxn(t.id)} className="w-6 h-6 flex items-center justify-center rounded" style={{ color: "var(--red-c)", background: "var(--danger-bg)" }}><Trash2 size={11} /></button>
                       </div>
                     ))}
                   {bankTxns.filter(t => {

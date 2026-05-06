@@ -27,9 +27,6 @@ export default async function BillingPage() {
 
   return (
     <section>
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-semibold">Billing</h1>
-      </div>
       <BillingClient
         invoices={mappedInvoices}
         customers={customers || []}

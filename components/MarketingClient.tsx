@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { Plus, Trash2, BarChart2, X } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
@@ -146,7 +147,7 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
       <div className="w-full max-w-lg rounded-xl shadow-2xl" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
         <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
           <h2 className="text-base font-semibold">{title}</h2>
-          <button onClick={onClose} style={{ color: "var(--muted2)", background: "none", border: "none", cursor: "pointer", fontSize: 20 }}>✕</button>
+          <button onClick={onClose} className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--card3)] transition-colors" style={{ color: "var(--muted2)" }}><X size={18} /></button>
         </div>
         {children}
       </div>
@@ -155,17 +156,24 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <h1 className="text-2xl font-semibold">Marketing</h1>
-        <div className="flex gap-2 flex-wrap">
-          {tabBtn("dashboard", "📊 Dashboard")}
-          {tabBtn("campaigns", "📋 Campaigns")}
-          {tabBtn("log", "📈 Performance Log")}
-          <button onClick={() => { setCampStartDate(new Date().toISOString().slice(0, 10)); setCampEndDate(""); setCampModal(true); }}
-            className="px-4 py-2 text-xs font-semibold rounded"
-            style={{ background: "var(--accent)", color: "#fff" }}>+ Campaign</button>
+      {/* Page header */}
+      <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Marketing</h1>
+          <p className="text-sm mt-0.5" style={{ color: "var(--muted2)" }}>
+            {allAgg.activeCamps} active campaign{allAgg.activeCamps !== 1 ? "s" : ""}
+          </p>
         </div>
+        <button onClick={() => { setCampStartDate(new Date().toISOString().slice(0, 10)); setCampEndDate(""); setCampModal(true); }}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all hover:opacity-90 active:scale-[.98]"
+          style={{ background: "var(--primary)", color: "var(--primary-fg)" }}>
+          <Plus size={15} /> New Campaign
+        </button>
+      </div>
+      <div className="flex gap-2 flex-wrap mb-4">
+        {tabBtn("dashboard", "Dashboard")}
+        {tabBtn("campaigns", "Campaigns")}
+        {tabBtn("log", "Performance Log")}
       </div>
 
       {/* Dashboard Tab */}
@@ -250,11 +258,11 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
                       {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                     <button onClick={() => { setLogDate(new Date().toISOString().slice(0, 10)); setLogModal(c.id); }}
-                      className="text-xs px-3 py-1.5 rounded font-semibold"
-                      style={{ background: "var(--card3)", color: "var(--accent)", border: "1px solid var(--border)" }}>📊 Log</button>
+                      className="text-xs px-3 py-1.5 rounded font-semibold flex items-center gap-1.5"
+                      style={{ background: "var(--card3)", color: "var(--accent)", border: "1px solid var(--border)" }}><BarChart2 size={13} /> Log</button>
                     <button onClick={() => handleDeleteCampaign(c.id)}
-                      className="text-xs px-2 py-1.5 rounded"
-                      style={{ background: "rgba(239,68,68,.1)", color: "var(--red-c)" }}>✕</button>
+                      className="w-8 h-8 flex items-center justify-center rounded-lg"
+                      style={{ background: "var(--danger-bg)", color: "var(--red-c)" }}><Trash2 size={14} /></button>
                   </div>
                 </div>
                 {ag.entries > 0 && (
@@ -309,8 +317,8 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
                       <td className="px-3 py-2 max-w-[150px] truncate" style={{ color: "var(--muted2)" }}>{u.notes || "—"}</td>
                       <td className="px-3 py-2">
                         <button onClick={() => handleDeleteUpdate(u.id)}
-                          className="px-2 py-1 rounded text-xs"
-                          style={{ background: "rgba(239,68,68,.1)", color: "var(--red-c)" }}>✕</button>
+                          className="w-7 h-7 flex items-center justify-center rounded-lg"
+                          style={{ background: "var(--danger-bg)", color: "var(--red-c)" }}><Trash2 size={13} /></button>
                       </td>
                     </tr>
                   );

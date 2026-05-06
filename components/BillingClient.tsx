@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { Receipt, Printer } from "lucide-react";
 
 type Invoice = {
   id: number; customer_id: number; transaction_date: string;
@@ -117,6 +118,15 @@ export function BillingClient({ invoices, customers, currency }: Props) {
 
   return (
     <div>
+      {/* Page header */}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Billing</h1>
+          <p className="text-sm mt-0.5" style={{ color: "var(--muted2)" }}>
+            {invoices.length} invoice{invoices.length !== 1 ? "s" : ""} · {cur} {fmt(grand.completed)} collected
+          </p>
+        </div>
+      </div>
       {/* Controls */}
       <div className="flex flex-wrap gap-3 items-center mb-4">
         <div className="flex rounded overflow-hidden border" style={{ borderColor: "var(--border)" }}>
@@ -210,7 +220,7 @@ export function BillingClient({ invoices, customers, currency }: Props) {
       {/* All Invoices List */}
       <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
         <div className="px-4 py-3 border-b flex justify-between items-center flex-wrap gap-3" style={{ borderColor: "var(--border)", background: "var(--card2)" }}>
-          <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>🧾 All Invoices</h3>
+          <h3 className="text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--muted2)" }}><Receipt size={12} /> All Invoices</h3>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…"
             className="px-3 py-1.5 text-xs rounded border outline-none flex-1 sm:flex-none sm:w-48" style={{ background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" }} />
         </div>
@@ -230,10 +240,10 @@ export function BillingClient({ invoices, customers, currency }: Props) {
                   <p className="text-xl font-bold font-mono">{cur} {fmt(inv.amount)}</p>
                 </div>
                 <div className="flex items-center justify-between">
-                  <p className="text-xs" style={{ color: "var(--muted2)" }}>📅 {inv.transaction_date}</p>
+                  <p className="text-xs" style={{ color: "var(--muted2)" }}>{inv.transaction_date}</p>
                   <a href={`/invoices/${inv.id}/print`} target="_blank" rel="noopener noreferrer"
-                    className="px-3 py-1.5 rounded-xl text-xs font-semibold"
-                    style={{ background: "var(--accent)", color: "#fff" }}>🖨️ Print</a>
+                    className="px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5"
+                    style={{ background: "var(--accent)", color: "#fff" }}><Printer size={12} /> Print</a>
                 </div>
               </div>
             );
@@ -265,8 +275,8 @@ export function BillingClient({ invoices, customers, currency }: Props) {
                     <td className="px-3 py-2">{statBadge(inv.status)}</td>
                     <td className="px-3 py-2 whitespace-nowrap">
                       <a href={`/invoices/${inv.id}/print`} target="_blank" rel="noopener noreferrer"
-                        className="px-2 py-1 rounded text-xs mr-1 font-semibold"
-                        style={{ background: "var(--accent)", color: "#fff" }}>🖨️</a>
+                        className="px-2 py-1 rounded text-xs mr-1 font-semibold flex items-center justify-center"
+                        style={{ background: "var(--accent)", color: "#fff" }}><Printer size={13} /></a>
                     </td>
                   </tr>
                 );
