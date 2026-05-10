@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import Link from "next/link";
 import { Receipt, Printer, Trash2 } from "lucide-react";
 import { MultiSelect } from "@/components/ui/MultiSelect";
 import { useToast } from "@/components/Toast";
@@ -216,7 +217,9 @@ export function BillingClient({ invoices, customers, currency, fiscalYearFrom }:
                 const rowTotal = windowMonths.reduce((s, m) => s + getCellVal(matrix[cid]?.[m]), 0);
                 return (
                   <tr key={cid} className="border-b" style={{ borderColor: "var(--border)" }}>
-                    <td className="px-3 py-2 font-semibold sticky left-0 z-10 truncate max-w-[140px]" style={{ background: "var(--card2)", color: "var(--pink)" }}>{cust?.name ?? `#${cid}`}</td>
+                    <td className="px-3 py-2 font-semibold sticky left-0 z-10 truncate max-w-[140px]" style={{ background: "var(--card2)" }}>
+                      <Link href={`/customers/${cid}`} className="hover:underline" style={{ color: "var(--pink)" }}>{cust?.name ?? `#${cid}`}</Link>
+                    </td>
                     {windowMonths.map(m => {
                       const cell = matrix[cid]?.[m];
                       const v = getCellVal(cell);
@@ -280,7 +283,7 @@ export function BillingClient({ invoices, customers, currency, fiscalYearFrom }:
                   {statBadge(inv.status)}
                 </div>
                 <div className="flex items-end justify-between mb-2">
-                  <p className="font-semibold text-sm">{cust?.name ?? `#${inv.customer_id}`}</p>
+                  <Link href={`/customers/${inv.customer_id}`} className="font-semibold text-sm hover:underline">{cust?.name ?? `#${inv.customer_id}`}</Link>
                   <p className="text-xl font-bold font-mono">{cur} {fmt(inv.amount)}</p>
                 </div>
                 <div className="flex items-center justify-between">
@@ -317,7 +320,9 @@ export function BillingClient({ invoices, customers, currency, fiscalYearFrom }:
                     <td className="px-3 py-2 w-8"><input type="checkbox" checked={selected.has(inv.id)} onChange={() => toggleSelect(inv.id)} className="cursor-pointer" /></td>
                     <td className="px-3 py-2 whitespace-nowrap" style={{ color: "var(--muted2)" }}>{inv.transaction_date}</td>
                     <td className="px-3 py-2 font-semibold" style={{ color: inv.invoice_number ? "var(--accent)" : "var(--muted2)" }}>{inv.invoice_number || <span style={{ color: "var(--muted2)", fontStyle: "italic" }}>—</span>}</td>
-                    <td className="px-3 py-2 font-medium max-w-[140px] truncate">{cust?.name ?? `#${inv.customer_id}`}</td>
+                    <td className="px-3 py-2 font-medium max-w-[140px] truncate">
+                      <Link href={`/customers/${inv.customer_id}`} className="hover:underline" style={{ color: "var(--foreground)" }}>{cust?.name ?? `#${inv.customer_id}`}</Link>
+                    </td>
                     <td className="px-3 py-2 max-w-[160px] truncate" style={{ color: "var(--muted)" }}>{inv.description || "—"}</td>
                     <td className="px-3 py-2 font-mono whitespace-nowrap font-semibold">{cur} {fmt(inv.amount)}</td>
                     <td className="px-3 py-2 whitespace-nowrap" style={{ color: "var(--muted2)" }}>{inv.payment_type_name || "—"}</td>

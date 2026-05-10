@@ -119,6 +119,7 @@ export default async function SettingsPage() {
         orgId={orgId}
         logoUrl={org?.logo_url ?? null}
         featureFlags={(org?.feature_flags as Record<string, boolean>) ?? {}}
+        aiSystemPrompt={(org?.feature_flags as Record<string, unknown>)?.ai_system_prompt as string ?? null}
       />
 
       <SettingsDimensions

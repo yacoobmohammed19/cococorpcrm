@@ -1,8 +1,20 @@
 import Link from "next/link";
+import Image from "next/image";
 import { login } from "@/server-actions/auth";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { error } = await searchParams;
+
+  const admin = createAdminClient();
+  const { data: orgData } = await admin
+    .from("organizations")
+    .select("name, logo_url")
+    .limit(1)
+    .single();
+
+  const logoUrl = orgData?.logo_url || null;
+  const orgName = orgData?.name || null;
   return (
     <main className="min-h-screen flex items-center justify-center p-4"
       style={{ background: "var(--background)" }}>
@@ -18,21 +30,36 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <div className="relative w-full max-w-md">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-20 h-20 rounded-2xl flex items-center justify-center mb-4 shadow-2xl"
-            style={{ background: "linear-gradient(135deg, var(--pink) 0%, var(--accent) 100%)" }}>
-            {/* Logo placeholder — replace with <Image src="/logo.png" ... /> */}
-            <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-              <circle cx="20" cy="20" r="14" stroke="white" strokeWidth="2.5" strokeDasharray="4 3" />
-              <circle cx="20" cy="20" r="7" fill="white" opacity="0.9" />
-              <circle cx="20" cy="20" r="3" fill="white" />
-            </svg>
-          </div>
+          {logoUrl ? (
+            <div className="mb-4">
+              <Image
+                src={logoUrl}
+                alt={orgName || "Organisation logo"}
+                width={160}
+                height={80}
+                className="object-contain"
+                style={{ maxHeight: 80 }}
+                unoptimized
+              />
+            </div>
+          ) : (
+            <div className="w-20 h-20 rounded-2xl flex items-center justify-center mb-4 shadow-2xl"
+              style={{ background: "linear-gradient(135deg, var(--pink) 0%, var(--accent) 100%)" }}>
+              <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+                <circle cx="20" cy="20" r="14" stroke="white" strokeWidth="2.5" strokeDasharray="4 3" />
+                <circle cx="20" cy="20" r="7" fill="white" opacity="0.9" />
+                <circle cx="20" cy="20" r="3" fill="white" />
+              </svg>
+            </div>
+          )}
           <h1 className="text-3xl font-bold tracking-widest">
-            <span style={{ color: "var(--pink)" }}>COCO</span>
-            <span style={{ color: "var(--foreground)" }}>CORP</span>
+            {orgName
+              ? <span style={{ color: "var(--foreground)" }}>{orgName}</span>
+              : <><span style={{ color: "var(--pink)" }}>COCO</span><span style={{ color: "var(--foreground)" }}>CORP</span></>
+            }
           </h1>
           <p className="text-sm mt-1.5" style={{ color: "var(--muted2)" }}>
-            CRM Engine · Sign in to your workspace
+            Sign in to your workspace
           </p>
         </div>
 
@@ -51,21 +78,27 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <form action={login} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
-                style={{ color: "var(--muted2)" }}>Organisation</label>
-              <input name="org_name" placeholder="Your organisation name (optional)"
+                style={{ color: "var(--muted2)" }}>
+                Organisation <span style={{ color: "var(--red-c)" }}>*</span>
+              </label>
+              <input name="org_name" required placeholder="Your organisation name"
                 className="w-full px-4 py-2.5 rounded-xl border text-sm outline-none focus:ring-2 focus:ring-[var(--accent)] transition-all"
                 style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }} />
             </div>
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
-                style={{ color: "var(--muted2)" }}>Email</label>
+                style={{ color: "var(--muted2)" }}>
+                Email <span style={{ color: "var(--red-c)" }}>*</span>
+              </label>
               <input name="email" type="email" required placeholder="you@example.com"
                 className="w-full px-4 py-2.5 rounded-xl border text-sm outline-none focus:ring-2 focus:ring-[var(--accent)] transition-all"
                 style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }} />
             </div>
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
-                style={{ color: "var(--muted2)" }}>Password</label>
+                style={{ color: "var(--muted2)" }}>
+                Password <span style={{ color: "var(--red-c)" }}>*</span>
+              </label>
               <input name="password" type="password" required placeholder="••••••••"
                 className="w-full px-4 py-2.5 rounded-xl border text-sm outline-none focus:ring-2 focus:ring-[var(--accent)] transition-all"
                 style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }} />

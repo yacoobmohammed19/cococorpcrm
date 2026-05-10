@@ -5,6 +5,7 @@ import { CollapsibleSidebar } from "@/components/CollapsibleSidebar";
 import { BotNav } from "@/components/SideNav";
 import { FAB } from "@/components/FAB";
 import { ToastProvider } from "@/components/Toast";
+import { AiAssistant } from "@/components/AiAssistant";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createServerClient();
@@ -89,6 +90,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             statuses={statuses || []}
             costCategories={costCats || []}
           />
+          <AiAssistant />
 
           {/* Mobile bottom nav */}
           <nav className="md:hidden fixed bottom-0 left-0 right-0 flex border-t z-40"

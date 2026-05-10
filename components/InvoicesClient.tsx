@@ -192,7 +192,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
               <div className="flex items-end justify-between mb-3">
                 <div>
                   <p className="text-xs mb-0.5" style={{ color: "var(--muted2)" }}>Client</p>
-                  <p className="font-semibold text-sm">{cust?.name ?? `#${inv.customer_id}`}</p>
+                  <Link href={`/customers/${inv.customer_id}`} className="font-semibold text-sm hover:underline">{cust?.name ?? `#${inv.customer_id}`}</Link>
                 </div>
                 <div className="text-right">
                   <p className="text-xs mb-0.5" style={{ color: "var(--muted2)" }}>Amount</p>
@@ -248,7 +248,9 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
                   <tr key={inv.id} className="border-b hover:bg-[var(--card3)] transition-colors" style={{ borderColor: "var(--border)" }}>
                     <td className="px-3 py-2 whitespace-nowrap" style={{ color: "var(--muted2)" }}>{fdate(inv.transaction_date)}</td>
                     <td className="px-3 py-2 font-semibold whitespace-nowrap" style={{ color: "var(--accent)" }}>{inv.invoice_number || <span style={{ color: "var(--muted2)", fontStyle: "italic" }}>—</span>}</td>
-                    <td className="px-3 py-2 max-w-[130px] truncate font-medium">{cust?.name ?? `#${inv.customer_id}`}</td>
+                    <td className="px-3 py-2 max-w-[130px] truncate font-medium">
+                      <Link href={`/customers/${inv.customer_id}`} className="hover:underline">{cust?.name ?? `#${inv.customer_id}`}</Link>
+                    </td>
                     <td className="px-3 py-2 max-w-[150px] truncate" style={{ color: "var(--muted)" }}>{inv.description || "—"}</td>
                     <td className="px-3 py-2 whitespace-nowrap" style={{ color: inv.due_date && inv.status === "Pending" && new Date(inv.due_date) < new Date() ? "var(--red-c)" : "var(--muted2)" }}>{fdate(inv.due_date)}</td>
                     <td className="px-3 py-2 font-mono font-semibold whitespace-nowrap">{cur} {fmt(inv.amount)}</td>

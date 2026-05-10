@@ -8,13 +8,15 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const customerId = Number(id);
   const supabase = await createServerClient();
 
-  const [{ data: customer }, { data: invoices }, { data: org }] = await Promise.all([
+  const [{ data: customer }, { data: invoices }, { data: org }, { data: paymentTypes }, { data: products }] = await Promise.all([
     supabase.from("dim_customers").select("*").eq("id", customerId).single(),
     supabase.from("fact_invoices")
-      .select("id, invoice_number, amount, status, transaction_date, due_date")
+      .select("id, invoice_number, amount, status, transaction_date, due_date, description, payment_type_id, dim_payment_types(name)")
       .eq("customer_id", customerId).is("deleted_at", null)
       .order("transaction_date", { ascending: false }),
     supabase.from("organizations").select("currency").single(),
+    supabase.from("dim_payment_types").select("id, name").order("name"),
+    supabase.from("dim_products").select("id, name, unit_price, sku, is_active").is("deleted_at", null).order("name"),
   ]);
 
   // Derive products purchased from invoice lines (graceful — column may not exist yet)
@@ -92,7 +94,12 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
       <CustomerDetailClient
         customer={customer}
-        invoices={allInvoices.map(i => ({ ...i, amount: Number(i.amount) }))}
+        invoices={allInvoices.map(i => ({
+          ...i,
+          amount: Number(i.amount),
+          description: (i as Record<string, unknown>).description as string | null ?? null,
+          payment_type_name: (i.dim_payment_types as unknown as { name: string } | null)?.name ?? null,
+        }))}
         contacts={contacts}
         activities={activities}
         currency={cur}

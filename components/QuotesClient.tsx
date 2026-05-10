@@ -190,6 +190,9 @@ export function QuotesClient({ quotes, customers, products, currency }: {
                             → Invoice
                           </button>
                         )}
+                        <a href={`/quotes/${q.id}/print`} target="_blank"
+                          className="px-2 py-1 rounded text-xs flex items-center"
+                          style={{ border: "1px solid var(--border)", background: "var(--card)", color: "var(--foreground)", textDecoration: "none" }}>🖨️</a>
                         <button onClick={() => handleDelete(q.id)}
                           className="px-2 py-1 rounded text-xs"
                           style={{ border: "1px solid var(--border)", background: "var(--card)" }}>🗑️</button>

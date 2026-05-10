@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { LucideIcon, LayoutDashboard, Target, Users, FileText, Package, Receipt, CalendarDays, TrendingDown, Megaphone, BookOpen, BarChart2, Settings, X, AlignJustify } from "lucide-react";
+import { LucideIcon, LayoutDashboard, Target, Users, FileText, Package, Receipt, CalendarDays, TrendingDown, Megaphone, BookOpen, BarChart2, Settings, X, AlignJustify, Sparkles } from "lucide-react";
 
 type NavItem = { href: string; label: string; Icon: LucideIcon; group: string };
 
@@ -20,6 +20,7 @@ const sideNav: NavItem[] = [
   { href: "/accounting",  label: "Accounting",  Icon: BookOpen,        group: "Analytics"  },
   { href: "/performance", label: "Snapshots",   Icon: BarChart2,       group: "Analytics"  },
   { href: "/settings",    label: "Settings",    Icon: Settings,        group: "Config"     },
+  { href: "/chat",        label: "Coco AI",     Icon: Sparkles,        group: "Config"     },
 ];
 
 const groups = ["Overview", "CRM", "Catalog", "Finance", "Marketing", "Analytics", "Config"];
@@ -88,9 +89,9 @@ export function SideNav({ collapsed = false }: { collapsed?: boolean }) {
 
 const botNav = [
   { href: "/dashboard", label: "Home",     Icon: LayoutDashboard },
-  { href: "/leads",     label: "Leads",    Icon: Target           },
   { href: "/invoices",  label: "Invoices", Icon: Receipt          },
   { href: "/customers", label: "Clients",  Icon: Users            },
+  { href: "/chat",      label: "Coco AI",  Icon: Sparkles         },
 ];
 
 const moreNav = [
@@ -102,6 +103,7 @@ const moreNav = [
   { href: "/accounting",   label: "Accounting",  Icon: BookOpen     },
   { href: "/performance",  label: "Snapshots",   Icon: BarChart2    },
   { href: "/settings",     label: "Settings",    Icon: Settings     },
+  { href: "/leads",        label: "Leads",       Icon: Target       },
 ];
 
 export function BotNav() {

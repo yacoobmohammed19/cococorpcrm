@@ -13,7 +13,6 @@ interface Customer {
 interface Org {
   name?: string | null;
   reg_no?: string | null;
-  vat_no?: string | null;
   address?: string | null;
   phone?: string | null;
   email?: string | null;
@@ -24,30 +23,29 @@ interface Org {
   currency?: string | null;
   logo_url?: string | null;
 }
-interface InvLine {
+interface QuoteLine {
   description: string;
   quantity: number;
   unit_price: number;
   position: number;
   dim_products: { name: string } | null;
 }
-interface Invoice {
+interface Quote {
   id: number;
-  invoice_number?: string | null;
-  transaction_date: string;
-  due_date?: string | null;
-  amount: number;
+  quote_number: string;
+  customer_id: number;
   status: string;
-  description?: string | null;
-  reference?: string | null;
+  amount: number;
+  valid_until: string | null;
+  notes: string | null;
+  created_at: string;
   dim_customers: Customer | null;
-  dim_payment_types: { name?: string } | null;
 }
 
 interface Props {
-  invoice: Invoice;
+  quote: Quote;
   org: Org | null;
-  lines: InvLine[];
+  lines: QuoteLine[];
 }
 
 interface Row { desc: string; qty: number; rate: number; }
@@ -85,8 +83,8 @@ function Field({ value, onChange, placeholder }: { value: string; onChange: (v: 
   );
 }
 
-export function InvoicePrintClient({ invoice, org, lines }: Props) {
-  const customer = invoice.dim_customers as Customer | null;
+export function QuotePrintClient({ quote, org, lines }: Props) {
+  const customer = quote.dim_customers as Customer | null;
   const cur = org?.currency && org.currency !== "ZAR" ? org.currency : "R";
 
   const seedRows = (): Row[] => {
@@ -101,16 +99,17 @@ export function InvoicePrintClient({ invoice, org, lines }: Props) {
         rate: l.unit_price,
       }));
     }
-    const amtIncl = Number(invoice.amount) || 0;
-    return [{ desc: invoice.description || "Service", qty: 1, rate: +(amtIncl / 1.15).toFixed(2) }];
+    const amtIncl = Number(quote.amount) || 0;
+    return [{ desc: quote.notes || "Service", qty: 1, rate: +(amtIncl / 1.15).toFixed(2) }];
   };
 
   const [vatEnabled, setVatEnabled] = useState(true);
   const [vatRate, setVatRate] = useState(15);
   const [rows, setRows] = useState<Row[]>(seedRows);
 
-  const [invNumber, setInvNumber] = useState(invoice.invoice_number || `INV-${invoice.id}`);
-  const [invDate, setInvDate] = useState(fdate(invoice.transaction_date));
+  const [quoteNumber, setQuoteNumber] = useState(quote.quote_number);
+  const [quoteDate, setQuoteDate] = useState(fdate(quote.created_at));
+  const [validUntil, setValidUntil] = useState(fdate(quote.valid_until));
   const [custName, setCustName] = useState(customer?.name || "");
   const [contactName, setContactName] = useState(customer?.contact_person || "");
   const [contactPhone, setContactPhone] = useState(customer?.phone || "");
@@ -124,7 +123,6 @@ export function InvoicePrintClient({ invoice, org, lines }: Props) {
   const [bankName, setBankName] = useState(org?.bank_name || "");
   const [bankAccount, setBankAccount] = useState(org?.bank_account || "");
   const [bankBranch, setBankBranch] = useState(org?.bank_branch || "");
-  const [payRef, setPayRef] = useState(invoice.reference || "");
 
   const updateRow = (i: number, key: keyof Row, val: string | number) => {
     setRows(prev => prev.map((r, idx) => idx === i ? { ...r, [key]: val } : r));
@@ -160,7 +158,7 @@ export function InvoicePrintClient({ invoice, org, lines }: Props) {
 
       {/* Toolbar */}
       <div className="inv-toolbar" style={{ background: "#1a1a2e", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <span style={{ color: "#c4c0e0", fontSize: 13, fontWeight: 600 }}>🧾 Invoice Preview</span>
+        <span style={{ color: "#c4c0e0", fontSize: 13, fontWeight: 600 }}>📋 Quote Preview</span>
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={() => setRows(r => [...r, { desc: "", qty: 1, rate: 0 }])}
             style={{ padding: "7px 14px", borderRadius: 6, border: "1px solid #3d3878", background: "#171535", color: "#f0f0fc", fontSize: 12, cursor: "pointer" }}>
@@ -195,22 +193,26 @@ export function InvoicePrintClient({ invoice, org, lines }: Props) {
         </div>
 
         {/* Heading */}
-        <h1 style={{ fontSize: 26, fontWeight: 700, color: "#111", marginBottom: 28 }}>Invoice</h1>
+        <h1 style={{ fontSize: 26, fontWeight: 700, color: "#111", marginBottom: 28 }}>Quote</h1>
 
         {/* Two-column info grid */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 36 }}>
-          {/* Left: Invoice # and Date */}
+          {/* Left: Quote # and Date */}
           <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse", color: "#333", tableLayout: "fixed" }}>
             <colgroup><col style={{ width: 130 }} /><col /></colgroup>
             <tbody>
-              <tr><td style={tdLabel}>Invoice</td><td style={tdValue}></td></tr>
+              <tr><td style={tdLabel}>Quote</td><td style={tdValue}></td></tr>
               <tr>
-                <td style={tdLabel}>Invoice Number</td>
-                <td style={tdValue}><Field value={invNumber} onChange={setInvNumber} placeholder="INV-001" /></td>
+                <td style={tdLabel}>Quote Number</td>
+                <td style={tdValue}><Field value={quoteNumber} onChange={setQuoteNumber} placeholder="QUO-001" /></td>
               </tr>
               <tr>
-                <td style={tdLabel}>Invoice Date</td>
-                <td style={tdValue}><Field value={invDate} onChange={setInvDate} placeholder="YYYY.MM.DD" /></td>
+                <td style={tdLabel}>Quote Date</td>
+                <td style={tdValue}><Field value={quoteDate} onChange={setQuoteDate} placeholder="YYYY.MM.DD" /></td>
+              </tr>
+              <tr>
+                <td style={tdLabel}>Valid Until</td>
+                <td style={tdValue}><Field value={validUntil} onChange={setValidUntil} placeholder="YYYY.MM.DD" /></td>
               </tr>
             </tbody>
           </table>
@@ -350,7 +352,6 @@ export function InvoicePrintClient({ invoice, org, lines }: Props) {
                     ["Bank", bankName, setBankName, "Bank name"],
                     ["Account Number", bankAccount, setBankAccount, "Account number"],
                     ["Branch Code", bankBranch, setBankBranch, "Branch code"],
-                    ["Reference", payRef, setPayRef, "Payment reference"],
                   ] as [string, string, (v: string) => void, string][]).map(([l, v, set, ph]) => (
                     <tr key={l}>
                       <td style={{ fontWeight: 700, color: "#111", padding: "3px 8px 3px 0", verticalAlign: "top" }}>{l}</td>
@@ -365,7 +366,7 @@ export function InvoicePrintClient({ invoice, org, lines }: Props) {
 
         {/* Footer */}
         <div style={{ textAlign: "center", marginTop: 36, fontSize: 12, color: "#777", paddingTop: 16, borderTop: "1px solid #eee" }}>
-          Thank you for your support!
+          Thank you for your business!
         </div>
       </div>
     </>

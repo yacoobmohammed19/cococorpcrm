@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import { useToast } from "@/components/Toast";
 import { createClient } from "@/lib/supabase/client";
-import { updateLogoUrl, updateFeatureFlags } from "@/server-actions/settings";
+import { updateLogoUrl, updateFeatureFlags, updateAiSystemPrompt } from "@/server-actions/settings";
 
 type FeatureFlags = {
   leads?: boolean;
@@ -23,10 +23,25 @@ const FEATURE_DEFS: { key: keyof FeatureFlags; label: string; desc: string }[] =
   { key: "content_engine", label: "Content Engine", desc: "Post templates and social content tools" },
 ];
 
+const DEFAULT_PROMPT = `You are Coco, a smart AI assistant built into CocoCRM. You help users manage their business through natural conversation.
+
+You can:
+- Search and manage customers
+- Create and update invoices
+- Log activities (calls, emails, meetings)
+- Create leads
+- Show stats and summaries
+
+Guidelines:
+- Be concise and friendly. Confirm actions after completing them.
+- When creating invoices or customers, confirm key details in your response.
+- Format amounts as currency (e.g. R 5,000).
+- If you need a customer ID but only have a name, use search_customers first.`;
+
 export function SettingsExtras({
-  orgId, logoUrl, featureFlags,
+  orgId, logoUrl, featureFlags, aiSystemPrompt,
 }: {
-  orgId: string; logoUrl: string | null; featureFlags: FeatureFlags;
+  orgId: string; logoUrl: string | null; featureFlags: FeatureFlags; aiSystemPrompt?: string | null;
 }) {
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -38,6 +53,8 @@ export function SettingsExtras({
     ...featureFlags,
   });
   const [flagsBusy, setFlagsBusy] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState(aiSystemPrompt || DEFAULT_PROMPT);
+  const [aiPromptBusy, setAiPromptBusy] = useState(false);
 
   async function handleLogoUpload(file: File) {
     setUploading(true);
@@ -67,6 +84,13 @@ export function SettingsExtras({
     try { await updateFeatureFlags(flags); toast.success("Feature settings saved"); }
     catch { toast.error("Failed to save"); }
     finally { setFlagsBusy(false); }
+  }
+
+  async function saveAiPrompt() {
+    setAiPromptBusy(true);
+    try { await updateAiSystemPrompt(aiPrompt); toast.success("AI prompt saved"); }
+    catch { toast.error("Failed to save prompt"); }
+    finally { setAiPromptBusy(false); }
   }
 
   return (
@@ -103,6 +127,38 @@ export function SettingsExtras({
               className="px-4 py-2 text-sm font-semibold rounded"
               style={{ background: "var(--accent)", color: "#fff", opacity: uploading ? .6 : 1 }}>
               {uploading ? "Uploading…" : preview ? "Replace Logo" : "Upload Logo"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* AI Assistant */}
+      <div className="rounded-lg overflow-hidden mb-6" style={{ border: "1px solid var(--border)" }}>
+        <div className="px-4 py-3 border-b" style={{ borderColor: "var(--border)", background: "var(--card2)" }}>
+          <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Coco AI — System Prompt</h2>
+        </div>
+        <div className="p-4 space-y-3" style={{ background: "var(--card2)" }}>
+          <p className="text-xs" style={{ color: "var(--muted2)" }}>
+            This prompt defines how Coco behaves. Customise it to match your business tone, terminology, or give Coco extra context about your company.
+          </p>
+          <textarea
+            value={aiPrompt}
+            onChange={e => setAiPrompt(e.target.value)}
+            rows={10}
+            className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none focus:ring-1 focus:ring-[var(--accent)] resize-y font-mono"
+            style={{ background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)", lineHeight: 1.6 }}
+          />
+          <div className="flex gap-3 justify-between items-center">
+            <button
+              onClick={() => setAiPrompt(DEFAULT_PROMPT)}
+              className="text-xs px-3 py-1.5 rounded border"
+              style={{ borderColor: "var(--border)", color: "var(--muted2)" }}>
+              Reset to default
+            </button>
+            <button onClick={saveAiPrompt} disabled={aiPromptBusy}
+              className="px-5 py-2 text-sm font-semibold rounded"
+              style={{ background: "var(--accent)", color: "#fff", opacity: aiPromptBusy ? .6 : 1 }}>
+              {aiPromptBusy ? "Saving…" : "Save Prompt"}
             </button>
           </div>
         </div>

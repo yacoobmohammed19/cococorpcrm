@@ -12,7 +12,7 @@ import { updateInvoiceStatus } from "@/server-actions/invoices";
 import { createContact, updateContact, deleteContact } from "@/server-actions/contacts";
 import { createActivity, toggleActivity, deleteActivity } from "@/server-actions/activities";
 
-type Invoice = { id: number; invoice_number: string | null; amount: number; status: string; transaction_date: string | null; due_date: string | null };
+type Invoice = { id: number; invoice_number: string | null; amount: number; status: string; transaction_date: string | null; due_date: string | null; description?: string | null; payment_type_name?: string | null };
 type Contact = { id: number; name: string; email: string | null; phone: string | null; role: string | null; is_primary: boolean };
 type Activity = { id: number; type: string; subject: string; notes: string | null; due_date: string | null; done: boolean; created_at: string };
 type Customer = { id: number; name: string; email: string | null; phone: string | null; contact_person: string | null; source: string | null; notes: string | null };
@@ -147,29 +147,36 @@ export function CustomerDetailClient({ customer, invoices, contacts, activities,
             <div className="overflow-x-auto"><table className="w-full text-xs border-collapse" style={{ background: "var(--card2)" }}>
               <thead>
                 <tr style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
-                  {["Date", "Invoice #", "Amount", "Due", "Status"].map(h => (
-                    <th key={h} className="px-3 py-2.5 text-left font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>{h}</th>
+                  {["Date", "Invoice #", "Description", "Amount", "Due", "Pay Type", "Status", ""].map(h => (
+                    <th key={h} className="px-3 py-2.5 text-left font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: "var(--muted2)" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {invoices.map(inv => {
                   const col = STATUS_COLORS[inv.status] || "var(--muted2)";
+                  const isOverdue = inv.due_date && inv.status === "Pending" && new Date(inv.due_date) < new Date();
                   return (
                     <tr key={inv.id} className="border-b hover:bg-[var(--card3)] cursor-pointer" style={{ borderColor: "var(--border)" }}
                       onClick={() => setInvModal({ open: true, invoice: inv, status: inv.status })}>
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: "var(--muted2)" }}>{fdate(inv.transaction_date)}</td>
-                      <td className="px-3 py-2 font-semibold" style={{ color: "var(--accent)" }}
-                        onClick={e => e.stopPropagation()}>
-                        <Link href={`/invoices/${inv.id}/print`} target="_blank">{inv.invoice_number || `#${inv.id}`}</Link>
-                      </td>
-                      <td className="px-3 py-2 font-mono font-semibold">{currency} {fmt(inv.amount)}</td>
-                      <td className="px-3 py-2 whitespace-nowrap" style={{ color: inv.due_date && inv.status === "Pending" && new Date(inv.due_date) < new Date() ? "var(--red-c)" : "var(--muted2)" }}>{fdate(inv.due_date)}</td>
+                      <td className="px-3 py-2 font-semibold whitespace-nowrap" style={{ color: "var(--accent)" }}>{inv.invoice_number || `#${inv.id}`}</td>
+                      <td className="px-3 py-2 max-w-[160px] truncate" style={{ color: "var(--muted)" }}>{inv.description || "—"}</td>
+                      <td className="px-3 py-2 font-mono font-semibold whitespace-nowrap">{currency} {fmt(inv.amount)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap" style={{ color: isOverdue ? "var(--red-c)" : "var(--muted2)" }}>{fdate(inv.due_date)}{isOverdue ? " ⚠" : ""}</td>
+                      <td className="px-3 py-2 whitespace-nowrap" style={{ color: "var(--muted2)" }}>{inv.payment_type_name || "—"}</td>
                       <td className="px-3 py-2"><span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: col + "22", color: col }}>{inv.status}</span></td>
+                      <td className="px-3 py-2 whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                        <Link href={`/invoices/${inv.id}/print`} target="_blank"
+                          className="px-2 py-1 rounded text-xs font-semibold"
+                          style={{ background: "var(--card3)", color: "var(--muted2)", border: "1px solid var(--border)" }}>
+                          🖨️
+                        </Link>
+                      </td>
                     </tr>
                   );
                 })}
-                {invoices.length === 0 && <tr><td colSpan={5} className="px-3 py-6 text-center" style={{ color: "var(--muted2)" }}>No invoices yet</td></tr>}
+                {invoices.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center" style={{ color: "var(--muted2)" }}>No invoices yet</td></tr>}
               </tbody>
             </table></div>
           </div>

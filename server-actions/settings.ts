@@ -163,6 +163,18 @@ export async function updateAccount(id: number, formData: FormData) {
   revalidatePath("/settings");
 }
 
+export async function updateAiSystemPrompt(prompt: string) {
+  const orgId = await getCurrentOrgId();
+  const supabase = await createServerClient();
+  const { data: org } = await supabase.from("organizations").select("feature_flags").eq("id", orgId).single();
+  const existing = (org?.feature_flags as Record<string, unknown>) ?? {};
+  const { error } = await supabase.from("organizations")
+    .update({ feature_flags: { ...existing, ai_system_prompt: prompt || null } })
+    .eq("id", orgId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/settings");
+}
+
 export async function seedDefaults() {
   const orgId = await getCurrentOrgId();
   const supabase = await createServerClient();
