@@ -32,18 +32,22 @@ export function SideNav({ collapsed = false }: { collapsed?: boolean }) {
       className="flex-1 overflow-y-auto"
       style={{ padding: collapsed ? "0.5rem 0.375rem" : "0.75rem 0.5rem" }}
     >
-      {groups.map(group => {
+      {groups.map((group, gi) => {
         const items = sideNav.filter(n => n.group === group);
         if (!items.length) return null;
         return (
-          <div key={group} className={collapsed ? "mb-2" : "mb-3"}>
+          <div key={group} className={collapsed ? "mb-2" : "mb-4"}>
             {!collapsed && (
-              <p
-                className="text-[10px] font-semibold uppercase tracking-widest mb-1 px-3"
-                style={{ color: "var(--sidebar-label)" }}
-              >
-                {group}
-              </p>
+              <div className="flex items-center gap-2 mb-1.5 px-3">
+                {gi > 0 && <div className="flex-1 h-px" style={{ background: "var(--sidebar-border)" }} />}
+                <p
+                  className="text-[9px] font-bold uppercase tracking-[0.12em] shrink-0"
+                  style={{ color: "var(--sidebar-label)" }}
+                >
+                  {group}
+                </p>
+                <div className="flex-1 h-px" style={{ background: "var(--sidebar-border)" }} />
+              </div>
             )}
             {items.map(item => {
               const isActive =
@@ -53,18 +57,27 @@ export function SideNav({ collapsed = false }: { collapsed?: boolean }) {
                   key={item.href}
                   href={item.href}
                   title={collapsed ? item.label : undefined}
-                  className="relative flex items-center gap-2.5 rounded-md text-[13px] font-medium transition-colors mb-0.5 hover:bg-white/[0.06]"
+                  className="relative flex items-center gap-2.5 rounded-lg text-[13px] font-medium mb-0.5"
                   style={{
-                    padding: collapsed ? "0.625rem" : "0.5rem 0.75rem",
+                    padding: collapsed ? "0.6rem" : "0.45rem 0.75rem",
                     justifyContent: collapsed ? "center" : undefined,
-                    background: isActive ? "var(--sidebar-active)" : undefined,
+                    background: isActive ? "var(--sidebar-active)" : "transparent",
                     color: isActive ? "var(--sidebar-fg-active)" : "var(--sidebar-fg)",
+                    boxShadow: isActive && !collapsed ? "inset 0 0 0 1px rgba(16,185,129,0.2)" : undefined,
                   }}
+                  onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "var(--sidebar-hover)"; }}
+                  onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                 >
                   {isActive && !collapsed && (
                     <span
-                      className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-0.5 rounded-full"
-                      style={{ background: "var(--sidebar-indicator)" }}
+                      className="absolute left-0 top-1/2 -translate-y-1/2 rounded-full"
+                      style={{ background: "var(--sidebar-indicator)", width: "3px", height: "18px", boxShadow: "0 0 8px var(--sidebar-indicator)" }}
+                    />
+                  )}
+                  {isActive && collapsed && (
+                    <span
+                      className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full"
+                      style={{ background: "var(--sidebar-indicator)", boxShadow: "0 0 6px var(--sidebar-indicator)" }}
                     />
                   )}
                   <item.Icon
@@ -72,6 +85,7 @@ export function SideNav({ collapsed = false }: { collapsed?: boolean }) {
                     className="shrink-0"
                     style={{
                       color: isActive ? "var(--sidebar-indicator)" : "var(--sidebar-fg)",
+                      filter: isActive ? "drop-shadow(0 0 4px rgba(16,185,129,0.5))" : undefined,
                     }}
                   />
                   {!collapsed && item.label}

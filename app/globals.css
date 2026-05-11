@@ -6,19 +6,19 @@
 /* ── Light mode (default) ── */
 :root {
   /* Page & surface hierarchy */
-  --background: #F8FAFC;
+  --background: #F4F6FB;
   --foreground: #0F172A;
   --card:       #FFFFFF;
-  --card2:      #F1F5F9;
-  --card3:      #E2E8F0;
+  --card2:      #F0F4FA;
+  --card3:      #E4EAF4;
 
   /* Text hierarchy */
   --muted:  #475569;
   --muted2: #94A3B8;
 
   /* Borders */
-  --border:  #E2E8F0;
-  --border2: #CBD5E1;
+  --border:  #DDE3EF;
+  --border2: #C8D2E4;
 
   /* Primary action — dark slate */
   --primary:       #0F172A;
@@ -29,6 +29,8 @@
   --accent:       #10B981;
   --accent-hover: #059669;
   --accent-fg:    #FFFFFF;
+  --accent-glow:  rgba(16, 185, 129, 0.18);
+  --accent-subtle: rgba(16, 185, 129, 0.08);
 
   /* Status / semantic colours (shared across modes) */
   --pink:     #E84393;
@@ -46,21 +48,21 @@
   --pink-bg:    #FDF2F8;
 
   /* Sidebar — always dark slate, independent of theme */
-  --sidebar-bg:        #0F172A;
-  --sidebar-border:    #1E293B;
-  --sidebar-fg:        #94A3B8;
-  --sidebar-fg-hover:  #CBD5E1;
+  --sidebar-bg:        #0D1117;
+  --sidebar-border:    #1C2333;
+  --sidebar-fg:        #8B95A8;
+  --sidebar-fg-hover:  #C9D1DC;
   --sidebar-fg-active: #FFFFFF;
-  --sidebar-label:     #475569;
-  --sidebar-hover:     rgba(255, 255, 255, 0.05);
-  --sidebar-active:    rgba(255, 255, 255, 0.08);
+  --sidebar-label:     #4A5568;
+  --sidebar-hover:     rgba(255, 255, 255, 0.04);
+  --sidebar-active:    rgba(16, 185, 129, 0.12);
   --sidebar-indicator: #10B981;
 
   /* Elevation */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow:    0 1px 3px rgba(0, 0, 0, 0.10), 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07), 0 2px 4px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.08), 0 4px 6px rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06);
+  --shadow:    0 2px 8px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 16px rgba(15, 23, 42, 0.10), 0 2px 4px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12), 0 4px 8px rgba(15, 23, 42, 0.06);
 
   /* Radius scale */
   --radius-sm:  4px;
@@ -73,44 +75,48 @@
 
 /* ── Dark mode ── */
 .dark {
-  --background: #0C0A1D;
-  --foreground: #F0F0FC;
-  --card:       #110F28;
-  --card2:      #171535;
-  --card3:      #1E1B45;
-  --muted:      #C4C0E0;
-  --muted2:     #8A84B0;
-  --border:     #2D2860;
-  --border2:    #3D3878;
+  --background: #09071A;
+  --foreground: #EEF0FC;
+  --card:       #0E0B24;
+  --card2:      #130F2D;
+  --card3:      #1A1640;
+  --muted:      #C0BBDF;
+  --muted2:     #7B74A8;
+  --border:     #231E54;
+  --border2:    #312A6A;
 
   /* Primary inverts in dark mode (light button on dark bg) */
   --primary:       #E2E8F0;
   --primary-hover: #F8FAFC;
   --primary-fg:    #0F172A;
 
+  /* Accent glow — more visible in dark */
+  --accent-glow:   rgba(16, 185, 129, 0.22);
+  --accent-subtle: rgba(16, 185, 129, 0.10);
+
   /* Status pill backgrounds — translucent tints */
-  --danger-bg:  rgba(239, 68, 68, 0.13);
-  --warning-bg: rgba(245, 158, 11, 0.13);
-  --success-bg: rgba(16, 185, 129, 0.13);
-  --info-bg:    rgba(6, 182, 212, 0.13);
-  --purple-bg:  rgba(139, 92, 246, 0.13);
-  --pink-bg:    rgba(232, 67, 147, 0.13);
+  --danger-bg:  rgba(239, 68, 68, 0.14);
+  --warning-bg: rgba(245, 158, 11, 0.14);
+  --success-bg: rgba(16, 185, 129, 0.14);
+  --info-bg:    rgba(6, 182, 212, 0.14);
+  --purple-bg:  rgba(139, 92, 246, 0.14);
+  --pink-bg:    rgba(232, 67, 147, 0.14);
 
   /* Sidebar blends with dark page bg */
-  --sidebar-bg:        #0C0A1D;
-  --sidebar-border:    #2D2860;
-  --sidebar-fg:        #8A84B0;
-  --sidebar-fg-hover:  #C4C0E0;
-  --sidebar-fg-active: #F0F0FC;
-  --sidebar-label:     #5C5880;
+  --sidebar-bg:        #070515;
+  --sidebar-border:    #1A1640;
+  --sidebar-fg:        #7B74A8;
+  --sidebar-fg-hover:  #C0BBDF;
+  --sidebar-fg-active: #EEF0FC;
+  --sidebar-label:     #4A4470;
   --sidebar-hover:     rgba(255, 255, 255, 0.04);
-  --sidebar-active:    rgba(255, 255, 255, 0.07);
+  --sidebar-active:    rgba(16, 185, 129, 0.14);
 
   /* Deeper shadows on dark surfaces */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30);
-  --shadow:    0 1px 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.28);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.25);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.40), 0 4px 6px rgba(0, 0, 0, 0.25);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.40);
+  --shadow:    0 2px 8px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.50), 0 2px 4px rgba(0, 0, 0, 0.30);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55), 0 4px 8px rgba(0, 0, 0, 0.30);
 }
 
 /* ── Tailwind colour utilities ── */
@@ -144,10 +150,22 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Smooth theme transitions */
+*, *::before, *::after {
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: 150ms;
+  transition-timing-function: ease;
+}
+/* Exclude layout/transform transitions from the global rule */
+a, button, [role="button"] {
+  transition-property: background-color, border-color, color, box-shadow, opacity, transform;
+}
+
 /* Scrollbar */
-::-webkit-scrollbar         { width: 5px; height: 5px; }
+::-webkit-scrollbar         { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track   { background: transparent; }
-::-webkit-scrollbar-thumb   { background: var(--border2); border-radius: 3px; }
+::-webkit-scrollbar-thumb   { background: var(--border2); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted2); }
 
 /* Select option theming */
 select option { background: var(--card); color: var(--foreground); }
@@ -171,7 +189,17 @@ textarea:user-invalid:focus {
   box-shadow: 0 0 0 1px var(--red-c);
 }
 
-/* Accessible focus ring */
+/* ── Density scale ── */
+:root[data-density="compact"] {
+  --density-p: 0.625rem;
+  --density-gap: 0.5rem;
+}
+:root[data-density="spacious"] {
+  --density-p: 1.25rem;
+  --density-gap: 1rem;
+}
+
+/* ── Accessible focus ring ── */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

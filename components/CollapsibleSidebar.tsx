@@ -54,28 +54,34 @@ export function CollapsibleSidebar({
     >
       {/* ── Logo ── */}
       <div
-        className="flex items-center shrink-0"
+        className="flex items-center gap-2.5 shrink-0"
         style={{
           borderBottom: "1px solid var(--sidebar-border)",
           height: "56px",
           padding: collapsed ? "0 0.75rem" : "0 1rem",
         }}
       >
-        {collapsed ? (
-          <span
-            className="text-lg font-black tracking-widest"
-            style={{ color: "var(--sidebar-indicator)" }}
-          >
-            C
-          </span>
-        ) : (
+        {/* Icon mark */}
+        <div
+          className="flex items-center justify-center shrink-0 rounded-lg text-sm font-black"
+          style={{
+            width: "28px", height: "28px",
+            background: "linear-gradient(135deg, #10B981 0%, #059669 100%)",
+            color: "#fff",
+            boxShadow: "0 0 12px rgba(16,185,129,0.4)",
+            letterSpacing: "-0.05em",
+          }}
+        >
+          C
+        </div>
+        {!collapsed && (
           <div>
-            <h1 className="text-base font-black tracking-widest leading-none">
+            <h1 className="text-sm font-black tracking-wider leading-none">
               <span style={{ color: "var(--sidebar-indicator)" }}>COCO</span>
               <span style={{ color: "var(--sidebar-fg-active)" }}>CORP</span>
             </h1>
-            <p className="text-[10px] mt-0.5" style={{ color: "var(--sidebar-label)" }}>
-              CRM Engine v2
+            <p className="text-[9px] mt-0.5 font-medium tracking-widest uppercase" style={{ color: "var(--sidebar-label)" }}>
+              CRM Platform
             </p>
           </div>
         )}
@@ -100,7 +106,7 @@ export function CollapsibleSidebar({
             <div className="flex items-center gap-2.5 min-w-0">
               <div
                 className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold"
-                style={{ background: "var(--sidebar-indicator)", color: "#fff" }}
+                style={{ background: "linear-gradient(135deg, #10B981 0%, #059669 100%)", color: "#fff", boxShadow: "0 0 8px rgba(16,185,129,0.35)" }}
               >
                 {initial}
               </div>

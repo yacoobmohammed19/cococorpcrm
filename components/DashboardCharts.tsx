@@ -94,20 +94,27 @@ function fmtCustomKpi(v: number, format: FormatType, cur: string): string {
 
 function KpiCard({ label, value, sub, color, onClick }: { label: string; value: string; sub?: string; color: string; onClick?: () => void }) {
   return (
-    <div className={`rounded-lg p-4 transition-all ${onClick ? "cursor-pointer hover:opacity-80" : ""}`}
-      style={{ background: "var(--card2)", border: "1px solid var(--border)" }}
-      onClick={onClick}>
-      <div className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>{label}</div>
-      <div className="text-xl font-bold font-mono truncate" style={{ color }}>{value}</div>
-      {sub && <div className="text-xs mt-1" style={{ color: "var(--muted2)" }}>{sub}</div>}
+    <div
+      className={`rounded-xl p-4 transition-all ${onClick ? "cursor-pointer hover:scale-[1.02] hover:shadow-md" : ""}`}
+      style={{
+        background: "var(--card)",
+        border: "1px solid var(--border)",
+        borderTop: `3px solid ${color}`,
+        boxShadow: "var(--shadow-sm)",
+      }}
+      onClick={onClick}
+    >
+      <div className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: "var(--muted2)" }}>{label}</div>
+      <div className="text-xl font-bold font-mono truncate leading-none" style={{ color }}>{value}</div>
+      {sub && <div className="text-[11px] mt-1.5" style={{ color: "var(--muted2)" }}>{sub}</div>}
     </div>
   );
 }
 
 function ChartBox({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg p-4" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
-      <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--muted2)" }}>{title}</h3>
+    <div className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}>
+      <h3 className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: "var(--muted2)" }}>{title}</h3>
       {children}
     </div>
   );
@@ -120,8 +127,8 @@ function Section({ id, title, children, order, totalSections, onMove, defaultOpe
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="mb-3">
-      <div className="flex items-center rounded-lg text-sm font-semibold"
-        style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
+      <div className="flex items-center rounded-xl text-sm font-semibold"
+        style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}>
         <button onClick={() => setOpen(!open)}
           className="flex-1 flex justify-between items-center px-4 py-3 text-left"
           style={{ color: "var(--muted)" }}>
