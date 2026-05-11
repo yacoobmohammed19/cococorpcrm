@@ -8,7 +8,7 @@ import { DateInput } from "@/components/ui/DateInput";
 import { useConfirm } from "@/hooks/useConfirm";
 import { runAction } from "@/lib/action-utils";
 import { updateCustomer } from "@/server-actions/customers";
-import { createInvoice, updateInvoice } from "@/server-actions/invoices";
+import { createInvoice, updateInvoice, deleteInvoice } from "@/server-actions/invoices";
 import { updateQuoteStatus, convertQuoteToInvoice } from "@/server-actions/quotes";
 import { createContact, updateContact, deleteContact } from "@/server-actions/contacts";
 import { createActivity, toggleActivity, deleteActivity } from "@/server-actions/activities";
@@ -199,11 +199,22 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: "var(--muted2)" }}>{inv.payment_type_name || "—"}</td>
                       <td className="px-3 py-2"><span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: col + "22", color: col }}>{inv.status}</span></td>
                       <td className="px-3 py-2 whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                        <Link href={`/invoices/${inv.id}/print`} target="_blank"
-                          className="px-2 py-1 rounded text-xs font-semibold"
-                          style={{ background: "var(--card3)", color: "var(--muted2)", border: "1px solid var(--border)" }}>
-                          🖨️
-                        </Link>
+                        <div className="flex items-center gap-1">
+                          <Link href={`/invoices/${inv.id}/print`} target="_blank"
+                            className="px-2 py-1 rounded text-xs font-semibold"
+                            style={{ background: "var(--card3)", color: "var(--muted2)", border: "1px solid var(--border)" }}>
+                            🖨️
+                          </Link>
+                          <button
+                            onClick={async () => {
+                              if (!await confirm(`Delete invoice ${inv.invoice_number || `#${inv.id}`}?`, "This invoice will be permanently deleted and cannot be undone.")) return;
+                              await runAction(() => deleteInvoice(inv.id), toast, "Invoice deleted");
+                            }}
+                            className="px-2 py-1 rounded text-xs font-semibold"
+                            style={{ background: "rgba(239,68,68,.1)", color: "var(--red-c)", border: "1px solid rgba(239,68,68,.2)" }}>
+                            🗑️
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
