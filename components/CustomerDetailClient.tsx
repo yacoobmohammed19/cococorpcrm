@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -8,7 +8,7 @@ import { DateInput } from "@/components/ui/DateInput";
 import { useConfirm } from "@/hooks/useConfirm";
 import { runAction } from "@/lib/action-utils";
 import { updateCustomer } from "@/server-actions/customers";
-import { createInvoice, updateInvoice, deleteInvoice, bulkUpdateInvoices, bulkDeleteInvoices } from "@/server-actions/invoices";
+import { createInvoice, updateInvoice, deleteInvoice, restoreInvoice, updateInvoiceStatus, bulkUpdateInvoices, bulkDeleteInvoices } from "@/server-actions/invoices";
 import { createSubscription, cancelSubscription } from "@/server-actions/subscriptions";
 import { updateQuoteStatus, convertQuoteToInvoice } from "@/server-actions/quotes";
 import { createContact, updateContact, deleteContact } from "@/server-actions/contacts";
@@ -106,6 +106,78 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
   const [subEnd, setSubEnd] = useState("");
   const [subAmount, setSubAmount] = useState(0);
   const [subProduct, setSubProduct] = useState<number | null>(null);
+  // AI
+  const [health, setHealth] = useState<{ score: string; reason: string } | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [newInvDesc, setNewInvDesc] = useState("");
+  const [descBusy, setDescBusy] = useState(false);
+  const healthFetched = useRef(false);
+
+  // Fetch health score once on mount
+  useEffect(() => {
+    if (healthFetched.current) return;
+    healthFetched.current = true;
+    const cacheKey = `crm_health_${customerId}`;
+    try {
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) { setHealth(JSON.parse(cached) as { score: string; reason: string }); return; }
+    } catch { /* ignore */ }
+    const now = Date.now();
+    const paidCount = invoices.filter(i => i.status === "Completed").length;
+    const pendingCount = invoices.filter(i => i.status === "Pending").length;
+    const overdueCount = invoices.filter(i => i.status === "Pending" && i.due_date && new Date(i.due_date).getTime() < now).length;
+    const lastAct = activities[0]?.created_at ?? null;
+    const lastActivityDays = lastAct ? Math.floor((now - new Date(lastAct).getTime()) / 86400000) : null;
+    const totalRevenue = invoices.filter(i => i.status === "Completed").reduce((s, i) => s + i.amount, 0);
+    const activeSubscriptions = subscriptions.filter(s => s.status === "active").length;
+
+    setHealthLoading(true);
+    fetch("/api/ai-insights", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "health",
+        data: { customerName: customer.name, totalInvoices: invoices.length, paidCount, pendingCount, overdueCount, lastActivityDays, activeSubscriptions, currency, totalRevenue },
+      }),
+    })
+      .then(r => r.json())
+      .then((j: { result?: string; error?: string }) => {
+        if (j.result) {
+          try {
+            const parsed = JSON.parse(j.result) as { score: string; reason: string };
+            setHealth(parsed);
+            try { sessionStorage.setItem(cacheKey, JSON.stringify(parsed)); } catch { /* ignore */ }
+          } catch { /* malformed JSON from AI */ }
+        }
+      })
+      .catch(() => { /* silent */ })
+      .finally(() => setHealthLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const HEALTH_COLORS: Record<string, string> = {
+    Healthy: "var(--accent)",
+    "At Risk": "var(--amber-c)",
+    Churned: "var(--red-c)",
+  };
+
+  async function generateInvDesc() {
+    const lineTotal = newInvLines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
+    setDescBusy(true);
+    try {
+      const res = await fetch("/api/ai-insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "description",
+          data: { customerName: customer.name, lines: newInvLines, totalAmount: lineTotal, currency },
+        }),
+      });
+      const j = await res.json() as { result?: string };
+      if (j.result) setNewInvDesc(j.result);
+    } catch { /* silent */ }
+    finally { setDescBusy(false); }
+  }
 
   return (
     <div>
@@ -129,6 +201,20 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
       {/* INFO TAB */}
       {tab === "Info" && (
         <div className="rounded-lg p-5 space-y-4" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
+          {/* Health Score Badge */}
+          {(health || healthLoading) && (
+            <div className="flex items-center gap-3 mb-4 px-3 py-2 rounded-lg" style={{ background: "var(--card3)", border: "1px solid var(--border)" }}>
+              <span style={{ fontSize: 14 }}>✨</span>
+              {healthLoading && <span className="text-xs" style={{ color: "var(--muted2)" }}>Analysing customer health…</span>}
+              {health && (
+                <>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: HEALTH_COLORS[health.score] + "22", color: HEALTH_COLORS[health.score] }}>{health.score}</span>
+                  <span className="text-xs" style={{ color: "var(--muted2)" }}>{health.reason}</span>
+                </>
+              )}
+            </div>
+          )}
+
           {!editInfo ? (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
@@ -202,7 +288,7 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
         <div className="space-y-2">
           <div className="flex justify-between items-center mb-3">
             <span className="text-sm font-semibold">{invoices.length} invoice{invoices.length !== 1 ? "s" : ""}</span>
-            <button onClick={() => { setNewInvTxDate(new Date().toISOString().slice(0, 10)); setNewInvDueDate(""); setNewInvLines([{ description: "", quantity: 1, unit_price: 0, product_id: null }]); setNewInvModal(true); }}
+            <button onClick={() => { setNewInvTxDate(new Date().toISOString().slice(0, 10)); setNewInvDueDate(""); setNewInvLines([{ description: "", quantity: 1, unit_price: 0, product_id: null }]); setNewInvDesc(""); setNewInvModal(true); }}
               className="text-xs px-3 py-1.5 rounded font-semibold"
               style={{ background: "var(--accent)", color: "#fff" }}>
               + New Invoice
@@ -236,10 +322,14 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
                     const updates: { status?: string; payment_type_id?: number | null } = {};
                     if (bulkStatus) updates.status = bulkStatus;
                     if (bulkPayType) updates.payment_type_id = bulkPayType === "none" ? null : Number(bulkPayType);
-                    if (Object.keys(updates).length > 0) {
-                      await bulkUpdateInvoices(Array.from(selectedInvIds), updates);
-                      toast.success(`Updated ${selectedInvIds.size} invoice${selectedInvIds.size > 1 ? "s" : ""}`);
-                    }
+                    if (Object.keys(updates).length === 0) return;
+                    const ids = Array.from(selectedInvIds);
+                    const oldStatuses = ids.map(id => ({ id, status: invoices.find(i => i.id === id)?.status }));
+                    await bulkUpdateInvoices(ids, updates);
+                    const n = ids.length;
+                    toast.undoable(`Updated ${n} invoice${n > 1 ? "s" : ""}`, async () => {
+                      if (updates.status) await Promise.all(oldStatuses.map(s => s.status ? updateInvoiceStatus(s.id, s.status) : Promise.resolve()));
+                    });
                     setSelectedInvIds(new Set()); setBulkStatus(""); setBulkPayType("");
                   } catch { toast.error("Bulk update failed"); }
                   finally { setBulkBusy(false); }
@@ -250,10 +340,16 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
               </button>
               <button disabled={bulkBusy}
                 onClick={async () => {
-                  if (!await confirm(`Delete ${selectedInvIds.size} invoices?`, "These invoices will be permanently archived.")) return;
+                  if (!await confirm(`Delete ${selectedInvIds.size} invoices?`, "These invoices will be archived.")) return;
                   setBulkBusy(true);
-                  try { await bulkDeleteInvoices(Array.from(selectedInvIds)); toast.success("Archived"); setSelectedInvIds(new Set()); }
-                  catch { toast.error("Failed"); }
+                  const ids = Array.from(selectedInvIds);
+                  try {
+                    await bulkDeleteInvoices(ids);
+                    toast.undoable(`Archived ${ids.length} invoice${ids.length > 1 ? "s" : ""}`, async () => {
+                      await Promise.all(ids.map(id => restoreInvoice(id)));
+                    });
+                    setSelectedInvIds(new Set());
+                  } catch { toast.error("Failed"); }
                   finally { setBulkBusy(false); }
                 }}
                 className="px-3 py-1 rounded text-xs font-bold"
@@ -316,8 +412,11 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
                           </Link>
                           <button
                             onClick={async () => {
-                              if (!await confirm(`Delete ${inv.invoice_number || `#${inv.id}`}?`, "This invoice will be permanently archived.")) return;
-                              await runAction(() => deleteInvoice(inv.id), toast, "Invoice deleted");
+                              if (!await confirm(`Delete ${inv.invoice_number || `#${inv.id}`}?`, "This invoice will be archived.")) return;
+                              try {
+                                await deleteInvoice(inv.id);
+                                toast.undoable("Invoice archived", () => restoreInvoice(inv.id));
+                              } catch { toast.error("Failed to delete invoice"); }
                             }}
                             className="px-2 py-1 rounded text-xs font-semibold"
                             style={{ background: "rgba(239,68,68,.1)", color: "var(--red-c)", border: "1px solid rgba(239,68,68,.2)" }}>
@@ -835,8 +934,15 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Description</label>
-                    <input name="description" className={inp} style={inpS} placeholder="Optional note" />
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Description</label>
+                      <button type="button" onClick={generateInvDesc} disabled={descBusy}
+                        className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded transition-opacity hover:opacity-80"
+                        style={{ background: "rgba(16,185,129,.12)", color: "var(--accent)", border: "1px solid var(--accent)", opacity: descBusy ? 0.5 : 1 }}>
+                        {descBusy ? "…" : "✨ Generate"}
+                      </button>
+                    </div>
+                    <input name="description" value={newInvDesc} onChange={e => setNewInvDesc(e.target.value)} className={inp} style={inpS} placeholder="Optional note" />
                   </div>
                 </div>
                 {/* Line Items */}

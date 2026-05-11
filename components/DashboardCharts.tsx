@@ -150,6 +150,90 @@ function Section({ id, title, children, order, totalSections, onMove, defaultOpe
   );
 }
 
+// ── AI Insight Card ───────────────────────────────────────────────────────────
+
+type InsightData = {
+  revenue: number; opex: number; profit: number; margin: number; pending: number;
+  overdueCount: number; overdueAmount: number; staleLeads: number; totalLeads: number; wonLeads: number; cur: string;
+};
+
+function AiInsightCard({ data }: { data: InsightData }) {
+  const [text, setText] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fetched = useRef(false);
+
+  const fetchInsight = useCallback(async (force = false) => {
+    const cacheKey = "crm_dash_insight_v2";
+    if (!force) {
+      try {
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) { setText(cached); return; }
+      } catch { /* ignore */ }
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/ai-insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "dashboard",
+          data: { revenue: data.revenue, opex: data.opex, profit: data.profit, margin: data.margin, pending: data.pending, overdueCount: data.overdueCount, overdueAmount: data.overdueAmount, staleLeads: data.staleLeads, totalLeads: data.totalLeads, wonLeads: data.wonLeads, currency: data.cur },
+        }),
+      });
+      const json = await res.json() as { result?: string; error?: string };
+      if (json.result) {
+        setText(json.result);
+        try { sessionStorage.setItem(cacheKey, json.result); } catch { /* ignore */ }
+      } else {
+        setError(json.error || "Could not generate insight");
+      }
+    } catch {
+      setError("Could not reach AI service");
+    } finally {
+      setLoading(false);
+    }
+  }, [data.revenue, data.opex, data.profit, data.margin, data.pending, data.overdueCount, data.overdueAmount, data.staleLeads, data.totalLeads, data.wonLeads, data.cur]);
+
+  useEffect(() => {
+    if (!fetched.current) { fetched.current = true; fetchInsight(); }
+  }, [fetchInsight]);
+
+  return (
+    <div className="rounded-xl p-4 mb-3" style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)", borderLeft: "3px solid var(--accent)" }}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <span style={{ fontSize: 14 }}>✨</span>
+          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--accent)" }}>AI Business Insight</span>
+        </div>
+        <button
+          onClick={() => fetchInsight(true)}
+          disabled={loading}
+          title="Refresh insight"
+          className="text-xs px-2 py-0.5 rounded transition-opacity hover:opacity-80"
+          style={{ color: "var(--muted2)", border: "1px solid var(--border)", background: "var(--card3)", opacity: loading ? 0.5 : 1 }}
+        >
+          {loading ? "…" : "↻ Refresh"}
+        </button>
+      </div>
+      {loading && (
+        <div className="space-y-1.5">
+          {[100, 85, 60].map(w => (
+            <div key={w} className="h-3.5 rounded animate-pulse" style={{ background: "var(--card3)", width: `${w}%` }} />
+          ))}
+        </div>
+      )}
+      {!loading && text && (
+        <p className="text-sm leading-relaxed" style={{ color: "var(--foreground)" }}>{text}</p>
+      )}
+      {!loading && error && (
+        <p className="text-xs" style={{ color: "var(--red-c)" }}>{error}</p>
+      )}
+    </div>
+  );
+}
+
 // ── Filter Bar ────────────────────────────────────────────────────────────────
 
 type Filters = {
@@ -808,6 +892,17 @@ export function DashboardCharts({
               style={{ background: "rgba(232,67,147,.1)", color: "var(--pink)", border: "1px solid var(--pink)" }}>
               + Add Metric
             </button>
+            <div className="mt-3">
+              <AiInsightCard data={{
+                revenue: metrics.revenue, opex: metrics.opex, profit: metrics.profit,
+                margin: metrics.margin_pct, pending: metrics.pending,
+                overdueCount: overdueInvoices.length,
+                overdueAmount: overdueInvoices.reduce((s, i) => s + i.amount, 0),
+                staleLeads: staleLeads.length,
+                totalLeads: metrics.total_leads, wonLeads: metrics.won_leads,
+                cur,
+              }} />
+            </div>
           </Section>
         );
 

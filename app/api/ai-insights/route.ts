@@ -1,0 +1,78 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@/lib/supabase/server";
+
+export async function POST(req: NextRequest) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return NextResponse.json({ error: "AI not configured" }, { status: 503 });
+
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { type, data } = (await req.json()) as { type: string; data: Record<string, unknown> };
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+  let prompt = "";
+
+  if (type === "dashboard") {
+    const { revenue, opex, profit, margin, pending, overdueCount, overdueAmount, staleLeads, totalLeads, wonLeads, currency } = data as {
+      revenue: number; opex: number; profit: number; margin: number; pending: number;
+      overdueCount: number; overdueAmount: number; staleLeads: number; totalLeads: number; wonLeads: number; currency: string;
+    };
+    prompt = `You are a business analyst for a small business. Write a concise business briefing (3-4 sentences) based on these metrics. Be specific with numbers. Highlight what is notable — good or bad — and end with one actionable recommendation.
+
+Metrics:
+- Revenue collected: ${currency} ${revenue.toLocaleString()}
+- Operating costs: ${currency} ${opex.toLocaleString()}
+- Profit: ${currency} ${profit.toLocaleString()} (${margin.toFixed(1)}% margin)
+- Pending invoices: ${currency} ${pending.toLocaleString()}
+- Overdue invoices: ${overdueCount} totalling ${currency} ${overdueAmount.toLocaleString()}
+- Total leads: ${totalLeads} (${wonLeads} won)
+- Leads needing follow-up: ${staleLeads}
+
+Write in plain prose. No bullet points. No markdown. No headers.`;
+  } else if (type === "health") {
+    const { customerName, totalInvoices, paidCount, pendingCount, overdueCount, lastActivityDays, activeSubscriptions, currency, totalRevenue } = data as {
+      customerName: string; totalInvoices: number; paidCount: number; pendingCount: number; overdueCount: number;
+      lastActivityDays: number | null; activeSubscriptions: number; currency: string; totalRevenue: number;
+    };
+    prompt = `Assess this customer relationship. Respond with ONLY valid JSON, no other text: {"score":"Healthy"|"At Risk"|"Churned","reason":"<one short sentence>"}
+
+Customer: ${customerName}
+- Invoices: ${totalInvoices} total (${paidCount} paid, ${pendingCount} pending, ${overdueCount} overdue)
+- Days since last logged activity: ${lastActivityDays ?? "none on record"}
+- Active subscriptions: ${activeSubscriptions}
+- Total revenue generated: ${currency} ${totalRevenue.toLocaleString()}
+
+Scoring: "Healthy" = good payment + activity within 30 days. "At Risk" = overdue invoices OR inactive 30-90 days. "Churned" = inactive 90+ days AND unpaid invoices.`;
+  } else if (type === "description") {
+    const { customerName, lines, totalAmount, currency } = data as {
+      customerName: string;
+      lines: { description: string; quantity: number; unit_price: number }[];
+      totalAmount: number;
+      currency: string;
+    };
+    const lineList = lines
+      .filter((l) => l.description.trim())
+      .map((l) => `${l.quantity}× ${l.description}`)
+      .join(", ");
+    prompt = `Write a professional invoice description for a ${currency} ${totalAmount.toLocaleString()} invoice to ${customerName}.
+Items: ${lineList || "general services"}
+Respond with one concise sentence only (max 80 characters). No quotes. No punctuation at the end. Just the description text.`;
+  }
+
+  if (!prompt) return NextResponse.json({ error: "Unknown insight type" }, { status: 400 });
+
+  try {
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+    return NextResponse.json({ result: text });
+  } catch (e: unknown) {
+    const err = e as { status?: number; message?: string };
+    if (err.status === 429) return NextResponse.json({ error: "Rate limit — try again shortly" }, { status: 429 });
+    return NextResponse.json({ error: err.message || "AI error" }, { status: 500 });
+  }
+}
