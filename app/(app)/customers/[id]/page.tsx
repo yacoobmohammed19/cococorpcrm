@@ -8,7 +8,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const customerId = Number(id);
   const supabase = await createServerClient();
 
-  const [{ data: customer }, { data: invoices }, { data: org }, { data: paymentTypes }, { data: products }] = await Promise.all([
+  const [{ data: customer }, { data: invoices }, { data: org }, { data: paymentTypes }, { data: products }, { data: quotes }] = await Promise.all([
     supabase.from("dim_customers").select("*").eq("id", customerId).single(),
     supabase.from("fact_invoices")
       .select("id, invoice_number, amount, status, transaction_date, due_date, description, payment_type_id, dim_payment_types(name)")
@@ -16,36 +16,55 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       .order("transaction_date", { ascending: false }),
     supabase.from("organizations").select("currency").single(),
     supabase.from("dim_payment_types").select("id, name").order("name"),
-    supabase.from("dim_products").select("id, name, unit_price, sku, is_active").is("deleted_at", null).order("name"),
+    supabase.from("dim_products").select("id, name, unit_price, is_active").is("deleted_at", null).order("name"),
+    supabase.from("fact_quotes")
+      .select("id, quote_number, status, amount, valid_until, created_at")
+      .eq("customer_id", customerId).is("deleted_at", null)
+      .order("created_at", { ascending: false }),
   ]);
 
-  // Derive products purchased from invoice lines (graceful — column may not exist yet)
+  // Fetch all invoice lines for this customer's invoices
+  type InvLine = { id: number; invoice_id: number; description: string; quantity: number; unit_price: number; line_total: number; product_id: number | null };
+  let invoiceLinesMap: Record<number, InvLine[]> = {};
   let productsPurchased: { id: number; name: string; times: number; revenue: number }[] = [];
+
   try {
     const invoiceIds = (invoices || []).map(i => i.id);
     if (invoiceIds.length > 0) {
       const { data: lines } = await supabase
         .from("fact_invoice_lines")
-        .select("product_id, unit_price, quantity, dim_products(id, name)")
+        .select("id, invoice_id, description, quantity, unit_price, line_total, product_id, dim_products(id, name)")
         .in("invoice_id", invoiceIds)
-        .not("product_id", "is", null);
+        .order("position");
+
       if (lines) {
-        const map: Record<number, { id: number; name: string; times: number; revenue: number }> = {};
+        const prodMap: Record<number, { id: number; name: string; times: number; revenue: number }> = {};
         lines.forEach((l: Record<string, unknown>) => {
+          const invId = l.invoice_id as number;
+          if (!invoiceLinesMap[invId]) invoiceLinesMap[invId] = [];
+          invoiceLinesMap[invId].push({
+            id: l.id as number,
+            invoice_id: invId,
+            description: l.description as string,
+            quantity: Number(l.quantity),
+            unit_price: Number(l.unit_price),
+            line_total: Number(l.line_total),
+            product_id: l.product_id as number | null,
+          });
           const prod = l.dim_products as { id: number; name: string } | null;
-          if (!prod) return;
-          if (!map[prod.id]) map[prod.id] = { id: prod.id, name: prod.name, times: 0, revenue: 0 };
-          map[prod.id].times += 1;
-          map[prod.id].revenue += Number(l.unit_price || 0) * Number(l.quantity || 1);
+          if (prod) {
+            if (!prodMap[prod.id]) prodMap[prod.id] = { id: prod.id, name: prod.name, times: 0, revenue: 0 };
+            prodMap[prod.id].times += 1;
+            prodMap[prod.id].revenue += Number(l.unit_price || 0) * Number(l.quantity || 1);
+          }
         });
-        productsPurchased = Object.values(map).sort((a, b) => b.revenue - a.revenue);
+        productsPurchased = Object.values(prodMap).sort((a, b) => b.revenue - a.revenue);
       }
     }
-  } catch { /* invoice_lines product_id column may not exist yet */ }
+  } catch { /* graceful — tables may not exist yet */ }
 
   if (!customer) notFound();
 
-  // Contacts and activities — gracefully handle missing tables
   let contacts: { id: number; name: string; email: string | null; phone: string | null; role: string | null; is_primary: boolean }[] = [];
   let activities: { id: number; type: string; subject: string; notes: string | null; due_date: string | null; done: boolean; created_at: string }[] = [];
   try {
@@ -70,7 +89,6 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     <section className="space-y-6 max-w-4xl">
       <Breadcrumb crumbs={[{ label: "Customers", href: "/customers" }, { label: customer.name }]} />
 
-      {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold">{customer.name}</h1>
@@ -78,7 +96,6 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         </div>
       </div>
 
-      {/* KPIs */}
       <div className="grid grid-cols-3 gap-3">
         {[
           ["Total Invoiced", allInvoices.reduce((s, i) => s + Number(i.amount), 0), "var(--purple-c)"],
@@ -98,7 +115,19 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           ...i,
           amount: Number(i.amount),
           description: (i as Record<string, unknown>).description as string | null ?? null,
+          payment_type_id: (i as Record<string, unknown>).payment_type_id as number | null ?? null,
           payment_type_name: (i.dim_payment_types as unknown as { name: string } | null)?.name ?? null,
+        }))}
+        invoiceLinesMap={invoiceLinesMap}
+        products={(products || []).map(p => ({ id: p.id, name: p.name, unit_price: Number(p.unit_price), is_active: p.is_active }))}
+        paymentTypes={paymentTypes || []}
+        quotes={(quotes || []).map(q => ({
+          id: q.id,
+          quote_number: q.quote_number,
+          status: q.status,
+          amount: Number(q.amount),
+          valid_until: q.valid_until ?? null,
+          created_at: q.created_at,
         }))}
         contacts={contacts}
         activities={activities}

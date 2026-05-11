@@ -4,14 +4,15 @@ import { CostsClient } from "@/components/CostsClient";
 export default async function CostsPage() {
   const supabase = await createServerClient();
 
-  const [{ data: costs }, { data: categories }, { data: accounts }, { data: org }] = await Promise.all([
+  const [{ data: costs }, { data: categories }, { data: accounts }, { data: customers }, { data: org }] = await Promise.all([
     supabase
       .from("fact_costs")
-      .select("id, transaction_date, cost_details, amount, recouped, cost_category_id, account_id, dim_cost_categories(name), dim_accounts(name)")
+      .select("id, transaction_date, cost_details, amount, recouped, cost_category_id, account_id, customer_id, dim_cost_categories(name), dim_accounts(name), dim_customers(name)")
       .is("deleted_at", null)
       .order("transaction_date", { ascending: false }),
     supabase.from("dim_cost_categories").select("id, name").order("name"),
     supabase.from("dim_accounts").select("id, name").order("name"),
+    supabase.from("dim_customers").select("id, name").is("deleted_at", null).order("name"),
     supabase.from("organizations").select("currency").single(),
   ]);
 
@@ -25,6 +26,8 @@ export default async function CostsPage() {
     recouped: (c as Record<string, unknown>).recouped as string | null ?? null,
     cost_category_id: c.cost_category_id ?? null,
     account_id: c.account_id ?? null,
+    customer_id: (c as Record<string, unknown>).customer_id as number | null ?? null,
+    customer_name: (c.dim_customers as unknown as { name: string } | null)?.name ?? null,
   }));
 
   return (
@@ -33,6 +36,7 @@ export default async function CostsPage() {
         costs={mappedCosts}
         categories={categories || []}
         accounts={accounts || []}
+        customers={customers || []}
         currency={org?.currency || "ZAR"}
       />
     </section>

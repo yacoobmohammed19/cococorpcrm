@@ -138,11 +138,10 @@ export function QuotePrintClient({ quote, org, lines }: Props) {
   return (
     <>
       <style>{`
+        @page { size: A4; margin: 15mm; }
         @media print {
-          html, body { background: white !important; margin: 0 !important; padding: 0 !important; }
-          body * { visibility: hidden !important; }
-          .inv-doc, .inv-doc * { visibility: visible !important; }
-          .inv-doc { position: fixed !important; top: 0 !important; left: 0 !important; width: 100% !important; margin: 0 !important; box-shadow: none !important; border-radius: 0 !important; overflow: visible !important; }
+          html, body { background: white !important; margin: 0 !important; padding: 0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          body > div { background: white !important; padding: 0 !important; min-height: 0 !important; }
           .inv-toolbar { display: none !important; }
           .inv-hint { display: none !important; }
           .inv-add-row { display: none !important; }
@@ -150,6 +149,9 @@ export function QuotePrintClient({ quote, org, lines }: Props) {
           .inv-vat-toggle { display: none !important; }
           .inv-field { border: none !important; background: transparent !important; }
           input[type="number"].inv-field { border: none !important; background: transparent !important; }
+          .inv-doc { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; border-radius: 0 !important; }
+          .inv-footer { page-break-inside: avoid !important; break-inside: avoid !important; }
+          .inv-totals { page-break-inside: avoid !important; break-inside: avoid !important; }
         }
         .inv-field:hover { border-bottom-color: #ccc !important; background: #fafafa !important; }
         .inv-field:focus { border-bottom-color: #10b981 !important; background: #fff8e6 !important; outline: none !important; }
@@ -299,7 +301,7 @@ export function QuotePrintClient({ quote, org, lines }: Props) {
         </div>
 
         {/* Totals */}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 28 }}>
+        <div className="inv-totals" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 28 }}>
           <div style={{ width: 260 }}>
             {vatEnabled && (
               <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 13, borderBottom: "1px solid #eee" }}>
@@ -321,7 +323,7 @@ export function QuotePrintClient({ quote, org, lines }: Props) {
         </div>
 
         {/* Company + Banking footer */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 28, marginTop: 48, paddingTop: 24, borderTop: "1px solid #ddd", fontSize: 13 }}>
+        <div className="inv-footer" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 28, marginTop: 48, paddingTop: 24, borderTop: "1px solid #ddd", fontSize: 13 }}>
           <div>
             <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse", color: "#444", tableLayout: "fixed", lineHeight: 1.7 }}>
               <colgroup><col style={{ width: 110 }} /><col /></colgroup>

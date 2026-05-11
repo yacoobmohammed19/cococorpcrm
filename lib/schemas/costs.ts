@@ -7,6 +7,7 @@ export const CostSchema = z.object({
   cost_category_id: z.coerce.number().optional().nullable(),
   amount: z.coerce.number().min(0),
   account_id: z.coerce.number().optional().nullable(),
+  customer_id: z.coerce.number().optional().nullable(),
   recouped: z.string().optional().default(""),
 });
 

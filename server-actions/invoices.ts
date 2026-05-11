@@ -141,6 +141,7 @@ export async function updateInvoice(id: number, formData: FormData) {
   revalidatePath("/invoices");
   revalidatePath("/billing");
   revalidatePath("/dashboard");
+  revalidatePath("/customers", "layout");
 }
 
 export async function restoreInvoice(id: number) {

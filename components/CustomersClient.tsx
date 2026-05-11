@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, Pencil, Trash2, Phone, Mail, User, ChevronRight, Users } from "lucide-react";
+import { Plus, Pencil, Trash2, Phone, Mail, User, ChevronRight, Users, BarChart2 } from "lucide-react";
 import { MultiSelect } from "@/components/ui/MultiSelect";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -121,6 +121,13 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            href="/customers/kpi"
+            className="flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg"
+            style={{ background: "var(--card2)", border: "1px solid var(--border)", color: "var(--muted)" }}
+          >
+            <BarChart2 size={14} /> KPIs
+          </Link>
           {selected.size > 0 && (
             <button onClick={handleBulkDelete} disabled={bulkBusy}
               className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-lg"

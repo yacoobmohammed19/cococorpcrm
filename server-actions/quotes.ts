@@ -47,6 +47,7 @@ export async function updateQuoteStatus(id: number, status: string) {
   const { error } = await supabase.from("fact_quotes").update({ status }).eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/quotes");
+  revalidatePath("/customers", "layout");
 }
 
 export async function deleteQuote(id: number) {
@@ -95,4 +96,5 @@ export async function convertQuoteToInvoice(quoteId: number) {
   await supabase.from("fact_quotes").update({ status: "Invoiced" }).eq("id", quoteId);
   revalidatePath("/quotes");
   revalidatePath("/invoices");
+  revalidatePath("/customers", "layout");
 }

@@ -15,10 +15,12 @@ type Cost = {
   id: number; transaction_date: string; cost_details: string | null;
   category_name: string | null; amount: number; account_name: string | null; recouped: string | null;
   cost_category_id: number | null; account_id: number | null;
+  customer_id: number | null; customer_name: string | null;
 };
 type Category = { id: number; name: string };
 type Account = { id: number; name: string };
-type Props = { costs: Cost[]; categories: Category[]; accounts: Account[]; currency: string };
+type Customer = { id: number; name: string };
+type Props = { costs: Cost[]; categories: Category[]; accounts: Account[]; customers: Customer[]; currency: string };
 
 function fmt(n: number) { return Number(n).toLocaleString("en-ZA", { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
 
@@ -31,12 +33,13 @@ function monthRange(from: string, to: string) {
 }
 function mLabel(m: string) { const [y, mo] = m.split("-"); return ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][+mo] + " " + y.slice(2); }
 
-export function CostsClient({ costs, categories, accounts, currency }: Props) {
+export function CostsClient({ costs, categories, accounts, customers, currency }: Props) {
   const cur = currency === "ZAR" ? "R" : "$";
   const [view, setView] = useState<"table" | "monthly">("table");
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState<string[]>([]);
   const [acctFilter, setAcctFilter] = useState<string[]>([]);
+  const [custFilter, setCustFilter] = useState<string[]>([]);
   const [recoupedFilter, setRecoupedFilter] = useState<"" | "Y" | "N">("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -60,11 +63,12 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
     if (dateTo) rows = rows.filter(c => c.transaction_date <= dateTo);
     if (catFilter.length > 0) rows = rows.filter(c => catFilter.includes(String(c.cost_category_id)));
     if (acctFilter.length > 0) rows = rows.filter(c => acctFilter.includes(String(c.account_id)));
+    if (custFilter.length > 0) rows = rows.filter(c => custFilter.includes(String(c.customer_id)));
     if (recoupedFilter === "Y") rows = rows.filter(c => c.recouped === "Y");
     if (recoupedFilter === "N") rows = rows.filter(c => c.recouped !== "Y");
     if (search) rows = rows.filter(c => (c.cost_details || "").toLowerCase().includes(search.toLowerCase()));
     return rows;
-  }, [costs, dateFrom, dateTo, catFilter, acctFilter, recoupedFilter, search]);
+  }, [costs, dateFrom, dateTo, catFilter, acctFilter, custFilter, recoupedFilter, search]);
 
   const total = filtered.reduce((s, c) => s + Number(c.amount), 0);
 
@@ -170,6 +174,14 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
               onChange={setAcctFilter}
             />
           )}
+          {customers.length > 0 && (
+            <MultiSelect
+              label="Customer"
+              options={customers.map(c => ({ label: c.name, value: String(c.id) }))}
+              value={custFilter}
+              onChange={setCustFilter}
+            />
+          )}
           <MultiSelect
             label="Recouped"
             options={[{ label: "Yes", value: "Y" }, { label: "No", value: "N" }]}
@@ -177,8 +189,8 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
             onChange={vals => setRecoupedFilter((vals[vals.length - 1] ?? "") as typeof recoupedFilter)}
             minWidth={120}
           />
-          {(catFilter.length > 0 || acctFilter.length > 0 || recoupedFilter || dateFrom || dateTo || search) && (
-            <button onClick={() => { setCatFilter([]); setAcctFilter([]); setRecoupedFilter(""); setDateFrom(""); setDateTo(""); setSearch(""); }}
+          {(catFilter.length > 0 || acctFilter.length > 0 || custFilter.length > 0 || recoupedFilter || dateFrom || dateTo || search) && (
+            <button onClick={() => { setCatFilter([]); setAcctFilter([]); setCustFilter([]); setRecoupedFilter(""); setDateFrom(""); setDateTo(""); setSearch(""); }}
               className="text-xs px-2 py-1.5 rounded" style={{ color: "var(--muted2)" }}>✕ Clear</button>
           )}
         </div>
@@ -210,7 +222,7 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
                 </div>
               </div>
             ))}
-            {filtered.length === 0 && <EmptyState icon="💸" title={search || catFilter.length > 0 || acctFilter.length > 0 || dateFrom || dateTo || recoupedFilter ? "No costs match your filters" : "No costs yet"} description={search || catFilter.length > 0 || acctFilter.length > 0 || dateFrom || dateTo || recoupedFilter ? "Try adjusting your filters." : "Record your first cost to start tracking expenses."} />}
+            {filtered.length === 0 && <EmptyState icon="💸" title={search || catFilter.length > 0 || acctFilter.length > 0 || custFilter.length > 0 || dateFrom || dateTo || recoupedFilter ? "No costs match your filters" : "No costs yet"} description={search || catFilter.length > 0 || acctFilter.length > 0 || custFilter.length > 0 || dateFrom || dateTo || recoupedFilter ? "Try adjusting your filters." : "Record your first cost to start tracking expenses."} />}
           </div>
 
           {/* Desktop Table */}
@@ -219,7 +231,7 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
               <table className="w-full text-xs border-collapse">
                 <thead>
                   <tr style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
-                    {["Date", "Details", "Category", "Amount", "Account", "Recouped", ""].map(h => (
+                    {["Date", "Details", "Category", "Customer", "Amount", "Account", "Recouped", ""].map(h => (
                       <th key={h} className="px-3 py-2.5 text-left font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: "var(--muted2)" }}>{h}</th>
                     ))}
                   </tr>
@@ -230,6 +242,7 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: "var(--muted2)" }}>{c.transaction_date}</td>
                       <td className="px-3 py-2 max-w-[200px] truncate">{c.cost_details || "—"}</td>
                       <td className="px-3 py-2" style={{ color: "var(--muted)" }}>{c.category_name || "—"}</td>
+                      <td className="px-3 py-2 max-w-[120px] truncate" style={{ color: "var(--muted)" }}>{c.customer_name || "—"}</td>
                       <td className="px-3 py-2 font-mono font-semibold whitespace-nowrap" style={{ color: "var(--red-c)" }}>{cur} {fmt(c.amount)}</td>
                       <td className="px-3 py-2" style={{ color: "var(--muted)" }}>{c.account_name || "—"}</td>
                       <td className="px-3 py-2">
@@ -245,7 +258,7 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
                       </td>
                     </tr>
                   ))}
-                  {filtered.length === 0 && <tr><td colSpan={7}><EmptyState icon="💸" title={search || catFilter.length > 0 || acctFilter.length > 0 || dateFrom || dateTo || recoupedFilter ? "No costs match your filters" : "No costs yet"} description={search || catFilter.length > 0 || acctFilter.length > 0 || dateFrom || dateTo || recoupedFilter ? "Try adjusting your filters." : "Record your first cost to start tracking expenses."} /></td></tr>}
+                  {filtered.length === 0 && <tr><td colSpan={8}><EmptyState icon="💸" title={search || catFilter.length > 0 || acctFilter.length > 0 || custFilter.length > 0 || dateFrom || dateTo || recoupedFilter ? "No costs match your filters" : "No costs yet"} description={search || catFilter.length > 0 || acctFilter.length > 0 || custFilter.length > 0 || dateFrom || dateTo || recoupedFilter ? "Try adjusting your filters." : "Record your first cost to start tracking expenses."} /></td></tr>}
                 </tbody>
               </table>
             </div>
@@ -342,6 +355,15 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
                   </select>
                 </div>
               </div>
+              {customers.length > 0 && (
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Customer (for CAC)</label>
+                  <select name="customer_id" defaultValue={editCost.customer_id ?? ""} className={inputStyle} style={inputCss}>
+                    <option value="">— None —</option>
+                    {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Recouped?</label>
                 <select name="recouped" defaultValue={editCost.recouped || ""} className={inputStyle} style={inputCss}>
@@ -402,6 +424,15 @@ export function CostsClient({ costs, categories, accounts, currency }: Props) {
                   </select>
                 </div>
               </div>
+              {customers.length > 0 && (
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Customer (for CAC)</label>
+                  <select name="customer_id" className={inputStyle} style={inputCss}>
+                    <option value="">— None —</option>
+                    {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Recouped?</label>
                 <select name="recouped" className={inputStyle} style={inputCss}>

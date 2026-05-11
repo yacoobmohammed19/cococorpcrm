@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Plus, Pencil, Trash2, Printer } from "lucide-react";
+import { MultiSelect } from "@/components/ui/MultiSelect";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
@@ -36,7 +37,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
   const toast = useToast();
   const { confirm, dialogProps } = useConfirm();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [modal, setModal] = useState(false);
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
   const [editTxDate, setEditTxDate] = useState("");
@@ -49,7 +50,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
   const today = new Date().toISOString().slice(0, 10);
 
   const filtered = invoices.filter(inv => {
-    if (statusFilter && inv.status !== statusFilter) return false;
+    if (statusFilter.length > 0 && !statusFilter.includes(inv.status)) return false;
     if (search) {
       const q = search.toLowerCase();
       const cust = customers.find(c => c.id === inv.customer_id)?.name || "";
@@ -161,14 +162,16 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
           className="px-3 py-2.5 text-sm rounded-lg border outline-none flex-1 min-w-0"
           style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
         />
-        <select
-          value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          className="px-3 py-2.5 text-sm rounded-lg border outline-none"
-          style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--muted)" }}
-        >
-          <option value="">All Statuses</option>
-          {["Completed", "Pending", "Written Off"].map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
+        <MultiSelect
+          label="Status"
+          options={[
+            { label: "Completed", value: "Completed", color: STATUS_COLORS.Completed },
+            { label: "Pending", value: "Pending", color: STATUS_COLORS.Pending },
+            { label: "Written Off", value: "Written Off", color: STATUS_COLORS["Written Off"] },
+          ]}
+          value={statusFilter}
+          onChange={setStatusFilter}
+        />
       </div>
 
       {/* Mobile Cards */}
@@ -223,8 +226,8 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
         })}
         {filtered.length === 0 && (
           <EmptyState icon="🧾" title="No invoices found"
-            description={search || statusFilter ? "Try adjusting your filters." : "Create your first invoice to get started."}
-            action={!search && !statusFilter ? <button onClick={() => setModal(true)} className="px-4 py-2 text-sm font-semibold rounded-xl" style={{ background: "var(--accent)", color: "#fff" }}>+ New Invoice</button> : undefined}
+            description={search || statusFilter.length > 0 ? "Try adjusting your filters." : "Create your first invoice to get started."}
+            action={!search && statusFilter.length === 0 ?<button onClick={() => setModal(true)} className="px-4 py-2 text-sm font-semibold rounded-xl" style={{ background: "var(--accent)", color: "#fff" }}>+ New Invoice</button> : undefined}
           />
         )}
       </div>
@@ -281,7 +284,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={9}><EmptyState icon="🧾" title="No invoices found" description={search || statusFilter ? "Try adjusting your filters." : "Create your first invoice to get started."} /></td></tr>
+                <tr><td colSpan={9}><EmptyState icon="🧾" title="No invoices found" description={search || statusFilter.length > 0 ? "Try adjusting your filters." : "Create your first invoice to get started."} /></td></tr>
               )}
             </tbody>
           </table>

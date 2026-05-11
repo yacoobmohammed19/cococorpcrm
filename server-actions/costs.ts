@@ -16,6 +16,7 @@ export async function createCost(formData: FormData) {
     cost_category_id: formData.get("cost_category_id") || null,
     amount: formData.get("amount"),
     account_id: formData.get("account_id") || null,
+    customer_id: formData.get("customer_id") || null,
     recouped: formData.get("recouped") || "",
   });
 
@@ -34,6 +35,7 @@ export async function updateCost(id: number, formData: FormData) {
     cost_category_id: formData.get("cost_category_id") ? Number(formData.get("cost_category_id")) : null,
     amount: Number(formData.get("amount")),
     account_id: formData.get("account_id") ? Number(formData.get("account_id")) : null,
+    customer_id: formData.get("customer_id") ? Number(formData.get("customer_id")) : null,
     recouped: formData.get("recouped") || "",
   }).eq("id", id);
 

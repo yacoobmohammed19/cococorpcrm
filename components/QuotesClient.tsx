@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Pencil, Trash2, FileOutput } from "lucide-react";
+import { Plus, Trash2, FileOutput } from "lucide-react";
+import Link from "next/link";
+import { MultiSelect } from "@/components/ui/MultiSelect";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
@@ -40,14 +42,14 @@ export function QuotesClient({ quotes, customers, products, currency }: {
   const toast = useToast();
   const { confirm, dialogProps } = useConfirm();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [modal, setModal] = useState(false);
   const [validUntil, setValidUntil] = useState("");
   const [busy, setBusy] = useState(false);
   const [lines, setLines] = useState<Line[]>([{ description: "", quantity: 1, unit_price: 0 }]);
 
   const filtered = quotes.filter(q => {
-    if (statusFilter && q.status !== statusFilter) return false;
+    if (statusFilter.length > 0 && !statusFilter.includes(q.status)) return false;
     if (search) {
       const q2 = search.toLowerCase();
       const cust = customers.find(c => c.id === q.customer_id)?.name || "";
@@ -139,12 +141,12 @@ export function QuotesClient({ quotes, customers, products, currency }: {
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search quotes…"
           className="px-3 py-2 text-sm rounded border outline-none flex-1 min-w-[180px]"
           style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }} />
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          className="px-3 py-2 text-sm rounded border outline-none"
-          style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--muted)" }}>
-          <option value="">All Statuses</option>
-          {[...STATUSES, "Invoiced"].map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
+        <MultiSelect
+          label="Status"
+          options={[...STATUSES, "Invoiced"].map(s => ({ label: s, value: s, color: STATUS_COLORS[s] }))}
+          value={statusFilter}
+          onChange={setStatusFilter}
+        />
       </div>
 
       {/* Table */}
@@ -166,7 +168,11 @@ export function QuotesClient({ quotes, customers, products, currency }: {
                 return (
                   <tr key={q.id} className="border-b hover:bg-[var(--card3)] transition-colors" style={{ borderColor: "var(--border)" }}>
                     <td className="px-3 py-2.5 font-semibold" style={{ color: "var(--accent)" }}>{q.quote_number}</td>
-                    <td className="px-3 py-2.5 font-medium max-w-[140px] truncate">{cust?.name ?? `#${q.customer_id}`}</td>
+                    <td className="px-3 py-2.5 max-w-[140px] truncate">
+                      <Link href={`/customers/${q.customer_id}`} className="font-medium hover:underline" style={{ color: "var(--foreground)" }}>
+                        {cust?.name ?? `#${q.customer_id}`}
+                      </Link>
+                    </td>
                     <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap">{cur} {fmt(q.amount)}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: isExpired ? "var(--red-c)" : "var(--muted2)" }}>
                       {fdate(q.valid_until)}{isExpired && " ⚠"}
@@ -202,7 +208,7 @@ export function QuotesClient({ quotes, customers, products, currency }: {
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={7}><EmptyState icon="📋" title={search || statusFilter ? "No quotes match your filters" : "No quotes yet"} description={search || statusFilter ? "Try adjusting your filters." : "Create your first quote to start winning business."} /></td></tr>
+                <tr><td colSpan={7}><EmptyState icon="📋" title={search || statusFilter.length > 0 ? "No quotes match your filters" : "No quotes yet"} description={search || statusFilter.length > 0 ? "Try adjusting your filters." : "Create your first quote to start winning business."} /></td></tr>
               )}
             </tbody>
           </table>
