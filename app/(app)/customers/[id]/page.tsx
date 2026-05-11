@@ -8,7 +8,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const customerId = Number(id);
   const supabase = await createServerClient();
 
-  const [{ data: customer }, { data: invoices }, { data: org }, { data: paymentTypes }, { data: products }, { data: quotes }] = await Promise.all([
+  const [{ data: customer }, { data: invoices }, { data: org }, { data: paymentTypes }, { data: products }, { data: quotes }, { data: subscriptions }] = await Promise.all([
     supabase.from("dim_customers").select("*").eq("id", customerId).single(),
     supabase.from("fact_invoices")
       .select("id, invoice_number, amount, status, transaction_date, due_date, description, payment_type_id, dim_payment_types(name)")
@@ -20,6 +20,10 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     supabase.from("fact_quotes")
       .select("id, quote_number, status, amount, valid_until, created_at")
       .eq("customer_id", customerId).is("deleted_at", null)
+      .order("created_at", { ascending: false }),
+    supabase.from("subscriptions")
+      .select("id, description, amount, frequency, start_date, end_date, status, invoice_prefix, product_id, payment_type_id")
+      .eq("customer_id", customerId)
       .order("created_at", { ascending: false }),
   ]);
 
@@ -134,6 +138,18 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         currency={cur}
         customerId={customerId}
         productsPurchased={productsPurchased}
+        subscriptions={(subscriptions || []).map(s => ({
+          id: s.id,
+          description: s.description || "",
+          amount: Number(s.amount),
+          frequency: s.frequency,
+          start_date: s.start_date,
+          end_date: s.end_date ?? null,
+          status: s.status,
+          invoice_prefix: s.invoice_prefix || "SUB",
+          product_id: s.product_id ?? null,
+          payment_type_id: s.payment_type_id ?? null,
+        }))}
       />
     </section>
   );

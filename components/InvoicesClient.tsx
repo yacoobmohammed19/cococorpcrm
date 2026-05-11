@@ -10,7 +10,7 @@ import { DateInput } from "@/components/ui/DateInput";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/hooks/useConfirm";
 import { runAction } from "@/lib/action-utils";
-import { createInvoice, updateInvoice, deleteInvoice, updateInvoiceStatus } from "@/server-actions/invoices";
+import { createInvoice, updateInvoice, deleteInvoice, updateInvoiceStatus, bulkUpdateInvoices, bulkDeleteInvoices } from "@/server-actions/invoices";
 
 type Invoice = {
   id: number; invoice_number: string | null; amount: number; status: string;
@@ -49,6 +49,10 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
   const [createDueDate, setCreateDueDate] = useState("");
   const [busy, setBusy] = useState(false);
   const [lines, setLines] = useState<Line[]>([{ description: "", quantity: 1, unit_price: 0 }]);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkStatus, setBulkStatus] = useState("");
+  const [bulkPayType, setBulkPayType] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -122,6 +126,40 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
   async function handleStatusChange(id: number, status: string) {
     try { await updateInvoiceStatus(id, status); toast.success("Status updated"); }
     catch { toast.error("Failed to update status"); }
+  }
+
+  function toggleSelect(id: number) {
+    setSelectedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  }
+  function toggleAll() {
+    setSelectedIds(prev => prev.size === filtered.length ? new Set() : new Set(filtered.map(i => i.id)));
+  }
+
+  async function applyBulk() {
+    if (selectedIds.size === 0) return;
+    setBulkBusy(true);
+    try {
+      const updates: { status?: string; payment_type_id?: number | null } = {};
+      if (bulkStatus) updates.status = bulkStatus;
+      if (bulkPayType) updates.payment_type_id = bulkPayType === "none" ? null : Number(bulkPayType);
+      if (Object.keys(updates).length > 0) {
+        await bulkUpdateInvoices(Array.from(selectedIds), updates);
+        toast.success(`Updated ${selectedIds.size} invoice${selectedIds.size > 1 ? "s" : ""}`);
+      }
+      setSelectedIds(new Set()); setBulkStatus(""); setBulkPayType("");
+    } catch { toast.error("Bulk update failed"); }
+    finally { setBulkBusy(false); }
+  }
+
+  async function deleteBulk() {
+    if (!await confirm(`Delete ${selectedIds.size} invoice${selectedIds.size > 1 ? "s" : ""}?`, "These invoices will be permanently archived.")) return;
+    setBulkBusy(true);
+    try {
+      await bulkDeleteInvoices(Array.from(selectedIds));
+      toast.success(`Archived ${selectedIds.size} invoice${selectedIds.size > 1 ? "s" : ""}`);
+      setSelectedIds(new Set());
+    } catch { toast.error("Bulk delete failed"); }
+    finally { setBulkBusy(false); }
   }
 
   const inputCss = "w-full px-3 py-2 rounded border text-sm outline-none focus:ring-1 focus:ring-[var(--accent)]";
@@ -262,12 +300,53 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
         )}
       </div>
 
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="sticky top-0 z-30 mb-2 flex flex-wrap items-center gap-2 px-4 py-2.5 rounded-xl shadow-lg"
+          style={{ background: "var(--primary)", color: "var(--primary-fg)" }}>
+          <span className="text-xs font-bold mr-2">{selectedIds.size} selected</span>
+          <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)}
+            className="px-2 py-1.5 rounded-lg text-xs border-0 outline-none"
+            style={{ background: "rgba(255,255,255,0.12)", color: "inherit" }}>
+            <option value="">Status…</option>
+            <option value="Completed">Completed</option>
+            <option value="Pending">Pending</option>
+            <option value="Written Off">Written Off</option>
+          </select>
+          <select value={bulkPayType} onChange={e => setBulkPayType(e.target.value)}
+            className="px-2 py-1.5 rounded-lg text-xs border-0 outline-none"
+            style={{ background: "rgba(255,255,255,0.12)", color: "inherit" }}>
+            <option value="">Pay Type…</option>
+            <option value="none">— Clear —</option>
+            {paymentTypes.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <button onClick={applyBulk} disabled={bulkBusy || (!bulkStatus && !bulkPayType)}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold disabled:opacity-40"
+            style={{ background: "var(--accent)", color: "#fff" }}>
+            {bulkBusy ? "Applying…" : "Apply"}
+          </button>
+          <button onClick={deleteBulk} disabled={bulkBusy}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold"
+            style={{ background: "rgba(239,68,68,0.25)", color: "#fca5a5" }}>
+            Delete
+          </button>
+          <button onClick={() => { setSelectedIds(new Set()); setBulkStatus(""); setBulkPayType(""); }}
+            className="ml-auto text-xs opacity-60 hover:opacity-100">✕ Clear</button>
+        </div>
+      )}
+
       {/* Desktop Table */}
       <div className="hidden sm:block rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
         <div className="overflow-x-auto" style={{ background: "var(--card2)" }}>
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
+                <th className="px-3 py-2.5 w-8">
+                  <input type="checkbox"
+                    checked={filtered.length > 0 && selectedIds.size === filtered.length}
+                    onChange={toggleAll}
+                    className="rounded cursor-pointer" />
+                </th>
                 {["Date", "Invoice #", "Customer", "Description", "Due", "Amount", "Pay Type", "Status", ""].map(h => (
                   <th key={h} className="px-3 py-2.5 text-left font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: "var(--muted2)" }}>{h}</th>
                 ))}
@@ -277,8 +356,14 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
               {filtered.map(inv => {
                 const cust = customers.find(c => c.id === inv.customer_id);
                 const col = STATUS_COLORS[inv.status] || "var(--muted2)";
+                const selected = selectedIds.has(inv.id);
                 return (
-                  <tr key={inv.id} className="border-b hover:bg-[var(--card3)] transition-colors" style={{ borderColor: "var(--border)" }}>
+                  <tr key={inv.id}
+                    className="border-b hover:bg-[var(--card3)] transition-colors"
+                    style={{ borderColor: "var(--border)", background: selected ? "color-mix(in srgb, var(--accent) 6%, var(--card2))" : undefined }}>
+                    <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" checked={selected} onChange={() => toggleSelect(inv.id)} className="rounded cursor-pointer" />
+                    </td>
                     <td className="px-3 py-2 whitespace-nowrap" style={{ color: "var(--muted2)" }}>{fdate(inv.transaction_date)}</td>
                     <td className="px-3 py-2 font-semibold whitespace-nowrap" style={{ color: "var(--accent)" }}>{inv.invoice_number || <span style={{ color: "var(--muted2)", fontStyle: "italic" }}>—</span>}</td>
                     <td className="px-3 py-2 max-w-[130px] truncate font-medium">
@@ -314,7 +399,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={9}><EmptyState icon="🧾" title="No invoices found" description={search || statusFilter.length > 0 ? "Try adjusting your filters." : "Create your first invoice to get started."} /></td></tr>
+                <tr><td colSpan={10}><EmptyState icon="🧾" title="No invoices found" description={search || statusFilter.length > 0 ? "Try adjusting your filters." : "Create your first invoice to get started."} /></td></tr>
               )}
             </tbody>
           </table>

@@ -144,6 +144,24 @@ export async function updateInvoice(id: number, formData: FormData) {
   revalidatePath("/customers", "layout");
 }
 
+export async function bulkUpdateInvoices(
+  ids: number[],
+  updates: { status?: string; payment_type_id?: number | null }
+) {
+  if (ids.length === 0) return;
+  const supabase = await createServerClient();
+  const patch: Record<string, unknown> = {};
+  if (updates.status !== undefined) patch.status = updates.status;
+  if (updates.payment_type_id !== undefined) patch.payment_type_id = updates.payment_type_id;
+  if (Object.keys(patch).length === 0) return;
+  const { error } = await supabase.from("fact_invoices").update(patch).in("id", ids);
+  if (error) throw new Error(error.message);
+  revalidatePath("/invoices");
+  revalidatePath("/billing");
+  revalidatePath("/dashboard");
+  revalidatePath("/customers", "layout");
+}
+
 export async function restoreInvoice(id: number) {
   const supabase = await createServerClient();
   const { error } = await supabase

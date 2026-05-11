@@ -8,13 +8,15 @@ import { DateInput } from "@/components/ui/DateInput";
 import { useConfirm } from "@/hooks/useConfirm";
 import { runAction } from "@/lib/action-utils";
 import { updateCustomer } from "@/server-actions/customers";
-import { createInvoice, updateInvoice, deleteInvoice } from "@/server-actions/invoices";
+import { createInvoice, updateInvoice, deleteInvoice, bulkUpdateInvoices, bulkDeleteInvoices } from "@/server-actions/invoices";
+import { createSubscription, cancelSubscription } from "@/server-actions/subscriptions";
 import { updateQuoteStatus, convertQuoteToInvoice } from "@/server-actions/quotes";
 import { createContact, updateContact, deleteContact } from "@/server-actions/contacts";
 import { createActivity, toggleActivity, deleteActivity } from "@/server-actions/activities";
 
 type InvLine = { id?: number; description: string; quantity: number; unit_price: number; line_total?: number; product_id?: number | null };
 type Invoice = { id: number; invoice_number: string | null; amount: number; status: string; transaction_date: string | null; due_date: string | null; description?: string | null; payment_type_id?: number | null; payment_type_name?: string | null };
+type Subscription = { id: number; description: string; amount: number; frequency: string; start_date: string; end_date: string | null; status: string; invoice_prefix: string; product_id: number | null; payment_type_id: number | null };
 type Quote = { id: number; quote_number: string; status: string; amount: number; valid_until: string | null; created_at: string };
 type Product = { id: number; name: string; unit_price: number; is_active: boolean };
 type PaymentType = { id: number; name: string };
@@ -36,15 +38,37 @@ function fmt(n: number) { return n.toLocaleString("en-ZA", { minimumFractionDigi
 
 type ProductPurchased = { id: number; name: string; times: number; revenue: number };
 
-const TABS = ["Info", "Invoices", "Quotes", "Products", "Contacts", "Activities"] as const;
+const TABS = ["Info", "Invoices", "Quotes", "Products", "Contacts", "Activities", "Subscriptions"] as const;
 type Tab = typeof TABS[number];
+
+const FREQ_LABELS: Record<string, string> = { weekly: "Weekly", monthly: "Monthly", quarterly: "Quarterly", annually: "Annually" };
+
+function getPreviewCount(start: string, end: string, freq: string): number {
+  if (!start) return 0;
+  let count = 0;
+  const current = new Date(start + "T00:00:00");
+  const endDate = end ? new Date(end + "T00:00:00") : null;
+  const MAX = 60;
+  while (count < MAX) {
+    if (endDate && current > endDate) break;
+    count++;
+    switch (freq) {
+      case "weekly":    current.setDate(current.getDate() + 7); break;
+      case "monthly":   current.setMonth(current.getMonth() + 1); break;
+      case "quarterly": current.setMonth(current.getMonth() + 3); break;
+      case "annually":  current.setFullYear(current.getFullYear() + 1); break;
+    }
+    if (!endDate && count >= 12) break;
+  }
+  return count;
+}
 
 const QUOTE_STATUS_COLORS: Record<string, string> = {
   Draft: "var(--muted2)", Sent: "var(--cyan-c)", Accepted: "var(--accent)",
   Declined: "var(--red-c)", Invoiced: "var(--purple-c)",
 };
 
-export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {}, products = [], paymentTypes = [], quotes = [], contacts, activities, currency, customerId, productsPurchased = [] }: {
+export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {}, products = [], paymentTypes = [], quotes = [], contacts, activities, currency, customerId, productsPurchased = [], subscriptions = [] }: {
   customer: Customer; invoices: Invoice[];
   invoiceLinesMap?: Record<number, InvLine[]>;
   products?: Product[];
@@ -52,6 +76,7 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
   quotes?: Quote[]; contacts: Contact[];
   activities: Activity[]; currency: string; customerId: number;
   productsPurchased?: ProductPurchased[];
+  subscriptions?: Subscription[];
 }) {
   const toast = useToast();
   const { confirm, dialogProps } = useConfirm();
@@ -69,6 +94,18 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
   const [newInvLines, setNewInvLines] = useState<InvLine[]>([{ description: "", quantity: 1, unit_price: 0, product_id: null }]);
   const [newInvTxDate, setNewInvTxDate] = useState("");
   const [newInvDueDate, setNewInvDueDate] = useState("");
+  // Bulk selection
+  const [selectedInvIds, setSelectedInvIds] = useState<Set<number>>(new Set());
+  const [bulkStatus, setBulkStatus] = useState("");
+  const [bulkPayType, setBulkPayType] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  // Subscription
+  const [subModal, setSubModal] = useState(false);
+  const [subFreq, setSubFreq] = useState("monthly");
+  const [subStart, setSubStart] = useState(new Date().toISOString().slice(0, 10));
+  const [subEnd, setSubEnd] = useState("");
+  const [subAmount, setSubAmount] = useState(0);
+  const [subProduct, setSubProduct] = useState<number | null>(null);
 
   return (
     <div>
@@ -84,6 +121,7 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
             {t === "Products" && productsPurchased.length > 0 && <span className="ml-1 text-xs">({productsPurchased.length})</span>}
             {t === "Contacts" && contacts.length > 0 && <span className="ml-1 text-xs">({contacts.length})</span>}
             {t === "Activities" && activities.length > 0 && <span className="ml-1 text-xs">({activities.length})</span>}
+            {t === "Subscriptions" && subscriptions.filter(s => s.status === "active").length > 0 && <span className="ml-1 text-xs">({subscriptions.filter(s => s.status === "active").length})</span>}
           </button>
         ))}
       </div>
@@ -170,10 +208,73 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
               + New Invoice
             </button>
           </div>
+
+          {/* Bulk bar */}
+          {selectedInvIds.size > 0 && (
+            <div className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-lg mb-2"
+              style={{ background: "var(--primary)", color: "var(--primary-fg)" }}>
+              <span className="text-xs font-bold">{selectedInvIds.size} selected</span>
+              <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)}
+                className="px-2 py-1 rounded text-xs border-0 outline-none"
+                style={{ background: "rgba(255,255,255,0.12)", color: "inherit" }}>
+                <option value="">Status…</option>
+                <option value="Completed">Completed</option>
+                <option value="Pending">Pending</option>
+                <option value="Written Off">Written Off</option>
+              </select>
+              <select value={bulkPayType} onChange={e => setBulkPayType(e.target.value)}
+                className="px-2 py-1 rounded text-xs border-0 outline-none"
+                style={{ background: "rgba(255,255,255,0.12)", color: "inherit" }}>
+                <option value="">Pay Type…</option>
+                <option value="none">— Clear —</option>
+                {paymentTypes.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <button disabled={bulkBusy || (!bulkStatus && !bulkPayType)}
+                onClick={async () => {
+                  setBulkBusy(true);
+                  try {
+                    const updates: { status?: string; payment_type_id?: number | null } = {};
+                    if (bulkStatus) updates.status = bulkStatus;
+                    if (bulkPayType) updates.payment_type_id = bulkPayType === "none" ? null : Number(bulkPayType);
+                    if (Object.keys(updates).length > 0) {
+                      await bulkUpdateInvoices(Array.from(selectedInvIds), updates);
+                      toast.success(`Updated ${selectedInvIds.size} invoice${selectedInvIds.size > 1 ? "s" : ""}`);
+                    }
+                    setSelectedInvIds(new Set()); setBulkStatus(""); setBulkPayType("");
+                  } catch { toast.error("Bulk update failed"); }
+                  finally { setBulkBusy(false); }
+                }}
+                className="px-3 py-1 rounded text-xs font-bold disabled:opacity-40"
+                style={{ background: "var(--accent)", color: "#fff" }}>
+                {bulkBusy ? "…" : "Apply"}
+              </button>
+              <button disabled={bulkBusy}
+                onClick={async () => {
+                  if (!await confirm(`Delete ${selectedInvIds.size} invoices?`, "These invoices will be permanently archived.")) return;
+                  setBulkBusy(true);
+                  try { await bulkDeleteInvoices(Array.from(selectedInvIds)); toast.success("Archived"); setSelectedInvIds(new Set()); }
+                  catch { toast.error("Failed"); }
+                  finally { setBulkBusy(false); }
+                }}
+                className="px-3 py-1 rounded text-xs font-bold"
+                style={{ background: "rgba(239,68,68,0.25)", color: "#fca5a5" }}>
+                Delete
+              </button>
+              <button onClick={() => { setSelectedInvIds(new Set()); setBulkStatus(""); setBulkPayType(""); }}
+                className="ml-auto text-xs opacity-60 hover:opacity-100">✕</button>
+            </div>
+          )}
+
           <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
             <div className="overflow-x-auto"><table className="w-full text-xs border-collapse" style={{ background: "var(--card2)" }}>
               <thead>
                 <tr style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
+                  <th className="px-3 py-2.5 w-8">
+                    <input type="checkbox"
+                      checked={invoices.length > 0 && selectedInvIds.size === invoices.length}
+                      onChange={() => setSelectedInvIds(prev => prev.size === invoices.length ? new Set() : new Set(invoices.map(i => i.id)))}
+                      className="rounded cursor-pointer" />
+                  </th>
                   {["Date", "Invoice #", "Description", "Amount", "Due", "Pay Type", "Status", ""].map(h => (
                     <th key={h} className="px-3 py-2.5 text-left font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: "var(--muted2)" }}>{h}</th>
                   ))}
@@ -183,14 +284,22 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
                 {invoices.map(inv => {
                   const col = STATUS_COLORS[inv.status] || "var(--muted2)";
                   const isOverdue = inv.due_date && inv.status === "Pending" && new Date(inv.due_date) < new Date();
+                  const selected = selectedInvIds.has(inv.id);
                   return (
-                    <tr key={inv.id} className="border-b hover:bg-[var(--card3)] cursor-pointer" style={{ borderColor: "var(--border)" }}
+                    <tr key={inv.id}
+                      className="border-b hover:bg-[var(--card3)] cursor-pointer"
+                      style={{ borderColor: "var(--border)", background: selected ? "color-mix(in srgb, var(--accent) 6%, var(--card2))" : undefined }}
                       onClick={() => {
                         setInvModal({ open: true, invoice: inv });
                         setEditLines(invoiceLinesMap[inv.id]?.length ? invoiceLinesMap[inv.id].map(l => ({ ...l })) : [{ description: "", quantity: 1, unit_price: 0, product_id: null }]);
                         setEditTxDate(inv.transaction_date?.slice(0, 10) ?? "");
                         setEditDueDate(inv.due_date?.slice(0, 10) ?? "");
                       }}>
+                      <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                        <input type="checkbox" checked={selected}
+                          onChange={() => setSelectedInvIds(prev => { const s = new Set(prev); s.has(inv.id) ? s.delete(inv.id) : s.add(inv.id); return s; })}
+                          className="rounded cursor-pointer" />
+                      </td>
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: "var(--muted2)" }}>{fdate(inv.transaction_date)}</td>
                       <td className="px-3 py-2 font-semibold whitespace-nowrap" style={{ color: "var(--accent)" }}>{inv.invoice_number || `#${inv.id}`}</td>
                       <td className="px-3 py-2 max-w-[160px] truncate" style={{ color: "var(--muted)" }}>{inv.description || "—"}</td>
@@ -207,7 +316,7 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
                           </Link>
                           <button
                             onClick={async () => {
-                              if (!await confirm(`Delete invoice ${inv.invoice_number || `#${inv.id}`}?`, "This invoice will be permanently deleted and cannot be undone.")) return;
+                              if (!await confirm(`Delete ${inv.invoice_number || `#${inv.id}`}?`, "This invoice will be permanently archived.")) return;
                               await runAction(() => deleteInvoice(inv.id), toast, "Invoice deleted");
                             }}
                             className="px-2 py-1 rounded text-xs font-semibold"
@@ -219,7 +328,7 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
                     </tr>
                   );
                 })}
-                {invoices.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center" style={{ color: "var(--muted2)" }}>No invoices yet</td></tr>}
+                {invoices.length === 0 && <tr><td colSpan={9} className="px-3 py-6 text-center" style={{ color: "var(--muted2)" }}>No invoices yet</td></tr>}
               </tbody>
             </table></div>
           </div>
@@ -806,6 +915,176 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
                     className="flex-1 py-2 text-sm font-semibold rounded"
                     style={{ background: "var(--accent)", color: "#fff", opacity: busy ? .6 : 1 }}>
                     {busy ? "Saving…" : "Create Invoice"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* SUBSCRIPTIONS TAB */}
+      {tab === "Subscriptions" && (
+        <div className="space-y-3">
+          <div className="flex justify-between items-center">
+            <span className="text-sm font-semibold">{subscriptions.length} subscription{subscriptions.length !== 1 ? "s" : ""}</span>
+            <button onClick={() => { setSubFreq("monthly"); setSubStart(new Date().toISOString().slice(0, 10)); setSubEnd(""); setSubAmount(0); setSubProduct(null); setSubModal(true); }}
+              className="text-xs px-3 py-1.5 rounded font-semibold"
+              style={{ background: "var(--accent)", color: "#fff" }}>
+              + New Subscription
+            </button>
+          </div>
+
+          {subscriptions.length === 0 && (
+            <div className="py-10 text-center rounded-lg" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
+              <p className="text-2xl mb-2">🔄</p>
+              <p className="text-sm font-semibold">No subscriptions yet</p>
+              <p className="text-xs mt-1" style={{ color: "var(--muted2)" }}>Create a subscription to auto-generate recurring invoices</p>
+            </div>
+          )}
+
+          {subscriptions.map(sub => {
+            const active = sub.status === "active";
+            const preview = getPreviewCount(sub.start_date, sub.end_date || "", sub.frequency);
+            return (
+              <div key={sub.id} className="rounded-xl p-4" style={{ background: "var(--card2)", border: `1px solid ${active ? "var(--border)" : "var(--border2)"}`, opacity: active ? 1 : 0.6 }}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="font-semibold text-sm">{sub.description || "Subscription"}</span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase"
+                        style={{ background: active ? "var(--success-bg)" : "var(--card3)", color: active ? "var(--accent)" : "var(--muted2)" }}>
+                        {sub.status}
+                      </span>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "var(--card3)", color: "var(--muted2)" }}>
+                        {FREQ_LABELS[sub.frequency] || sub.frequency}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs" style={{ color: "var(--muted2)" }}>
+                      <span className="font-mono font-bold" style={{ color: "var(--accent)" }}>{currency} {fmt(sub.amount)} / period</span>
+                      <span>{fdate(sub.start_date)} → {sub.end_date ? fdate(sub.end_date) : "ongoing"}</span>
+                      <span>{preview} invoice{preview !== 1 ? "s" : ""} generated</span>
+                    </div>
+                  </div>
+                  {active && (
+                    <button
+                      onClick={async () => {
+                        if (!await confirm("Cancel this subscription?", "No more invoices will be generated. Existing invoices are kept.")) return;
+                        await runAction(() => cancelSubscription(sub.id, customerId), toast, "Subscription cancelled");
+                      }}
+                      className="px-2 py-1 rounded text-xs font-semibold shrink-0"
+                      style={{ background: "var(--danger-bg)", color: "var(--red-c)", border: "1px solid rgba(239,68,68,.2)" }}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Subscription Modal */}
+      {subModal && (() => {
+        const previewCount = getPreviewCount(subStart, subEnd, subFreq);
+        return (
+          <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-10 overflow-y-auto"
+            style={{ background: "rgba(0,0,0,.65)", backdropFilter: "blur(4px)" }}
+            onClick={e => { if (e.target === e.currentTarget) setSubModal(false); }}>
+            <div className="w-full max-w-lg rounded-xl mb-10" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
+              <div className="flex justify-between items-center px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
+                <h3 className="font-semibold">New Subscription</h3>
+                <button onClick={() => setSubModal(false)} style={{ color: "var(--muted2)" }}>✕</button>
+              </div>
+              <form className="p-5 space-y-4"
+                action={async (fd: FormData) => {
+                  setBusy(true);
+                  try {
+                    await createSubscription({
+                      customer_id: customerId,
+                      product_id: subProduct,
+                      description: String(fd.get("description") || ""),
+                      amount: subAmount,
+                      frequency: subFreq,
+                      start_date: subStart,
+                      end_date: subEnd || null,
+                      payment_type_id: fd.get("payment_type_id") ? Number(fd.get("payment_type_id")) : null,
+                      invoice_prefix: String(fd.get("invoice_prefix") || "SUB"),
+                    });
+                    toast.success(`Subscription created — ${previewCount} invoice${previewCount !== 1 ? "s" : ""} generated`);
+                    setSubModal(false);
+                  } catch { toast.error("Failed to create subscription"); }
+                  finally { setBusy(false); }
+                }}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Description *</label>
+                    <input name="description" required className={inp} style={inpS} placeholder="e.g. Monthly retainer, SaaS licence" />
+                  </div>
+                  {products.length > 0 && (
+                    <div className="sm:col-span-2">
+                      <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Product (optional)</label>
+                      <select value={subProduct ?? ""} onChange={e => {
+                        const pid = e.target.value ? Number(e.target.value) : null;
+                        setSubProduct(pid);
+                        const p = products.find(p => p.id === pid);
+                        if (p) setSubAmount(p.unit_price);
+                      }} className={inp} style={inpS}>
+                        <option value="">— No product —</option>
+                        {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Amount per period *</label>
+                    <input type="number" min={0} step="0.01" value={subAmount} onChange={e => setSubAmount(Number(e.target.value))}
+                      className={inp} style={inpS} placeholder="0.00" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Frequency *</label>
+                    <select value={subFreq} onChange={e => setSubFreq(e.target.value)} className={inp} style={inpS}>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                      <option value="quarterly">Quarterly</option>
+                      <option value="annually">Annually</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Start Date *</label>
+                    <DateInput name="start_date" value={subStart} onChange={setSubStart} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>End Date <span style={{ color: "var(--muted2)", fontWeight: 400 }}>(optional)</span></label>
+                    <DateInput name="end_date" value={subEnd} onChange={setSubEnd} placeholder="Leave blank for 12 periods" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Payment Type</label>
+                    <select name="payment_type_id" className={inp} style={inpS}>
+                      <option value="">— None —</option>
+                      {paymentTypes.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Invoice # Prefix</label>
+                    <input name="invoice_prefix" defaultValue="SUB" className={inp} style={inpS} placeholder="SUB" />
+                  </div>
+                </div>
+
+                {/* Preview */}
+                {subStart && (
+                  <div className="px-4 py-3 rounded-lg text-xs" style={{ background: previewCount > 0 ? "var(--success-bg)" : "var(--warning-bg)", color: previewCount > 0 ? "var(--accent)" : "var(--amber-c)" }}>
+                    {previewCount > 0
+                      ? `✓ Will generate ${previewCount} invoice${previewCount !== 1 ? "s" : ""} (${FREQ_LABELS[subFreq]}, ${currency} ${fmt(subAmount)} each = ${currency} ${fmt(previewCount * subAmount)} total)`
+                      : "⚠ No invoices will be generated — check your dates"}
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-1">
+                  <button type="button" onClick={() => setSubModal(false)} className="flex-1 py-2 text-sm rounded border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>Cancel</button>
+                  <button type="submit" disabled={busy || previewCount === 0}
+                    className="flex-1 py-2 text-sm font-semibold rounded disabled:opacity-50"
+                    style={{ background: "var(--accent)", color: "#fff" }}>
+                    {busy ? "Creating…" : `Create & Generate ${previewCount} Invoice${previewCount !== 1 ? "s" : ""}`}
                   </button>
                 </div>
               </form>
