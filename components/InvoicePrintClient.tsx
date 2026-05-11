@@ -165,8 +165,24 @@ export function InvoicePrintClient({ invoice, org, lines }: Props) {
           }
           .inv-totals { break-inside: avoid !important; page-break-inside: avoid !important; }
           .inv-footer-grid { break-inside: avoid !important; page-break-inside: avoid !important; }
-          .inv-field { border-bottom: none !important; background: transparent !important; }
-          input[type="number"].inv-field { border-bottom: none !important; background: transparent !important; }
+          /* hide all UI chrome */
+          .inv-no-print { display: none !important; }
+          /* make every input/select look like plain text */
+          .inv-doc input,
+          .inv-doc select,
+          .inv-doc textarea {
+            border: none !important;
+            border-bottom: none !important;
+            background: transparent !important;
+            -webkit-appearance: none;
+            appearance: none;
+            padding: 0 !important;
+          }
+          /* hide number spinners */
+          .inv-doc input[type="number"]::-webkit-inner-spin-button,
+          .inv-doc input[type="number"]::-webkit-outer-spin-button { display: none !important; }
+          /* hide the delete-button column */
+          .inv-del-col { display: none !important; }
         }
 
         /* ── SCREEN: document card ── */
@@ -251,8 +267,8 @@ export function InvoicePrintClient({ invoice, org, lines }: Props) {
       {/* Document */}
       <div className="inv-doc">
 
-        {/* Edit hint */}
-        <div style={{ fontSize: 11, color: "#10b981", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 4, padding: "6px 10px", marginBottom: 24, textAlign: "center", fontWeight: 500 }}>
+        {/* Edit hint — screen only */}
+        <div className="inv-no-print" style={{ fontSize: 11, color: "#10b981", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 4, padding: "6px 10px", marginBottom: 24, textAlign: "center", fontWeight: 500 }}>
           ✏️ Click any field to edit before printing
         </div>
 
@@ -310,10 +326,10 @@ export function InvoicePrintClient({ invoice, org, lines }: Props) {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 12, minWidth: 480 }}>
             <thead>
               <tr>
-                {[["Item", "45%", "left"], ["Qty", "10%", "right"], ["Price (excl. VAT)", "20%", "right"], ["Amount (excl. VAT)", "22%", "right"]].map(([h, w, a]) => (
+                {[["Item", "47%", "left"], ["Qty", "10%", "right"], ["Price (excl. VAT)", "20%", "right"], ["Amount (excl. VAT)", "23%", "right"]].map(([h, w, a]) => (
                   <th key={h} style={{ background: "#1a1a2e", color: "#fff", padding: "10px 12px", textAlign: a as "left" | "right", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px", width: w }}>{h}</th>
                 ))}
-                <th style={{ background: "#1a1a2e", padding: 0, width: 32 }}></th>
+                <th className="inv-del-col" style={{ background: "#1a1a2e", padding: 0, width: 32 }}></th>
               </tr>
             </thead>
             <tbody>
@@ -336,7 +352,7 @@ export function InvoicePrintClient({ invoice, org, lines }: Props) {
                   <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600 }}>
                     {cur} {fmt(r.qty * r.rate)}
                   </td>
-                  <td style={{ padding: "4px 2px", textAlign: "center" }}>
+                  <td className="inv-del-col" style={{ padding: "4px 2px", textAlign: "center" }}>
                     <button onClick={() => setRows(prev => prev.filter((_, idx) => idx !== i))}
                       style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 14, padding: 2 }}>✕</button>
                   </td>
@@ -346,14 +362,14 @@ export function InvoicePrintClient({ invoice, org, lines }: Props) {
           </table>
         </div>
 
-        {/* Add row */}
-        <button onClick={() => setRows(r => [...r, { desc: "", qty: 1, rate: 0 }])}
+        {/* Add row — screen only */}
+        <button className="inv-no-print" onClick={() => setRows(r => [...r, { desc: "", qty: 1, rate: 0 }])}
           style={{ width: "100%", padding: 8, background: "transparent", border: "1px dashed #ccc", borderRadius: 4, cursor: "pointer", fontSize: 12, color: "#888", marginBottom: 8 }}>
           + Add line item
         </button>
 
-        {/* VAT toggle */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#f8f9fa", border: "1px solid #ddd", borderRadius: 6, padding: "10px 14px", marginBottom: 8, fontSize: 12, color: "#555", flexWrap: "wrap" }}>
+        {/* VAT toggle — screen only */}
+        <div className="inv-no-print" style={{ display: "flex", alignItems: "center", gap: 12, background: "#f8f9fa", border: "1px solid #ddd", borderRadius: 6, padding: "10px 14px", marginBottom: 8, fontSize: 12, color: "#555", flexWrap: "wrap" }}>
           <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
             <input type="checkbox" checked={vatEnabled} onChange={e => setVatEnabled(e.target.checked)} />
             Include VAT
