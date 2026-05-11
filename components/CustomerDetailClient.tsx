@@ -8,7 +8,7 @@ import { DateInput } from "@/components/ui/DateInput";
 import { useConfirm } from "@/hooks/useConfirm";
 import { runAction } from "@/lib/action-utils";
 import { updateCustomer } from "@/server-actions/customers";
-import { updateInvoice } from "@/server-actions/invoices";
+import { createInvoice, updateInvoice } from "@/server-actions/invoices";
 import { updateQuoteStatus, convertQuoteToInvoice } from "@/server-actions/quotes";
 import { createContact, updateContact, deleteContact } from "@/server-actions/contacts";
 import { createActivity, toggleActivity, deleteActivity } from "@/server-actions/activities";
@@ -65,6 +65,10 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
   const [editLines, setEditLines] = useState<InvLine[]>([]);
   const [editTxDate, setEditTxDate] = useState("");
   const [editDueDate, setEditDueDate] = useState("");
+  const [newInvModal, setNewInvModal] = useState(false);
+  const [newInvLines, setNewInvLines] = useState<InvLine[]>([{ description: "", quantity: 1, unit_price: 0, product_id: null }]);
+  const [newInvTxDate, setNewInvTxDate] = useState("");
+  const [newInvDueDate, setNewInvDueDate] = useState("");
 
   return (
     <div>
@@ -160,7 +164,11 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
         <div className="space-y-2">
           <div className="flex justify-between items-center mb-3">
             <span className="text-sm font-semibold">{invoices.length} invoice{invoices.length !== 1 ? "s" : ""}</span>
-            <Link href="/invoices" className="text-xs px-3 py-1.5 rounded" style={{ background: "var(--accent)", color: "#fff" }}>+ New Invoice</Link>
+            <button onClick={() => { setNewInvTxDate(new Date().toISOString().slice(0, 10)); setNewInvDueDate(""); setNewInvLines([{ description: "", quantity: 1, unit_price: 0, product_id: null }]); setNewInvModal(true); }}
+              className="text-xs px-3 py-1.5 rounded font-semibold"
+              style={{ background: "var(--accent)", color: "#fff" }}>
+              + New Invoice
+            </button>
           </div>
           <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
             <div className="overflow-x-auto"><table className="w-full text-xs border-collapse" style={{ background: "var(--card2)" }}>
@@ -653,6 +661,148 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
           </div>
         );
       })()}
+      {/* New Invoice Modal */}
+      {newInvModal && (() => {
+        const lineTotal = newInvLines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
+        return (
+          <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-10 overflow-y-auto"
+            style={{ background: "rgba(0,0,0,.65)", backdropFilter: "blur(4px)" }}
+            onClick={e => { if (e.target === e.currentTarget) setNewInvModal(false); }}>
+            <div className="w-full max-w-2xl rounded-xl mb-10" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
+              <div className="flex justify-between items-center px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
+                <h3 className="font-semibold">New Invoice</h3>
+                <button onClick={() => setNewInvModal(false)} style={{ color: "var(--muted2)" }}>✕</button>
+              </div>
+              <form className="p-5 space-y-4"
+                action={async (fd: FormData) => {
+                  fd.set("customer_id", String(customerId));
+                  fd.set("transaction_date", newInvTxDate);
+                  fd.set("due_date", newInvDueDate);
+                  fd.set("amount", String(lineTotal));
+                  fd.set("lines", JSON.stringify(newInvLines.filter(l => l.description.trim()).map(l => ({
+                    description: l.description, quantity: l.quantity, unit_price: l.unit_price, product_id: l.product_id ?? null,
+                  }))));
+                  setBusy(true);
+                  try { await createInvoice(fd); toast.success("Invoice created"); setNewInvModal(false); }
+                  catch { toast.error("Failed to create invoice"); }
+                  finally { setBusy(false); }
+                }}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Invoice # *</label>
+                    <input name="invoice_number" required className={inp} style={inpS} placeholder="INV-001" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Status</label>
+                    <select name="status" defaultValue="Pending" className={inp} style={inpS}>
+                      <option value="Pending">Pending</option>
+                      <option value="Completed">Completed</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Date *</label>
+                    <DateInput name="transaction_date" value={newInvTxDate} onChange={setNewInvTxDate} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Due Date</label>
+                    <DateInput name="due_date" value={newInvDueDate} onChange={setNewInvDueDate} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Payment Type</label>
+                    <select name="payment_type_id" className={inp} style={inpS}>
+                      <option value="">— None —</option>
+                      {paymentTypes.map(pt => <option key={pt.id} value={pt.id}>{pt.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Description</label>
+                    <input name="description" className={inp} style={inpS} placeholder="Optional note" />
+                  </div>
+                </div>
+                {/* Line Items */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Line Items</label>
+                    <button type="button"
+                      onClick={() => setNewInvLines(ls => [...ls, { description: "", quantity: 1, unit_price: 0, product_id: null }])}
+                      className="text-xs px-2 py-1 rounded"
+                      style={{ background: "var(--card3)", color: "var(--accent)", border: "1px solid var(--accent)" }}>
+                      + Add Row
+                    </button>
+                  </div>
+                  <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+                    <table className="w-full text-xs" style={{ background: "var(--card)" }}>
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                          {["Product", "Description", "Qty", "Unit Price", "Total", ""].map(h => (
+                            <th key={h} className="px-2 py-2 text-left font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {newInvLines.map((line, idx) => (
+                          <tr key={idx} style={{ borderBottom: "1px solid var(--border)" }}>
+                            <td className="px-2 py-1.5 min-w-[130px]">
+                              <select value={line.product_id ?? ""}
+                                onChange={e => {
+                                  const pid = e.target.value ? Number(e.target.value) : null;
+                                  const prod = products.find(p => p.id === pid);
+                                  setNewInvLines(ls => ls.map((l, i) => i !== idx ? l : { ...l, product_id: pid, description: prod ? prod.name : l.description, unit_price: prod ? prod.unit_price : l.unit_price }));
+                                }}
+                                className="w-full px-2 py-1 rounded border text-xs outline-none"
+                                style={{ background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" }}>
+                                <option value="">— custom —</option>
+                                {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                              </select>
+                            </td>
+                            <td className="px-2 py-1.5 min-w-[140px]">
+                              <input value={line.description} onChange={e => setNewInvLines(ls => ls.map((l, i) => i !== idx ? l : { ...l, description: e.target.value }))}
+                                className="w-full px-2 py-1 rounded border text-xs outline-none" style={{ background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" }} placeholder="Description" />
+                            </td>
+                            <td className="px-2 py-1.5 w-16">
+                              <input type="number" min={0} step="any" value={line.quantity} onChange={e => setNewInvLines(ls => ls.map((l, i) => i !== idx ? l : { ...l, quantity: Number(e.target.value) }))}
+                                className="w-full px-2 py-1 rounded border text-xs outline-none text-right" style={{ background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" }} />
+                            </td>
+                            <td className="px-2 py-1.5 w-24">
+                              <input type="number" min={0} step="any" value={line.unit_price} onChange={e => setNewInvLines(ls => ls.map((l, i) => i !== idx ? l : { ...l, unit_price: Number(e.target.value) }))}
+                                className="w-full px-2 py-1 rounded border text-xs outline-none text-right" style={{ background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" }} />
+                            </td>
+                            <td className="px-2 py-1.5 font-mono text-right whitespace-nowrap" style={{ color: "var(--accent)" }}>
+                              {currency} {fmt(line.quantity * line.unit_price)}
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <button type="button" onClick={() => setNewInvLines(ls => ls.filter((_, i) => i !== idx))}
+                                className="px-1.5 py-0.5 rounded text-xs" style={{ color: "var(--red-c)", background: "rgba(239,68,68,.1)" }}>✕</button>
+                            </td>
+                          </tr>
+                        ))}
+                        {newInvLines.length === 0 && (
+                          <tr><td colSpan={6} className="px-3 py-4 text-center" style={{ color: "var(--muted2)" }}>No lines — click + Add Row</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  {newInvLines.length > 0 && (
+                    <div className="flex justify-end mt-2 text-sm font-bold font-mono" style={{ color: "var(--accent)" }}>
+                      Total: {currency} {fmt(lineTotal)}
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-3 pt-1">
+                  <button type="button" onClick={() => setNewInvModal(false)}
+                    className="flex-1 py-2 text-sm rounded border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>Cancel</button>
+                  <button type="submit" disabled={busy}
+                    className="flex-1 py-2 text-sm font-semibold rounded"
+                    style={{ background: "var(--accent)", color: "#fff", opacity: busy ? .6 : 1 }}>
+                    {busy ? "Saving…" : "Create Invoice"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
       <ConfirmDialog {...dialogProps} confirmLabel="Delete" />
     </div>
   );

@@ -38,6 +38,9 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
   const { confirm, dialogProps } = useConfirm();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [custFilter, setCustFilter] = useState<string[]>([]);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [modal, setModal] = useState(false);
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
   const [editTxDate, setEditTxDate] = useState("");
@@ -51,10 +54,13 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
 
   const filtered = invoices.filter(inv => {
     if (statusFilter.length > 0 && !statusFilter.includes(inv.status)) return false;
+    if (custFilter.length > 0 && !custFilter.includes(String(inv.customer_id))) return false;
+    if (dateFrom && inv.transaction_date && inv.transaction_date < dateFrom) return false;
+    if (dateTo && inv.transaction_date && inv.transaction_date > dateTo) return false;
     if (search) {
       const q = search.toLowerCase();
       const cust = customers.find(c => c.id === inv.customer_id)?.name || "";
-      return (inv.invoice_number || "" + cust + (inv.description || "")).toLowerCase().includes(q);
+      return [inv.invoice_number || "", cust, inv.description || ""].join(" ").toLowerCase().includes(q);
     }
     return true;
   });
@@ -156,22 +162,46 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
       </div>
 
       {/* ── Controls ── */}
-      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center mb-4">
-        <input
-          value={search} onChange={e => setSearch(e.target.value)} placeholder="Search invoices…"
-          className="px-3 py-2.5 text-sm rounded-lg border outline-none flex-1 min-w-0"
-          style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
-        />
-        <MultiSelect
-          label="Status"
-          options={[
-            { label: "Completed", value: "Completed", color: STATUS_COLORS.Completed },
-            { label: "Pending", value: "Pending", color: STATUS_COLORS.Pending },
-            { label: "Written Off", value: "Written Off", color: STATUS_COLORS["Written Off"] },
-          ]}
-          value={statusFilter}
-          onChange={setStatusFilter}
-        />
+      <div className="flex flex-col gap-2 mb-4">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:items-center">
+          <input
+            value={search} onChange={e => setSearch(e.target.value)} placeholder="Search invoices…"
+            className="px-3 py-2.5 text-sm rounded-lg border outline-none flex-1 min-w-0"
+            style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
+          />
+          <MultiSelect
+            label="Customer"
+            options={customers.map(c => ({ label: c.name, value: String(c.id) }))}
+            value={custFilter}
+            onChange={setCustFilter}
+            minWidth={160}
+          />
+          <MultiSelect
+            label="Status"
+            options={[
+              { label: "Completed", value: "Completed", color: STATUS_COLORS.Completed },
+              { label: "Pending", value: "Pending", color: STATUS_COLORS.Pending },
+              { label: "Written Off", value: "Written Off", color: STATUS_COLORS["Written Off"] },
+            ]}
+            value={statusFilter}
+            onChange={setStatusFilter}
+          />
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <div className="flex items-center gap-2 flex-1">
+            <span className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ color: "var(--muted2)" }}>Date</span>
+            <DateInput name="date_from" value={dateFrom} onChange={setDateFrom} placeholder="From" />
+            <span className="text-xs" style={{ color: "var(--muted2)" }}>–</span>
+            <DateInput name="date_to" value={dateTo} onChange={setDateTo} placeholder="To" />
+          </div>
+          {(custFilter.length > 0 || statusFilter.length > 0 || dateFrom || dateTo || search) && (
+            <button onClick={() => { setCustFilter([]); setStatusFilter([]); setDateFrom(""); setDateTo(""); setSearch(""); }}
+              className="text-xs px-3 py-1.5 rounded-lg shrink-0"
+              style={{ background: "var(--card3)", color: "var(--muted2)", border: "1px solid var(--border)" }}>
+              Clear filters
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Mobile Cards */}

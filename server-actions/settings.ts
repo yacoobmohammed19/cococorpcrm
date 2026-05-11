@@ -44,6 +44,13 @@ export async function updateFeatureFlags(flags: Record<string, boolean | undefin
   revalidatePath("/settings");
 }
 
+export async function saveDashboardSettings(settings: Record<string, unknown>) {
+  const orgId = await getCurrentOrgId();
+  const supabase = await createServerClient();
+  const { error } = await supabase.from("organizations").update({ dashboard_settings: settings }).eq("id", orgId);
+  if (error) throw new Error(error.message);
+}
+
 export async function createStatus(formData: FormData) {
   const orgId = await getCurrentOrgId();
   const supabase = await createServerClient();

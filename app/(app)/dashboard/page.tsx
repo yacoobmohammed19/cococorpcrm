@@ -16,7 +16,7 @@ export default async function DashboardPage() {
     { data: accounts },
     { data: org },
   ] = await Promise.all([
-    supabase.from("fact_leads").select("id, name, status_id, lead_date, opportunity_value, opportunity_weighted, weight, last_follow_up, contacted, responded, developed, completed, created_at").is("deleted_at", null),
+    supabase.from("fact_leads").select("id, name, status_id, lead_date, opportunity_value, opportunity_weighted, weight, last_follow_up, contacted, responded, developed, completed, created_at, total_revenue").is("deleted_at", null),
     supabase.from("fact_invoices").select("id, amount, status, transaction_date, customer_id, payment_type_id, due_date").is("deleted_at", null),
     supabase.from("fact_costs").select("id, amount, transaction_date, cost_category_id").is("deleted_at", null),
     supabase.from("fact_cashflow").select("id, balance, record_date, account_id").order("record_date", { ascending: false }),
@@ -25,7 +25,7 @@ export default async function DashboardPage() {
     supabase.from("dim_payment_types").select("id, name"),
     supabase.from("dim_cost_categories").select("id, name"),
     supabase.from("dim_accounts").select("id, name"),
-    supabase.from("organizations").select("currency, name, fiscal_year_start").single(),
+    supabase.from("organizations").select("currency, name, fiscal_year_start, dashboard_settings").single(),
   ]);
 
   // Bank balance: sum latest snapshot per account
@@ -61,6 +61,7 @@ export default async function DashboardPage() {
         bankBalance={bankBalance}
         bankLastDate={bankLastDate}
         fiscalYearStart={org?.fiscal_year_start ?? 3}
+        savedDashboardSettings={(org?.dashboard_settings as Record<string, unknown>) ?? {}}
       />
     </section>
   );

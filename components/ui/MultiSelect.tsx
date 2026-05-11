@@ -68,18 +68,26 @@ export function MultiSelect({ label, options, value, onChange, minWidth = 148 }:
             boxShadow: "0 8px 32px rgba(0,0,0,.25)",
           }}
         >
-          {n > 0 && (
-            <div className="px-3 py-2 border-b" style={{ borderColor: "var(--border)" }}>
+          <div className="px-3 py-2 border-b flex items-center justify-between" style={{ borderColor: "var(--border)" }}>
+            <button
+              type="button"
+              onClick={() => onChange(options.map(o => o.value))}
+              className="text-xs hover:underline"
+              style={{ color: "var(--accent)" }}
+            >
+              Select all
+            </button>
+            {n > 0 && (
               <button
                 type="button"
                 onClick={() => onChange([])}
-                className="text-xs w-full text-left hover:underline"
+                className="text-xs hover:underline"
                 style={{ color: "var(--muted2)" }}
               >
                 Clear all
               </button>
-            </div>
-          )}
+            )}
+          </div>
           <div className="max-h-52 overflow-y-auto">
             {options.map(opt => {
               const checked = value.includes(opt.value);

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   PieChart, Pie, Cell, Legend, AreaChart, Area,
 } from "recharts";
 import { MultiSelect } from "@/components/ui/MultiSelect";
+import { saveDashboardSettings } from "@/server-actions/settings";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -14,6 +15,7 @@ type RawLead = {
   opportunity_value: number | null; opportunity_weighted: number | null; weight: number | null;
   last_follow_up: string | null; contacted: boolean | null; responded: boolean | null;
   developed: boolean | null; completed: boolean | null; created_at: string | null;
+  total_revenue: number | null;
 };
 type RawInvoice = {
   id: number; amount: number | null; status: string | null; transaction_date: string | null;
@@ -28,6 +30,7 @@ type Props = {
   customers: Dim[]; statuses: Dim[]; paymentTypes: Dim[]; costCategories: Dim[]; accounts: Dim[];
   currency: string; orgName: string; bankBalance: number; bankLastDate: string | null;
   fiscalYearStart?: number;
+  savedDashboardSettings: Record<string, unknown>;
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -37,21 +40,14 @@ const LS_SECTION_ORDER = "crm_dash_section_order";
 const LS_CUSTOM_KPIS = "crm_dash_custom_kpis";
 const LS_KPI_HIDDEN = "crm_dash_kpi_hidden";
 
-const METRIC_KEYS = [
-  "revenue", "opex", "profit", "margin_pct", "pipeline", "avg_deal",
-  "pending", "total_leads", "won_leads", "open_leads", "conversion_pct",
-  "total_customers", "total_invoices", "bank_balance",
-] as const;
-type MetricKey = typeof METRIC_KEYS[number];
-const METRIC_LABELS: Record<MetricKey, string> = {
-  revenue: "Revenue", opex: "OPEX", profit: "Profit", margin_pct: "Margin %",
-  pipeline: "Pipeline Value", avg_deal: "Avg Deal Size", pending: "Pending Amount",
-  total_leads: "Total Leads", won_leads: "Won Leads", open_leads: "Open Leads",
-  conversion_pct: "Conversion %", total_customers: "Total Customers",
-  total_invoices: "Total Invoices", bank_balance: "Bank Balance",
-};
+type TableKey = "fact_leads" | "fact_invoices" | "fact_costs";
+type AggType = "SUM" | "AVG" | "COUNT" | "COUNTDISTINCT" | "MIN" | "MAX";
+type FormatType = "currency" | "number" | "percentage";
+type CustomKpi = { id: string; name: string; table: TableKey; agg: AggType; column: string; filterCol: string; filterVals: string[]; format: FormatType; color: string; desc: string; };
 
-type CustomKpi = { id: string; label: string; metricA: MetricKey; op: "+" | "-" | "×" | "÷"; metricB: MetricKey | ""; multiplier: number };
+const TABLE_LABELS: Record<TableKey, string> = { fact_leads: "Leads", fact_invoices: "Invoices", fact_costs: "Costs" };
+const AGG_LABELS: Record<AggType, string> = { SUM: "Sum (total)", AVG: "Average", COUNT: "Count (rows)", COUNTDISTINCT: "Distinct Count", MIN: "Minimum", MAX: "Maximum" };
+const KPI_COLOR_MAP: Record<string, string> = { green: "var(--accent)", cyan: "var(--cyan-c)", blue: "var(--cyan-c)", purple: "var(--purple-c)", amber: "var(--amber-c)", red: "var(--red-c)", pink: "var(--pink)" };
 
 const DEFAULT_SECTIONS = ["summary", "revenue", "pipeline", "costs", "cashflow", "alerts"];
 
@@ -72,6 +68,26 @@ function dateInRange(dateStr: string | null, from: string, to: string) {
   if (from && d < from) return false;
   if (to && d > to) return false;
   return true;
+}
+
+function calcCustomMetric(kpi: Pick<CustomKpi, "table" | "agg" | "column" | "filterCol" | "filterVals">, tableMap: Record<TableKey, Record<string, unknown>[]>): number {
+  let data = tableMap[kpi.table] || [];
+  if (kpi.filterCol && kpi.filterVals?.length) data = data.filter(r => kpi.filterVals.includes(String(r[kpi.filterCol])));
+  const vals = data.map(r => Number(r[kpi.column])).filter(v => !isNaN(v));
+  switch (kpi.agg) {
+    case "SUM": return vals.reduce((a, b) => a + b, 0);
+    case "AVG": return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+    case "COUNT": return data.length;
+    case "MIN": return vals.length ? Math.min(...vals) : 0;
+    case "MAX": return vals.length ? Math.max(...vals) : 0;
+    case "COUNTDISTINCT": return new Set(data.map(r => r[kpi.column]).filter(v => v !== null && v !== undefined && v !== "")).size;
+    default: return 0;
+  }
+}
+function fmtCustomKpi(v: number, format: FormatType, cur: string): string {
+  if (format === "currency") return `${cur} ${fmt(v)}`;
+  if (format === "percentage") return `${(v * 100).toFixed(1)}%`;
+  return fmt(v);
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -149,7 +165,9 @@ function FilterBar({ filters, setFilters, statuses, customers, costCategories, a
   statuses: Dim[]; customers: Dim[]; costCategories: Dim[]; accounts: Dim[]; paymentTypes: Dim[];
   fiscalYearStart?: number;
 }) {
-  const [open, setOpen] = useState(false);
+  const set = (partial: Partial<Filters>) => setFilters({ ...filters, ...partial });
+  const clear = () => setFilters(EMPTY_FILTERS);
+
   const activeCount = [
     filters.dateFrom || filters.dateTo,
     filters.statusIds.length > 0,
@@ -160,214 +178,255 @@ function FilterBar({ filters, setFilters, statuses, customers, costCategories, a
     filters.paymentTypeIds.length > 0,
   ].filter(Boolean).length;
 
-  const set = (partial: Partial<Filters>) => setFilters({ ...filters, ...partial });
-  function tog<T>(arr: T[], v: T) { return arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]; }
-  const toggleStatus = (id: number) => set({ statusIds: tog(filters.statusIds, id) });
-  const toggleCustomer = (id: number) => set({ customerIds: tog(filters.customerIds, id) });
-  const toggleCostCat = (id: number) => set({ costCategoryIds: tog(filters.costCategoryIds, id) });
-  const toggleAccount = (id: number) => set({ accountIds: tog(filters.accountIds, id) });
-  const toggleInvStatus = (s: string) => set({ invoiceStatuses: tog(filters.invoiceStatuses, s) });
-  const togglePayType = (id: number) => set({ paymentTypeIds: tog(filters.paymentTypeIds, id) });
-  const clear = () => setFilters(EMPTY_FILTERS);
+  const now = new Date();
+  const fyMonth = (fiscalYearStart ?? 3) - 1;
+  const getFyStart = () => {
+    const y = now.getMonth() >= fyMonth ? now.getFullYear() : now.getFullYear() - 1;
+    return new Date(y, fyMonth, 1).toISOString().slice(0, 10);
+  };
+  const presets: { key: string; label: string; from: string; to: string }[] = [
+    { key: "30d", label: "30d", from: (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); })(), to: "" },
+    { key: "90d", label: "90d", from: (() => { const d = new Date(); d.setDate(d.getDate() - 90); return d.toISOString().slice(0, 10); })(), to: "" },
+    { key: "12M", label: "12M", from: (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().slice(0, 10); })(), to: "" },
+    { key: "YTD", label: "YTD", from: `${now.getFullYear()}-01-01`, to: "" },
+    { key: "FY",  label: "FY",  from: getFyStart(), to: "" },
+    { key: "All", label: "All", from: "", to: "" },
+  ];
 
   return (
-    <div className="mb-4">
-      <div className="flex items-center gap-2">
-        <button onClick={() => setOpen(!open)}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-colors"
-          style={{ background: open ? "var(--accent)" : "var(--card2)", color: open ? "#fff" : "var(--muted)", border: "1px solid var(--border)" }}>
-          <span>⚡ Filters</span>
-          {activeCount > 0 && <span className="px-1.5 py-0.5 rounded-full text-xs font-bold" style={{ background: "rgba(255,255,255,.25)" }}>{activeCount}</span>}
-        </button>
-        {/* Quick date presets */}
-        {(["30d", "90d", "12M", "YTD", "FY", "All"] as const).map(p => {
-          const now = new Date();
-          const fyMonth = (fiscalYearStart ?? 3) - 1; // 0-indexed month
-          const getFyStart = () => {
-            const y = now.getMonth() >= fyMonth ? now.getFullYear() : now.getFullYear() - 1;
-            return new Date(y, fyMonth, 1).toISOString().slice(0, 10);
-          };
-          const getRange = (): { from: string; to: string } => {
-            if (p === "30d") { const d = new Date(); d.setDate(d.getDate() - 30); return { from: d.toISOString().slice(0, 10), to: "" }; }
-            if (p === "90d") { const d = new Date(); d.setDate(d.getDate() - 90); return { from: d.toISOString().slice(0, 10), to: "" }; }
-            if (p === "12M") { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return { from: d.toISOString().slice(0, 10), to: "" }; }
-            if (p === "YTD") return { from: `${now.getFullYear()}-01-01`, to: "" };
-            if (p === "FY") return { from: getFyStart(), to: "" };
-            return { from: "", to: "" };
-          };
-          const { from, to } = getRange();
-          const active = p === "All" ? !filters.dateFrom && !filters.dateTo : filters.dateFrom === from && filters.dateTo === to;
-          return (
-            <button key={p} onClick={() => set({ dateFrom: from, dateTo: to })}
-              className="px-2.5 py-1.5 rounded text-xs font-semibold transition-colors"
-              style={{ background: active ? "rgba(16,185,129,.15)" : "var(--card2)", color: active ? "var(--accent)" : "var(--muted2)", border: `1px solid ${active ? "var(--accent)" : "var(--border)"}` }}>
-              {p}
-            </button>
-          );
-        })}
+    <div className="mb-4 space-y-2">
+      {/* Row 1 — date presets + custom date range */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Period</span>
+        <div className="flex rounded overflow-hidden border" style={{ borderColor: "var(--border)" }}>
+          {presets.map(p => {
+            const active = p.key === "All"
+              ? !filters.dateFrom && !filters.dateTo
+              : filters.dateFrom === p.from && filters.dateTo === p.to;
+            return (
+              <button key={p.key} onClick={() => set({ dateFrom: p.from, dateTo: p.to })}
+                className="px-2.5 py-1.5 text-xs font-semibold transition-colors"
+                style={{ background: active ? "var(--accent)" : "var(--card2)", color: active ? "#fff" : "var(--muted2)" }}>
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+        <input type="date" value={filters.dateFrom} onChange={e => set({ dateFrom: e.target.value })}
+          className="px-2 py-1.5 rounded text-xs border outline-none"
+          style={{ background: "var(--card2)", borderColor: filters.dateFrom ? "var(--accent)" : "var(--border)", color: "var(--foreground)" }} />
+        <span className="text-xs" style={{ color: "var(--muted2)" }}>→</span>
+        <input type="date" value={filters.dateTo} onChange={e => set({ dateTo: e.target.value })}
+          className="px-2 py-1.5 rounded text-xs border outline-none"
+          style={{ background: "var(--card2)", borderColor: filters.dateTo ? "var(--accent)" : "var(--border)", color: "var(--foreground)" }} />
         {activeCount > 0 && (
-          <button onClick={clear} className="px-2 py-1.5 rounded text-xs" style={{ color: "var(--muted2)" }}>✕ Clear</button>
+          <button onClick={clear} className="px-2 py-1.5 rounded text-xs font-semibold"
+            style={{ color: "var(--muted2)", border: "1px solid var(--border)" }}>
+            ✕ Clear{activeCount > 1 ? ` (${activeCount})` : ""}
+          </button>
         )}
       </div>
 
-      {open && (
-        <div className="mt-2 p-3 rounded-xl flex flex-wrap gap-3 items-end"
-          style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
-          {/* Date range */}
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>From</p>
-            <input type="date" value={filters.dateFrom} onChange={e => set({ dateFrom: e.target.value })}
-              className="px-2 py-1.5 rounded text-xs border outline-none"
-              style={{ background: "var(--card3)", borderColor: filters.dateFrom ? "var(--accent)" : "var(--border)", color: "var(--foreground)" }} />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>To</p>
-            <input type="date" value={filters.dateTo} onChange={e => set({ dateTo: e.target.value })}
-              className="px-2 py-1.5 rounded text-xs border outline-none"
-              style={{ background: "var(--card3)", borderColor: filters.dateTo ? "var(--accent)" : "var(--border)", color: "var(--foreground)" }} />
-          </div>
-          {statuses.length > 0 && (
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Lead Status</p>
-              <MultiSelect
-                label="All Statuses"
-                options={statuses.map(s => ({ label: s.name, value: String(s.id) }))}
-                value={filters.statusIds.map(String)}
-                onChange={vals => set({ statusIds: vals.map(Number) })}
-              />
-            </div>
-          )}
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Invoice Status</p>
-            <MultiSelect
-              label="All Statuses"
-              options={[
-                { label: "Completed", value: "Completed", color: "var(--accent)" },
-                { label: "Pending", value: "Pending", color: "var(--amber-c)" },
-                { label: "Written Off", value: "Written Off", color: "var(--red-c)" },
-              ]}
-              value={filters.invoiceStatuses}
-              onChange={vals => set({ invoiceStatuses: vals })}
-            />
-          </div>
-          {customers.length > 0 && (
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Customer</p>
-              <MultiSelect
-                label="All Customers"
-                options={customers.map(c => ({ label: c.name, value: String(c.id) }))}
-                value={filters.customerIds.map(String)}
-                onChange={vals => set({ customerIds: vals.map(Number) })}
-                minWidth={180}
-              />
-            </div>
-          )}
-          {paymentTypes.length > 0 && (
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Payment Type</p>
-              <MultiSelect
-                label="All Types"
-                options={paymentTypes.map(p => ({ label: p.name, value: String(p.id) }))}
-                value={filters.paymentTypeIds.map(String)}
-                onChange={vals => set({ paymentTypeIds: vals.map(Number) })}
-              />
-            </div>
-          )}
-          {costCategories.length > 0 && (
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Cost Category</p>
-              <MultiSelect
-                label="All Categories"
-                options={costCategories.map(c => ({ label: c.name, value: String(c.id) }))}
-                value={filters.costCategoryIds.map(String)}
-                onChange={vals => set({ costCategoryIds: vals.map(Number) })}
-              />
-            </div>
-          )}
-          {accounts.length > 0 && (
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Account</p>
-              <MultiSelect
-                label="All Accounts"
-                options={accounts.map(a => ({ label: a.name, value: String(a.id) }))}
-                value={filters.accountIds.map(String)}
-                onChange={vals => set({ accountIds: vals.map(Number) })}
-              />
-            </div>
-          )}
-        </div>
-      )}
+      {/* Row 2 — dimension multiselects, always visible */}
+      <div className="flex flex-wrap items-center gap-2">
+        {customers.length > 0 && (
+          <MultiSelect label="Customer" options={customers.map(c => ({ label: c.name, value: String(c.id) }))}
+            value={filters.customerIds.map(String)} onChange={vals => set({ customerIds: vals.map(Number) })} minWidth={180} />
+        )}
+        <MultiSelect label="Invoice Status"
+          options={[
+            { label: "Completed", value: "Completed", color: "var(--accent)" },
+            { label: "Pending", value: "Pending", color: "var(--amber-c)" },
+            { label: "Written Off", value: "Written Off", color: "var(--red-c)" },
+          ]}
+          value={filters.invoiceStatuses} onChange={vals => set({ invoiceStatuses: vals })} />
+        {statuses.length > 0 && (
+          <MultiSelect label="Lead Status" options={statuses.map(s => ({ label: s.name, value: String(s.id) }))}
+            value={filters.statusIds.map(String)} onChange={vals => set({ statusIds: vals.map(Number) })} />
+        )}
+        {paymentTypes.length > 0 && (
+          <MultiSelect label="Pay Type" options={paymentTypes.map(p => ({ label: p.name, value: String(p.id) }))}
+            value={filters.paymentTypeIds.map(String)} onChange={vals => set({ paymentTypeIds: vals.map(Number) })} />
+        )}
+        {costCategories.length > 0 && (
+          <MultiSelect label="Cost Category" options={costCategories.map(c => ({ label: c.name, value: String(c.id) }))}
+            value={filters.costCategoryIds.map(String)} onChange={vals => set({ costCategoryIds: vals.map(Number) })} />
+        )}
+        {accounts.length > 0 && (
+          <MultiSelect label="Account" options={accounts.map(a => ({ label: a.name, value: String(a.id) }))}
+            value={filters.accountIds.map(String)} onChange={vals => set({ accountIds: vals.map(Number) })} />
+        )}
+      </div>
     </div>
   );
 }
 
 // ── Custom KPI Builder ────────────────────────────────────────────────────────
 
-function CustomKpiBuilder({ onClose, onSave }: { onClose: () => void; onSave: (kpi: CustomKpi) => void }) {
-  const [label, setLabel] = useState("My KPI");
-  const [metricA, setMetricA] = useState<MetricKey>("revenue");
-  const [op, setOp] = useState<"+" | "-" | "×" | "÷">("+");
-  const [metricB, setMetricB] = useState<MetricKey | "">("");
-  const [multiplier, setMultiplier] = useState(1);
+function CustomKpiBuilder({ onClose, onSave, tableMap, dimMaps, cur }: {
+  onClose: () => void;
+  onSave: (kpi: CustomKpi) => void;
+  tableMap: Record<TableKey, Record<string, unknown>[]>;
+  dimMaps: Record<string, Record<number, string>>;
+  cur: string;
+}) {
+  const [name, setName] = useState("");
+  const [table, setTable] = useState<TableKey>("fact_invoices");
+  const [agg, setAgg] = useState<AggType>("SUM");
+  const [column, setColumn] = useState("");
+  const [filterCol, setFilterCol] = useState("");
+  const [filterVals, setFilterVals] = useState<string[]>([]);
+  const [format, setFormat] = useState<FormatType>("currency");
+  const [color, setColor] = useState("green");
+  const [desc, setDesc] = useState("");
 
-  const save = () => {
-    onSave({ id: Date.now().toString(), label, metricA, op, metricB, multiplier });
-    onClose();
-  };
+  useEffect(() => {
+    const data = tableMap[table] || [];
+    const cols = data.length ? Object.keys(data[0]) : [];
+    const numericCols = cols.filter(c => {
+      const sample = data.find(r => r[c] !== null && r[c] !== "" && r[c] !== undefined);
+      return sample !== undefined && !isNaN(Number(sample[c]));
+    });
+    setColumn(numericCols[0] || "");
+    setFilterCol("");
+    setFilterVals([]);
+  }, [table, tableMap]);
+
+  const tableData = tableMap[table] || [];
+  const allCols = tableData.length ? Object.keys(tableData[0]) : [];
+  const numCols = allCols.filter(c => {
+    const sample = tableData.find(r => r[c] !== null && r[c] !== "" && r[c] !== undefined);
+    return sample !== undefined && !isNaN(Number(sample[c]));
+  });
+  const colOptions = (agg === "COUNT" || agg === "COUNTDISTINCT") ? allCols : numCols;
+
+  const availFilterVals = filterCol
+    ? [...new Set(tableData.map(r => { const v = r[filterCol]; return v === null || v === undefined || v === "" ? null : String(v); }).filter((v): v is string => v !== null))].sort()
+    : [];
+
+  const previewVal = useMemo(() =>
+    column ? calcCustomMetric({ table, agg, column, filterCol, filterVals }, tableMap) : 0,
+    [table, agg, column, filterCol, filterVals, tableMap]
+  );
+
+  const inp = { background: "var(--card3)", border: "1px solid var(--border)", color: "var(--foreground)" } as const;
+  const lbl = { color: "var(--muted2)" } as const;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
       style={{ background: "rgba(0,0,0,.7)", backdropFilter: "blur(4px)" }}>
-      <div className="w-full sm:max-w-md rounded-t-2xl sm:rounded-xl shadow-2xl"
+      <div className="w-full sm:max-w-lg rounded-t-2xl sm:rounded-xl shadow-2xl flex flex-col max-h-[90vh]"
         style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
-        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
-          <h2 className="font-semibold text-sm">Custom KPI Builder</h2>
+        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: "var(--border)" }}>
+          <h2 className="font-semibold text-sm">Add Dashboard Metric</h2>
           <button onClick={onClose} style={{ color: "var(--muted2)" }}>✕</button>
         </div>
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 overflow-y-auto">
+          {/* Step 1 */}
           <div>
-            <label className="block text-xs mb-1 font-semibold" style={{ color: "var(--muted2)" }}>Label</label>
-            <input value={label} onChange={e => setLabel(e.target.value)}
-              className="w-full px-3 py-2 rounded text-sm" style={{ background: "var(--card3)", border: "1px solid var(--border)", color: "var(--foreground)" }} />
+            <p className="text-xs font-bold mb-1.5" style={lbl}>1. Name your metric</p>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Total Monthly Revenue"
+              className="w-full px-3 py-2 rounded text-sm" style={inp} />
           </div>
-          <div className="grid grid-cols-3 gap-2 items-end">
-            <div>
-              <label className="block text-xs mb-1 font-semibold" style={{ color: "var(--muted2)" }}>Metric A</label>
-              <select value={metricA} onChange={e => setMetricA(e.target.value as MetricKey)}
-                className="w-full px-2 py-2 rounded text-xs" style={{ background: "var(--card3)", border: "1px solid var(--border)", color: "var(--foreground)" }}>
-                {METRIC_KEYS.map(k => <option key={k} value={k}>{METRIC_LABELS[k]}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs mb-1 font-semibold" style={{ color: "var(--muted2)" }}>Operation</label>
-              <select value={op} onChange={e => setOp(e.target.value as typeof op)}
-                className="w-full px-2 py-2 rounded text-xs" style={{ background: "var(--card3)", border: "1px solid var(--border)", color: "var(--foreground)" }}>
-                {(["+", "-", "×", "÷"] as const).map(o => <option key={o} value={o}>{o}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs mb-1 font-semibold" style={{ color: "var(--muted2)" }}>Metric B</label>
-              <select value={metricB} onChange={e => setMetricB(e.target.value as MetricKey | "")}
-                className="w-full px-2 py-2 rounded text-xs" style={{ background: "var(--card3)", border: "1px solid var(--border)", color: "var(--foreground)" }}>
-                <option value="">— none —</option>
-                {METRIC_KEYS.map(k => <option key={k} value={k}>{METRIC_LABELS[k]}</option>)}
-              </select>
-            </div>
-          </div>
+          {/* Step 2 */}
           <div>
-            <label className="block text-xs mb-1 font-semibold" style={{ color: "var(--muted2)" }}>Multiplier (e.g. 100 for %)</label>
-            <input type="number" value={multiplier} onChange={e => setMultiplier(Number(e.target.value))}
-              className="w-full px-3 py-2 rounded text-sm" style={{ background: "var(--card3)", border: "1px solid var(--border)", color: "var(--foreground)" }} />
+            <p className="text-xs font-bold mb-1.5" style={lbl}>2. Choose data source</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] mb-1 font-semibold uppercase" style={lbl}>Table</label>
+                <select value={table} onChange={e => setTable(e.target.value as TableKey)} className="w-full px-2 py-2 rounded text-xs" style={inp}>
+                  {(Object.keys(TABLE_LABELS) as TableKey[]).map(k => <option key={k} value={k}>{TABLE_LABELS[k]}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] mb-1 font-semibold uppercase" style={lbl}>Calculation</label>
+                <select value={agg} onChange={e => setAgg(e.target.value as AggType)} className="w-full px-2 py-2 rounded text-xs" style={inp}>
+                  {(Object.keys(AGG_LABELS) as AggType[]).map(k => <option key={k} value={k}>{AGG_LABELS[k]}</option>)}
+                </select>
+              </div>
+            </div>
           </div>
-          <p className="text-xs px-3 py-2 rounded" style={{ background: "var(--card3)", color: "var(--muted2)" }}>
-            Formula: <span style={{ color: "var(--accent)" }}>({METRIC_LABELS[metricA]} {metricB ? `${op} ${METRIC_LABELS[metricB]}` : ""}) × {multiplier}</span>
-          </p>
+          {/* Step 3 */}
+          <div>
+            <p className="text-xs font-bold mb-1.5" style={lbl}>3. Choose column</p>
+            <select value={column} onChange={e => setColumn(e.target.value)} className="w-full px-2 py-2 rounded text-xs" style={inp}>
+              {colOptions.map(c => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
+            </select>
+          </div>
+          {/* Step 4 */}
+          <div>
+            <p className="text-xs font-bold mb-1.5" style={lbl}>4. Filter (optional)</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] mb-1 font-semibold uppercase" style={lbl}>Filter Column</label>
+                <select value={filterCol} onChange={e => { setFilterCol(e.target.value); setFilterVals([]); }} className="w-full px-2 py-2 rounded text-xs" style={inp}>
+                  <option value="">No filter</option>
+                  {allCols.map(c => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] mb-1 font-semibold uppercase" style={lbl}>Filter Values</label>
+                {filterCol ? (
+                  <MultiSelect
+                    label="Any"
+                    options={(() => {
+                      const dm = dimMaps[filterCol];
+                      return availFilterVals.map(v => ({
+                        label: dm ? String(dm[Number(v)] ?? v) : v,
+                        value: v,
+                      }));
+                    })()}
+                    value={filterVals}
+                    onChange={setFilterVals}
+                  />
+                ) : (
+                  <div className="px-2 py-2 rounded text-xs" style={{ ...inp, opacity: 0.4 }}>— select column first —</div>
+                )}
+              </div>
+            </div>
+          </div>
+          {/* Step 5 */}
+          <div>
+            <p className="text-xs font-bold mb-1.5" style={lbl}>5. Display</p>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div>
+                <label className="block text-[10px] mb-1 font-semibold uppercase" style={lbl}>Format</label>
+                <select value={format} onChange={e => setFormat(e.target.value as FormatType)} className="w-full px-2 py-2 rounded text-xs" style={inp}>
+                  <option value="currency">Currency</option>
+                  <option value="number">Number</option>
+                  <option value="percentage">Percentage</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] mb-1 font-semibold uppercase" style={lbl}>Color</label>
+                <select value={color} onChange={e => setColor(e.target.value)} className="w-full px-2 py-2 rounded text-xs" style={inp}>
+                  {Object.keys(KPI_COLOR_MAP).map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] mb-1 font-semibold uppercase" style={lbl}>Subtitle</label>
+                <input value={desc} onChange={e => setDesc(e.target.value)} placeholder="optional" className="w-full px-2 py-2 rounded text-xs" style={inp} />
+              </div>
+            </div>
+            {/* Live preview */}
+            <div className="rounded-lg p-3 text-center" style={{ background: "var(--card3)", border: "1px solid var(--border)" }}>
+              <div className="text-lg font-bold font-mono" style={{ color: KPI_COLOR_MAP[color] || "var(--accent)" }}>
+                {fmtCustomKpi(previewVal, format, cur)}
+              </div>
+              <div className="text-xs mt-0.5" style={{ color: "var(--muted2)" }}>
+                {agg} of {(column || "—").replace(/_/g, " ")}
+                {filterCol && filterVals.length > 0 ? ` where ${filterCol.replace(/_/g, " ")} in [${filterVals.length}]` : filterCol ? ` (no filter value — all rows)` : ""}
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="px-5 pb-5 flex gap-2">
+        <div className="px-5 pb-5 pt-2 flex gap-2 border-t shrink-0" style={{ borderColor: "var(--border)" }}>
           <button onClick={onClose} className="flex-1 py-2 rounded text-sm font-semibold"
             style={{ background: "var(--card3)", color: "var(--muted)", border: "1px solid var(--border)" }}>Cancel</button>
-          <button onClick={save} className="flex-1 py-2 rounded text-sm font-semibold"
-            style={{ background: "var(--accent)", color: "#fff" }}>Add KPI</button>
+          <button onClick={() => { if (!name.trim() || !column) return; onSave({ id: Date.now().toString(), name, table, agg, column, filterCol, filterVals, format, color, desc }); onClose(); }}
+            disabled={!name.trim() || !column}
+            className="flex-1 py-2 rounded text-sm font-semibold disabled:opacity-40"
+            style={{ background: "var(--accent)", color: "#fff" }}>Add Metric</button>
         </div>
       </div>
     </div>
@@ -385,14 +444,20 @@ export function DashboardCharts({
   rawLeads, rawInvoices, rawCosts, rawCashflow,
   customers, statuses, paymentTypes, costCategories, accounts,
   currency, orgName, bankBalance, bankLastDate, fiscalYearStart,
+  savedDashboardSettings,
 }: Props) {
   const cur = currency === "ZAR" ? "R" : currency === "USD" ? "$" : currency === "EUR" ? "€" : "R";
 
-  // ── Persisted state (lazy initializers avoid useEffect setState) ─────────
+  // ── Persisted state — DB is source of truth for customKpis ───────────────
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [sectionOrder, setSectionOrder] = useState<string[]>(() => readLS(LS_SECTION_ORDER, DEFAULT_SECTIONS));
-  const [customKpis, setCustomKpis] = useState<CustomKpi[]>(() => readLS(LS_CUSTOM_KPIS, [] as CustomKpi[]));
+  const [customKpis, setCustomKpis] = useState<CustomKpi[]>(() => {
+    const fromDb = savedDashboardSettings?.customKpis;
+    if (Array.isArray(fromDb) && fromDb.length > 0) return fromDb as CustomKpi[];
+    return readLS(LS_CUSTOM_KPIS, [] as CustomKpi[]);
+  });
   const [hiddenKpis, setHiddenKpis] = useState<string[]>(() => readLS(LS_KPI_HIDDEN, [] as string[]));
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showKpiConfig, setShowKpiConfig] = useState(false);
   const [showKpiBuilder, setShowKpiBuilder] = useState(false);
   const [nowMs] = useState(() => Date.now());
@@ -418,6 +483,12 @@ export function DashboardCharts({
   const saveCustomKpis = (kpis: CustomKpi[]) => {
     setCustomKpis(kpis);
     try { localStorage.setItem(LS_CUSTOM_KPIS, JSON.stringify(kpis)); } catch { /* ignore */ }
+    // Debounce DB save so rapid adds/removes don't hammer the server
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      const next = { ...savedDashboardSettings, customKpis: kpis };
+      saveDashboardSettings(next).catch(() => { /* silent — localStorage still has it */ });
+    }, 800);
   };
   const toggleKpiHidden = (key: string) => {
     const next = hiddenKpis.includes(key) ? hiddenKpis.filter(k => k !== key) : [...hiddenKpis, key];
@@ -485,8 +556,11 @@ export function DashboardCharts({
     const margin_pct = revenue > 0 ? profit / revenue * 100 : 0;
     const wonLeads = fLeads.filter(l => l.status_id === wonStatusId);
     const openLeads = fLeads.filter(l => l.status_id !== wonStatusId && l.status_id !== lostStatusId && l.status_id !== 5);
-    const pipeline = openLeads.reduce((s, l) => s + Number(l.opportunity_weighted || 0), 0);
-    const avg_deal = wonLeads.length > 0 ? wonLeads.reduce((s, l) => s + Number(l.opportunity_value || 0), 0) / wonLeads.length : 0;
+    // pipelineValue = ALL filtered leads' weighted opportunity (matches index.html)
+    const pipeline = fLeads.reduce((s, l) => s + Number(l.opportunity_weighted || 0), 0);
+    // avgDeal uses total_revenue across all filtered leads ÷ won count (matches index.html)
+    const totalRevenue = fLeads.reduce((s, l) => s + Number(l.total_revenue || 0), 0);
+    const avg_deal = wonLeads.length > 0 ? totalRevenue / wonLeads.length : 0;
     const conversion_pct = fLeads.length > 0 ? wonLeads.length / fLeads.length * 100 : 0;
 
     // Cashflow: latest per account (filtered)
@@ -506,30 +580,19 @@ export function DashboardCharts({
     };
   }, [fLeads, fInvoices, fCosts, fCashflow, wonStatusId, lostStatusId, customers, bankBalance, filters]);
 
-  // ── Custom KPI values ────────────────────────────────────────────────────
-  const evalMetric = (key: MetricKey): number => {
-    const numMap: Record<MetricKey, number> = {
-      revenue: metrics.revenue, opex: metrics.opex, profit: metrics.profit,
-      margin_pct: metrics.margin_pct, pipeline: metrics.pipeline, avg_deal: metrics.avg_deal,
-      pending: metrics.pending, total_leads: metrics.total_leads, won_leads: metrics.won_leads,
-      open_leads: metrics.open_leads, conversion_pct: metrics.conversion_pct,
-      total_customers: metrics.total_customers, total_invoices: metrics.total_invoices,
-      bank_balance: metrics.bank_balance,
-    };
-    return numMap[key] ?? 0;
-  };
-  const evalCustomKpi = (kpi: CustomKpi): number => {
-    const a = evalMetric(kpi.metricA);
-    const b = kpi.metricB ? evalMetric(kpi.metricB) : 0;
-    let result = a;
-    if (kpi.metricB) {
-      if (kpi.op === "+") result = a + b;
-      else if (kpi.op === "-") result = a - b;
-      else if (kpi.op === "×") result = a * b;
-      else if (kpi.op === "÷") result = b !== 0 ? a / b : 0;
-    }
-    return result * kpi.multiplier;
-  };
+  // ── Custom KPI evaluation (table-based, matches index.html calcMetric) ───
+  const tableMap = useMemo<Record<TableKey, Record<string, unknown>[]>>(() => ({
+    fact_leads: rawLeads as Record<string, unknown>[],
+    fact_invoices: rawInvoices as Record<string, unknown>[],
+    fact_costs: rawCosts as Record<string, unknown>[],
+  }), [rawLeads, rawInvoices, rawCosts]);
+
+  const dimMaps = useMemo(() => ({
+    status_id: statusMap as Record<number, string>,
+    payment_type_id: payTypeMap as Record<number, string>,
+    cost_category_id: catMap as Record<number, string>,
+    customer_id: customerMap as Record<number, string>,
+  }), [statusMap, payTypeMap, catMap, customerMap]);
 
   // ── Chart data ───────────────────────────────────────────────────────────
   const months12 = useMemo(() => Array.from({ length: 12 }, (_, i) => {
@@ -655,18 +718,20 @@ export function DashboardCharts({
   const profitColor = metrics.profit >= 0 ? "var(--accent)" : "var(--red-c)";
   const convColor = metrics.conversion_pct >= 10 ? "var(--accent)" : "var(--amber-c)";
 
+  // KPI order matches index.html KPI_DEFS exactly
   const builtinKpis = [
-    { key: "revenue", label: "Revenue", value: `${cur} ${fmt(metrics.revenue)}`, sub: `${cur} ${fmt(metrics.pending)} pending`, color: "var(--accent)" },
-    { key: "opex", label: "OPEX", value: `${cur} ${fmt(metrics.opex)}`, sub: "operating costs", color: "var(--red-c)" },
-    { key: "profit", label: "Profit", value: `${cur} ${fmt(metrics.profit)}`, sub: `Margin: ${fmtDec(metrics.margin_pct)}%`, color: profitColor },
-    { key: "pipeline", label: "Pipeline", value: `${cur} ${fmt(metrics.pipeline)}`, sub: `${metrics.open_leads} open leads`, color: "var(--purple-c)" },
     { key: "total_leads", label: "Total Leads", value: String(metrics.total_leads), sub: `${metrics.open_leads} open`, color: "var(--cyan-c)" },
-    { key: "won_leads", label: "Won", value: String(metrics.won_leads), sub: `${fmtDec(metrics.conversion_pct)}% conv`, color: "var(--accent)" },
-    { key: "conversion_pct", label: "Conversion", value: `${fmtDec(metrics.conversion_pct)}%`, sub: `${metrics.won_leads}/${metrics.total_leads}`, color: convColor },
+    { key: "won_leads", label: "Won", value: String(metrics.won_leads), sub: `of ${metrics.total_leads}`, color: "var(--accent)" },
+    { key: "conversion_pct", label: "Conversion", value: `${metrics.conversion_pct.toFixed(1)}%`, sub: `${metrics.won_leads}/${metrics.total_leads}`, color: convColor },
+    { key: "revenue", label: "Revenue", value: `${cur} ${fmt(metrics.revenue)}`, sub: `${cur} ${fmt(metrics.pending)} pending`, color: "var(--accent)" },
+    { key: "opex", label: "OPEX", value: `${cur} ${fmt(metrics.opex)}`, sub: "", color: "var(--red-c)" },
+    { key: "profit", label: "Profit", value: `${cur} ${fmt(metrics.profit)}`, sub: `Margin: ${metrics.margin_pct.toFixed(1)}%`, color: profitColor },
+    { key: "pipeline", label: "Pipeline", value: `${cur} ${fmt(metrics.pipeline)}`, sub: "", color: "var(--purple-c)" },
     { key: "avg_deal", label: "Avg Deal", value: `${cur} ${fmt(metrics.avg_deal)}`, sub: `${metrics.won_leads} deals`, color: "var(--amber-c)" },
+    { key: "total_customers", label: "Customers", value: String(metrics.total_customers), sub: `${metrics.total_invoices} inv`, color: "var(--cyan-c)" },
+    // Extended KPIs (hidden by default in configure panel — users can toggle)
     { key: "pending", label: "Pending", value: `${cur} ${fmt(metrics.pending)}`, sub: "awaiting payment", color: "var(--amber-c)" },
     { key: "bank_balance", label: "Bank Balance", value: metrics.bank_balance > 0 ? `${cur} ${fmt(metrics.bank_balance)}` : "—", sub: bankLastDate ? new Date(bankLastDate).toLocaleDateString("en-ZA") : "", color: metrics.bank_balance > 0 ? "var(--accent)" : "var(--muted2)" },
-    { key: "total_customers", label: "Customers", value: String(metrics.total_customers), sub: `${metrics.total_invoices} invoices`, color: "var(--cyan-c)" },
   ];
   const visibleKpis = builtinKpis.filter(k => !hiddenKpis.includes(k.key));
 
@@ -714,13 +779,19 @@ export function DashboardCharts({
             {customKpis.length > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3 mb-3">
                 {customKpis.map(kpi => {
-                  const val = evalCustomKpi(kpi);
+                  const val = calcCustomMetric(kpi, tableMap);
+                  const formatted = fmtCustomKpi(val, kpi.format ?? "number", cur);
                   return (
-                    <KpiCard key={kpi.id} label={kpi.label}
-                      value={`${fmt(val)}`}
-                      sub={`${METRIC_LABELS[kpi.metricA]}${kpi.metricB ? ` ${kpi.op} ${METRIC_LABELS[kpi.metricB]}` : ""} × ${kpi.multiplier}`}
-                      color="var(--pink)"
-                      onClick={() => saveCustomKpis(customKpis.filter(k => k.id !== kpi.id))} />
+                    <div key={kpi.id} className="relative group">
+                      <KpiCard label={kpi.name} value={formatted}
+                        sub={kpi.desc || kpi.agg}
+                        color={KPI_COLOR_MAP[kpi.color] || "var(--pink)"} />
+                      <button
+                        onClick={() => saveCustomKpis(customKpis.filter(k => k.id !== kpi.id))}
+                        className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full text-xs items-center justify-center hidden group-hover:flex"
+                        style={{ background: "var(--red-c)", color: "#fff" }}
+                        title="Remove metric">✕</button>
+                    </div>
                   );
                 })}
               </div>
@@ -728,7 +799,7 @@ export function DashboardCharts({
             <button onClick={() => setShowKpiBuilder(true)}
               className="px-3 py-1.5 rounded text-xs font-semibold"
               style={{ background: "rgba(232,67,147,.1)", color: "var(--pink)", border: "1px solid var(--pink)" }}>
-              + Custom KPI
+              + Add Metric
             </button>
           </Section>
         );
@@ -1030,6 +1101,9 @@ export function DashboardCharts({
         <CustomKpiBuilder
           onClose={() => setShowKpiBuilder(false)}
           onSave={kpi => saveCustomKpis([...customKpis, kpi])}
+          tableMap={tableMap}
+          dimMaps={dimMaps}
+          cur={cur}
         />
       )}
     </div>
