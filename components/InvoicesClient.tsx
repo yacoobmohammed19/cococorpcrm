@@ -25,6 +25,14 @@ type Props = { invoices: Invoice[]; customers: Customer[]; paymentTypes: Payment
 
 function fmt(n: number) { return Number(n).toLocaleString("en-ZA", { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
 function fdate(d: string | null) { if (!d) return "—"; try { return new Date(d).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", year: "2-digit" }); } catch { return "—"; } }
+function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
+  if (!rows.length) return;
+  const headers = Object.keys(rows[0]);
+  const escape = (v: unknown) => { const s = v == null ? "" : String(v); return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s; };
+  const csv = [headers.join(","), ...rows.map(r => headers.map(h => escape(r[h])).join(","))].join("\n");
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })), download: filename });
+  a.click(); URL.revokeObjectURL(a.href);
+}
 
 const STATUS_COLORS: Record<string, string> = {
   Completed: "var(--accent)", Pending: "var(--amber-c)", "Written Off": "var(--red-c)"
@@ -218,14 +226,22 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
             {invoices.length} invoices · {cur} {fmt(totals.completed)} collected
           </p>
         </div>
-        <button
-          onClick={() => { setCreateTxDate(today); setCreateDueDate(""); setCreateDesc(""); setLines([{ description: "", quantity: 1, unit_price: 0 }]); setModal(true); }}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all hover:opacity-90 active:scale-[.98]"
-          style={{ background: "var(--primary)", color: "var(--primary-fg)" }}
-        >
-          <Plus size={15} />
-          New Invoice
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => { const custMap = Object.fromEntries(customers.map(c => [c.id, c.name])); downloadCsv(`invoices-${new Date().toISOString().slice(0,10)}.csv`, filtered.map(i => ({ "Invoice #": i.invoice_number || "", Date: i.transaction_date || "", "Due Date": i.due_date || "", Customer: custMap[i.customer_id] || "", Amount: i.amount, Status: i.status, "Payment Type": i.payment_type_name || "", Description: i.description || "" }))); }}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg border hover:opacity-80"
+            style={{ border: "1px solid var(--border)", color: "var(--muted)", background: "var(--card2)" }}>
+            ↓ CSV
+          </button>
+          <button
+            onClick={() => { setCreateTxDate(today); setCreateDueDate(""); setCreateDesc(""); setLines([{ description: "", quantity: 1, unit_price: 0 }]); setModal(true); }}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all hover:opacity-90 active:scale-[.98]"
+            style={{ background: "var(--primary)", color: "var(--primary-fg)" }}
+          >
+            <Plus size={15} />
+            New Invoice
+          </button>
+        </div>
       </div>
 
       {/* ── KPI Row ── */}

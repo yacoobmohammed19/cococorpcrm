@@ -72,6 +72,14 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
   const [bulkBusy, setBulkBusy] = useState(false);
 
   function togStr(arr: string[], v: string) { return arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]; }
+  function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
+    if (!rows.length) return;
+    const headers = Object.keys(rows[0]);
+    const escape = (v: unknown) => { const s = v == null ? "" : String(v); return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s; };
+    const csv = [headers.join(","), ...rows.map(r => headers.map(h => escape(r[h])).join(","))].join("\n");
+    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })), download: filename });
+    a.click(); URL.revokeObjectURL(a.href);
+  }
 
   const filtered = customers.filter(c => {
     if (statusFilter.length > 0 && !statusFilter.includes(c.status || "Active")) return false;
@@ -136,6 +144,12 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
               {bulkBusy ? "Archiving…" : `Archive (${selected.size})`}
             </button>
           )}
+          <button
+            onClick={() => downloadCsv(`customers-${new Date().toISOString().slice(0,10)}.csv`, filtered.map(c => ({ Name: c.name, Status: c.status || "Active", Email: c.email || "", Phone: c.phone || "", "Contact Person": c.contact_person || "", Source: c.source || "", "Reg No": c.reg_no || "", "VAT No": c.vat_no || "", "Created": c.created_at || "" })))}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg border hover:opacity-80"
+            style={{ border: "1px solid var(--border)", color: "var(--muted)", background: "var(--card2)" }}>
+            ↓ CSV
+          </button>
           <button
             onClick={() => open(null)}
             className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all hover:opacity-90 active:scale-[.98]"

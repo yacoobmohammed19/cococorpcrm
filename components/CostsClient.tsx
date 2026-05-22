@@ -24,6 +24,14 @@ type Customer = { id: number; name: string };
 type Props = { costs: Cost[]; categories: Category[]; accounts: Account[]; customers: Customer[]; currency: string };
 
 function fmt(n: number) { return Number(n).toLocaleString("en-ZA", { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
+function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
+  if (!rows.length) return;
+  const headers = Object.keys(rows[0]);
+  const escape = (v: unknown) => { const s = v == null ? "" : String(v); return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s; };
+  const csv = [headers.join(","), ...rows.map(r => headers.map(h => escape(r[h])).join(","))].join("\n");
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })), download: filename });
+  a.click(); URL.revokeObjectURL(a.href);
+}
 
 function monthRange(from: string, to: string) {
   const [fy, fm] = from.split("-").map(Number);
@@ -167,6 +175,12 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
             {filtered.length} entries · {cur} {fmt(total)} filtered OPEX
           </p>
         </div>
+        <button
+          onClick={() => downloadCsv(`costs-${new Date().toISOString().slice(0,10)}.csv`, filtered.map(c => ({ Date: c.transaction_date, Details: c.cost_details || "", Category: c.category_name || "", Customer: c.apportion_to_customers ? "All (Apportioned)" : (c.customer_name || ""), Amount: c.amount, Account: c.account_name || "", Recouped: c.recouped === "Y" ? "Yes" : "No", Apportioned: c.apportion_to_customers ? "Yes" : "No" })))}
+          className="flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg border transition-all hover:opacity-80"
+          style={{ border: "1px solid var(--border)", color: "var(--muted)", background: "var(--card2)" }}>
+          ↓ CSV
+        </button>
         <button
           onClick={() => { setCreateCostDate(new Date().toISOString().slice(0, 10)); setNewApportion(false); setModal(true); }}
           className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all hover:opacity-90"
@@ -395,9 +409,9 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
               <input ref={editFileRef} type="file" accept="image/*" className="hidden"
                 onChange={e => { const f = e.target.files?.[0]; if (f) handleScanReceipt(f, "edit"); e.target.value = ""; }} />
               <button type="button" disabled={extracting} onClick={() => editFileRef.current?.click()}
-                className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold border-dashed border transition-opacity"
-                style={{ borderColor: "var(--border)", color: "var(--muted2)", background: "var(--card3)", opacity: extracting ? .6 : 1 }}>
-                <Camera size={12} />{extracting ? "Scanning…" : "Scan New Receipt"}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold border-dashed border-2 transition-opacity"
+                style={{ borderColor: "var(--accent)", color: "var(--accent)", background: "rgba(16,185,129,.05)", opacity: extracting ? .6 : 1 }}>
+                <Camera size={15} />{extracting ? "Scanning receipt…" : "📎 Update with AI Receipt Scan"}
               </button>
               {(editImageUrl || editCost.receipt_image_url) && (
                 <div className="mt-2 flex items-center gap-2 text-xs" style={{ color: "var(--accent)" }}>

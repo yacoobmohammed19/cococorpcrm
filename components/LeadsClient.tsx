@@ -267,6 +267,14 @@ const STATUS_COLORS: Record<number, string> = { 1: "var(--pink)", 2: "var(--ambe
 function fmt(n: number | null) { return n == null ? "0" : Number(n).toLocaleString("en-ZA", { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
 function fdate(d: string | null) { if (!d) return "—"; try { return new Date(d).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", year: "2-digit" }); } catch { return "—"; } }
 function pct(n: number | null) { if (!n) return "0%"; return `${Number(n)}%`; }
+function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
+  if (!rows.length) return;
+  const headers = Object.keys(rows[0]);
+  const escape = (v: unknown) => { const s = v == null ? "" : String(v); return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s; };
+  const csv = [headers.join(","), ...rows.map(r => headers.map(h => escape(r[h])).join(","))].join("\n");
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })), download: filename });
+  a.click(); URL.revokeObjectURL(a.href);
+}
 
 export function LeadsClient({ leads, statuses, customers, products = [], currency }: Props) {
   const cur = currency === "ZAR" ? "R" : "$";
@@ -371,14 +379,22 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
             {leads.length} leads · {cur} {fmt(pipelineTotal)} weighted pipeline
           </p>
         </div>
-        <button
-          onClick={() => openModal(null)}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all hover:opacity-90 active:scale-[.98]"
-          style={{ background: "var(--primary)", color: "var(--primary-fg)" }}
-        >
-          <Plus size={15} />
-          New Lead
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => { const stMap = Object.fromEntries(statuses.map(s => [s.id, s.name])); const cMap = Object.fromEntries(customers.map(c => [c.id, c.name])); downloadCsv(`leads-${new Date().toISOString().slice(0,10)}.csv`, filtered.map(l => ({ Name: l.name, Status: stMap[l.status_id ?? 0] || "", Customer: cMap[l.status_id ?? 0] || "", Date: l.lead_date || "", "Opportunity Value": l.opportunity_value ?? "", "Weighted Value": l.opportunity_weighted ?? "", Contact: l.contact || "", Phone: l.phone || "", "Last Follow Up": l.last_follow_up || "", Contacted: l.contacted ? "Yes" : "No", Responded: l.responded ? "Yes" : "No", Developed: l.developed ? "Yes" : "No", Completed: l.completed ? "Yes" : "No" }))); }}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg border hover:opacity-80"
+            style={{ border: "1px solid var(--border)", color: "var(--muted)", background: "var(--card2)" }}>
+            ↓ CSV
+          </button>
+          <button
+            onClick={() => openModal(null)}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all hover:opacity-90 active:scale-[.98]"
+            style={{ background: "var(--primary)", color: "var(--primary-fg)" }}
+          >
+            <Plus size={15} />
+            New Lead
+          </button>
+        </div>
       </div>
 
       {/* Controls */}
