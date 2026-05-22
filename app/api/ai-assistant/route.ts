@@ -6,20 +6,23 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 const S = SchemaType;
 
-const SYSTEM_PROMPT = `You are Coco, a smart AI assistant built into CocoCRM. You help users manage their business through natural conversation.
+const BASE_SYSTEM_PROMPT = `You are Coco, a smart AI assistant built into CocoCRM. You help users manage their business through natural conversation.
 
 You can:
-- Search and manage customers
-- Create and update invoices
+- Search and manage customers, invoices, leads, and costs
+- Create and update invoices, leads, and customers
 - Log activities (calls, emails, meetings)
-- Create leads
-- Show stats and summaries
+- Show stats, financial summaries, and business insights
+- Perform dynamic calculations on business data (e.g. "what was my profit last month?", "which customer has the highest revenue?")
 
 Guidelines:
 - Be concise and friendly. Confirm actions after completing them.
 - When creating invoices or customers, confirm key details in your response.
 - Format amounts as currency (e.g. R 5,000).
-- If you need a customer ID but only have a name, use search_customers first.`;
+- If you need a customer ID but only have a name, use search_customers first.
+- Use get_financial_summary for detailed financial questions.
+- Use list_costs to answer questions about expenses.
+- Use list_leads to answer questions about the sales pipeline.`;
 
 const crmTools: Tool[] = [
   {
@@ -154,6 +157,38 @@ const crmTools: Tool[] = [
             due_date: { type: S.STRING, description: "YYYY-MM-DD" },
           },
           required: ["customer_id", "type", "subject"],
+        },
+      },
+      {
+        name: "list_costs",
+        description: "List recent costs/expenses, optionally filtered by category",
+        parameters: {
+          type: S.OBJECT,
+          properties: {
+            limit: { type: S.NUMBER, description: "Max results (default 20)" },
+            category_id: { type: S.NUMBER, description: "Filter by cost category ID" },
+          },
+        },
+      },
+      {
+        name: "list_leads",
+        description: "List sales leads/prospects with their pipeline status and opportunity values",
+        parameters: {
+          type: S.OBJECT,
+          properties: {
+            status_id: { type: S.NUMBER, description: "Filter by status ID" },
+            limit: { type: S.NUMBER, description: "Max results (default 20)" },
+          },
+        },
+      },
+      {
+        name: "get_financial_summary",
+        description: "Get a detailed financial summary: revenue by month, costs by category, profit margins, and bank balance. Use this for financial analysis questions.",
+        parameters: {
+          type: S.OBJECT,
+          properties: {
+            period_months: { type: S.NUMBER, description: "Number of months to look back (default 12)" },
+          },
         },
       },
     ],
@@ -314,6 +349,94 @@ async function executeTool(
       return { success: true, activity: data };
     }
 
+    case "list_costs": {
+      let query = supabase
+        .from("fact_costs")
+        .select("id, amount, transaction_date, cost_details, dim_cost_categories(name)")
+        .is("deleted_at", null)
+        .order("transaction_date", { ascending: false })
+        .limit(Number(args.limit) || 20);
+      if (args.category_id) query = query.eq("cost_category_id", args.category_id as number);
+      const { data } = await query;
+      const items = (data || []).map(c => ({
+        id: c.id,
+        amount: Number(c.amount),
+        date: c.transaction_date,
+        details: c.cost_details,
+        category: (c.dim_cost_categories as unknown as { name: string } | null)?.name ?? "Uncategorised",
+      }));
+      const total = items.reduce((s, c) => s + c.amount, 0);
+      return { costs: items, totalAmount: total };
+    }
+
+    case "list_leads": {
+      let query = supabase
+        .from("fact_leads")
+        .select("id, name, email, phone, opportunity_value, opportunity_weighted, last_follow_up, dim_statuses(name)")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(Number(args.limit) || 20);
+      if (args.status_id) query = query.eq("status_id", args.status_id as number);
+      const { data } = await query;
+      return (data || []).map(l => ({
+        id: l.id,
+        name: l.name,
+        email: l.email,
+        phone: l.phone,
+        opportunityValue: Number(l.opportunity_value || 0),
+        weightedValue: Number(l.opportunity_weighted || 0),
+        lastFollowUp: l.last_follow_up,
+        status: (l.dim_statuses as unknown as { name: string } | null)?.name ?? "Unknown",
+      }));
+    }
+
+    case "get_financial_summary": {
+      const months = Number(args.period_months) || 12;
+      const since = new Date();
+      since.setMonth(since.getMonth() - months);
+      const sinceStr = since.toISOString().slice(0, 10);
+
+      const [{ data: invData }, { data: costData }, { data: cfData }, { data: catData }] = await Promise.all([
+        supabase.from("fact_invoices").select("amount, status, transaction_date").is("deleted_at", null).gte("transaction_date", sinceStr),
+        supabase.from("fact_costs").select("amount, transaction_date, cost_category_id").is("deleted_at", null).gte("transaction_date", sinceStr),
+        supabase.from("fact_cashflow").select("balance, record_date").order("record_date", { ascending: false }).limit(1),
+        supabase.from("dim_cost_categories").select("id, name"),
+      ]);
+
+      const inv = invData || [];
+      const catMap: Record<number, string> = Object.fromEntries((catData || []).map(c => [c.id, c.name]));
+      const revenue = inv.filter(i => i.status === "Completed" || i.status === "Paid").reduce((s, i) => s + Number(i.amount), 0);
+      const pending = inv.filter(i => i.status === "Pending").reduce((s, i) => s + Number(i.amount), 0);
+      const costs = (costData || []).reduce((s, c) => s + Number(c.amount), 0);
+      const byMonth: Record<string, { revenue: number; costs: number }> = {};
+      inv.filter(i => i.status === "Completed" || i.status === "Paid").forEach(i => {
+        const m = (i.transaction_date as string).slice(0, 7);
+        if (!byMonth[m]) byMonth[m] = { revenue: 0, costs: 0 };
+        byMonth[m].revenue += Number(i.amount);
+      });
+      (costData || []).forEach(c => {
+        const m = (c.transaction_date as string).slice(0, 7);
+        if (!byMonth[m]) byMonth[m] = { revenue: 0, costs: 0 };
+        byMonth[m].costs += Number(c.amount);
+      });
+      const byCat: Record<string, number> = {};
+      (costData || []).forEach(c => {
+        const cat = c.cost_category_id ? (catMap[c.cost_category_id] || `Cat ${c.cost_category_id}`) : "Uncategorised";
+        byCat[cat] = (byCat[cat] || 0) + Number(c.amount);
+      });
+      return {
+        periodMonths: months,
+        revenue,
+        costs,
+        profit: revenue - costs,
+        margin: revenue > 0 ? ((revenue - costs) / revenue * 100).toFixed(1) + "%" : "0%",
+        pendingInvoices: pending,
+        latestBankBalance: cfData?.[0]?.balance ?? null,
+        monthlyBreakdown: Object.entries(byMonth).sort(([a], [b]) => a.localeCompare(b)).map(([m, v]) => ({ month: m, ...v, profit: v.revenue - v.costs })),
+        costsByCategory: Object.entries(byCat).sort(([, a], [, b]) => b - a),
+      };
+    }
+
     default:
       return { error: `Unknown tool: ${name}` };
   }
@@ -339,14 +462,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No messages provided" }, { status: 400 });
     }
 
-    // Load org's custom system prompt if set
-    const { data: orgData } = await supabase
-      .from("organizations")
-      .select("feature_flags")
-      .limit(1)
-      .single();
+    // Load org data + live business snapshot for context
+    const [{ data: orgData }, { data: snapInv }, { data: snapCosts }, { data: snapCustomers }, { data: snapLeads }, { data: snapCashflow }] = await Promise.all([
+      supabase.from("organizations").select("feature_flags, currency, name").limit(1).single(),
+      supabase.from("fact_invoices").select("amount, status").is("deleted_at", null),
+      supabase.from("fact_costs").select("amount").is("deleted_at", null),
+      supabase.from("dim_customers").select("id").is("deleted_at", null),
+      supabase.from("fact_leads").select("id, status_id").is("deleted_at", null),
+      supabase.from("fact_cashflow").select("balance").order("record_date", { ascending: false }).limit(1),
+    ]);
+
+    const cur = (orgData?.currency === "USD" ? "$" : orgData?.currency === "EUR" ? "€" : "R");
+    const invList = snapInv || [];
+    const totalRevenue = invList.filter(i => i.status === "Completed" || i.status === "Paid").reduce((s, i) => s + Number(i.amount), 0);
+    const totalPending = invList.filter(i => i.status === "Pending").reduce((s, i) => s + Number(i.amount), 0);
+    const totalCosts = (snapCosts || []).reduce((s, c) => s + Number(c.amount), 0);
+    const latestBalance = snapCashflow?.[0]?.balance;
+
+    const snapshot = `
+LIVE BUSINESS SNAPSHOT (${new Date().toISOString().slice(0, 10)}):
+- Organisation: ${orgData?.name || "Your business"}
+- Customers: ${(snapCustomers || []).length}
+- Leads in pipeline: ${(snapLeads || []).length}
+- Total revenue (completed): ${cur} ${totalRevenue.toLocaleString()}
+- Pending invoices: ${cur} ${totalPending.toLocaleString()}
+- Total costs recorded: ${cur} ${totalCosts.toLocaleString()}
+- Profit: ${cur} ${(totalRevenue - totalCosts).toLocaleString()}${latestBalance != null ? `\n- Latest bank balance: ${cur} ${Number(latestBalance).toLocaleString()}` : ""}`;
+
     const customPrompt = (orgData?.feature_flags as Record<string, unknown>)?.ai_system_prompt as string | null;
-    const systemPrompt = (customPrompt?.trim() || SYSTEM_PROMPT) + `\n\nToday's date: ${new Date().toISOString().slice(0, 10)}`;
+    const systemPrompt = (customPrompt?.trim() || BASE_SYSTEM_PROMPT) + snapshot + `\n\nToday's date: ${new Date().toISOString().slice(0, 10)}`;
 
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({

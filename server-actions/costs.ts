@@ -18,6 +18,7 @@ export async function createCost(formData: FormData) {
     account_id: formData.get("account_id") || null,
     customer_id: formData.get("customer_id") || null,
     recouped: formData.get("recouped") || "",
+    receipt_image_url: formData.get("receipt_image_url") || null,
   });
 
   const { error } = await supabase.from("fact_costs").insert(parsed);
@@ -29,6 +30,7 @@ export async function createCost(formData: FormData) {
 export async function updateCost(id: number, formData: FormData) {
   const supabase = await createServerClient();
 
+  const receiptUrl = formData.get("receipt_image_url");
   const { error } = await supabase.from("fact_costs").update({
     transaction_date: formData.get("transaction_date"),
     cost_details: formData.get("cost_details") || null,
@@ -37,6 +39,7 @@ export async function updateCost(id: number, formData: FormData) {
     account_id: formData.get("account_id") ? Number(formData.get("account_id")) : null,
     customer_id: formData.get("customer_id") ? Number(formData.get("customer_id")) : null,
     recouped: formData.get("recouped") || "",
+    ...(receiptUrl !== null ? { receipt_image_url: receiptUrl || null } : {}),
   }).eq("id", id);
 
   if (error) throw new Error(error.message);

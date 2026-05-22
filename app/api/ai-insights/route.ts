@@ -64,6 +64,41 @@ Items: ${lineList || "general services"}
 Respond with one concise sentence only (max 80 characters). No quotes. No punctuation at the end. Just the description text.`;
   }
 
+  if (type === "chat") {
+    const { metrics, messages, briefing } = data as {
+      metrics: { revenue: number; opex: number; profit: number; margin: number; pending: number; overdueCount: number; overdueAmount: number; staleLeads: number; totalLeads: number; wonLeads: number; currency: string };
+      messages: { role: string; content: string }[];
+      briefing: string | null;
+    };
+    const m = metrics;
+    const ctx = `Business context:
+- Revenue collected: ${m.currency} ${m.revenue.toLocaleString()}
+- Operating costs: ${m.currency} ${m.opex.toLocaleString()}
+- Profit: ${m.currency} ${m.profit.toLocaleString()} (${m.margin.toFixed(1)}% margin)
+- Pending invoices: ${m.currency} ${m.pending.toLocaleString()}
+- Overdue invoices: ${m.overdueCount} totalling ${m.currency} ${m.overdueAmount.toLocaleString()}
+- Total leads: ${m.totalLeads} (${m.wonLeads} won, ${m.staleLeads} need follow-up)${briefing ? `\n\nAI briefing: ${briefing}` : ""}`;
+
+    const chatModel = genAI.getGenerativeModel({
+      model: "gemini-2.5-flash",
+      systemInstruction: `You are a business analyst assistant. Answer questions concisely using the data provided. Format amounts with the currency symbol. No markdown, no bullet points — plain prose only.\n\n${ctx}`,
+    });
+    const history = messages.slice(0, -1).map(msg => ({
+      role: msg.role === "user" ? "user" : "model" as "user" | "model",
+      parts: [{ text: msg.content }],
+    }));
+    const chat = chatModel.startChat({ history });
+    const lastMsg = messages[messages.length - 1]?.content || "";
+    try {
+      const result = await chat.sendMessage(lastMsg);
+      return NextResponse.json({ result: result.response.text().trim() });
+    } catch (e: unknown) {
+      const err = e as { status?: number; message?: string };
+      if (err.status === 429) return NextResponse.json({ error: "Rate limit — try again shortly" }, { status: 429 });
+      return NextResponse.json({ error: err.message || "AI error" }, { status: 500 });
+    }
+  }
+
   if (!prompt) return NextResponse.json({ error: "Unknown insight type" }, { status: 400 });
 
   try {

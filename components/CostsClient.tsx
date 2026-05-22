@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { useState, useMemo, useRef } from "react";
+import { Plus, Pencil, Trash2, Camera } from "lucide-react";
 import { MultiSelect } from "@/components/ui/MultiSelect";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -16,6 +16,7 @@ type Cost = {
   category_name: string | null; amount: number; account_name: string | null; recouped: string | null;
   cost_category_id: number | null; account_id: number | null;
   customer_id: number | null; customer_name: string | null;
+  receipt_image_url: string | null;
 };
 type Category = { id: number; name: string };
 type Account = { id: number; name: string };
@@ -50,6 +51,62 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
   const [busy, setBusy] = useState(false);
   const toast = useToast();
   const { confirm, dialogProps } = useConfirm();
+
+  // Receipt image extraction state
+  const newFileRef = useRef<HTMLInputElement>(null);
+  const editFileRef = useRef<HTMLInputElement>(null);
+  const [extracting, setExtracting] = useState(false);
+  const [newAmount, setNewAmount] = useState("");
+  const [newDetails, setNewDetails] = useState("");
+  const [newCategoryId, setNewCategoryId] = useState("");
+  const [newImageUrl, setNewImageUrl] = useState("");
+  const [editImageUrl, setEditImageUrl] = useState("");
+
+  async function handleScanReceipt(file: File, mode: "new" | "edit") {
+    setExtracting(true);
+    try {
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch("/api/extract-cost", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: base64, mimeType: file.type }),
+      });
+      const data = await res.json() as { amount?: number; date?: string; details?: string; category?: string; imageUrl?: string; error?: string };
+
+      if (mode === "new") {
+        if (data.amount) setNewAmount(String(data.amount));
+        if (data.details) setNewDetails(data.details);
+        if (data.date) setCreateCostDate(data.date);
+        if (data.category && categories.length > 0) {
+          const match = categories.find(c => c.name.toLowerCase().includes((data.category || "").toLowerCase()));
+          if (match) setNewCategoryId(String(match.id));
+        }
+        if (data.imageUrl) setNewImageUrl(data.imageUrl);
+      } else {
+        if (data.imageUrl) setEditImageUrl(data.imageUrl);
+        if (editCost) {
+          if (data.amount) setEditCost(prev => prev ? { ...prev, amount: data.amount! } : prev);
+          if (data.details) setEditCost(prev => prev ? { ...prev, cost_details: data.details! } : prev);
+          if (data.date) setEditCostDate(data.date);
+          if (data.category && categories.length > 0) {
+            const match = categories.find(c => c.name.toLowerCase().includes((data.category || "").toLowerCase()));
+            if (match) setEditCost(prev => prev ? { ...prev, cost_category_id: match.id } : prev);
+          }
+        }
+      }
+      if (!data.error) toast.success("Receipt scanned — fields pre-filled");
+      else toast.error("AI could not read receipt fully — fill in missing fields");
+    } catch {
+      toast.error("Failed to scan receipt");
+    } finally {
+      setExtracting(false);
+    }
+  }
 
   const now = new Date();
   const [mFrom, setMFrom] = useState(`${now.getFullYear() - 1}-${String(now.getMonth() + 1).padStart(2, "0")}`);
@@ -214,6 +271,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                   <span>📅 {c.transaction_date}</span>
                   {c.account_name && <span>🏦 {c.account_name}</span>}
                   {c.recouped === "Y" && <span className="px-2 py-0.5 rounded-full font-semibold" style={{ background: "rgba(16,185,129,.15)", color: "var(--accent)" }}>Recouped</span>}
+                  {c.receipt_image_url && <a href={c.receipt_image_url} target="_blank" rel="noreferrer" className="px-1.5 py-0.5 rounded text-xs" style={{ background: "var(--card3)", color: "var(--muted2)" }}>📎 Receipt</a>}
                 </div>
                 <div className="flex gap-2 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
                   <button onClick={() => { setEditCostDate(c.transaction_date.slice(0, 10)); setEditCost(c); }} className="flex-1 py-2 rounded-xl text-xs font-semibold" style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted)" }}>✏️ Edit</button>
@@ -231,7 +289,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
               <table className="w-full text-xs border-collapse">
                 <thead>
                   <tr style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
-                    {["Date", "Details", "Category", "Customer", "Amount", "Account", "Recouped", ""].map(h => (
+                    {["Date", "Details", "Category", "Customer", "Amount", "Account", "Recouped", "Receipt", ""].map(h => (
                       <th key={h} className="px-3 py-2.5 text-left font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: "var(--muted2)" }}>{h}</th>
                     ))}
                   </tr>
@@ -249,6 +307,9 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                         {c.recouped === "Y" && <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: "rgba(16,185,129,.15)", color: "var(--accent)" }}>Recouped</span>}
                       </td>
                       <td className="px-3 py-2">
+                        {c.receipt_image_url && <a href={c.receipt_image_url} target="_blank" rel="noreferrer" className="text-xs underline" style={{ color: "var(--muted2)" }}>📎</a>}
+                      </td>
+                      <td className="px-3 py-2">
                         <div className="flex gap-1">
                           <button onClick={() => { setEditCostDate(c.transaction_date.slice(0, 10)); setEditCost(c); }}
                             className="px-2 py-1 rounded text-xs" style={{ border: "1px solid var(--border)", background: "var(--card2)" }}>✏️</button>
@@ -258,7 +319,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                       </td>
                     </tr>
                   ))}
-                  {filtered.length === 0 && <tr><td colSpan={8}><EmptyState icon="💸" title={search || catFilter.length > 0 || acctFilter.length > 0 || custFilter.length > 0 || dateFrom || dateTo || recoupedFilter ? "No costs match your filters" : "No costs yet"} description={search || catFilter.length > 0 || acctFilter.length > 0 || custFilter.length > 0 || dateFrom || dateTo || recoupedFilter ? "Try adjusting your filters." : "Record your first cost to start tracking expenses."} /></td></tr>}
+                  {filtered.length === 0 && <tr><td colSpan={9}><EmptyState icon="💸" title={search || catFilter.length > 0 || acctFilter.length > 0 || custFilter.length > 0 || dateFrom || dateTo || recoupedFilter ? "No costs match your filters" : "No costs yet"} description={search || catFilter.length > 0 || acctFilter.length > 0 || custFilter.length > 0 || dateFrom || dateTo || recoupedFilter ? "Try adjusting your filters." : "Record your first cost to start tracking expenses."} /></td></tr>}
                 </tbody>
               </table>
             </div>
@@ -318,13 +379,30 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
               <h3 className="font-semibold">Edit Cost</h3>
               <button onClick={() => setEditCost(null)} style={{ color: "var(--muted2)" }}>✕</button>
             </div>
+            {/* Scan Receipt for Edit */}
+            <div className="px-5 pt-4">
+              <input ref={editFileRef} type="file" accept="image/*" className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleScanReceipt(f, "edit"); e.target.value = ""; }} />
+              <button type="button" disabled={extracting} onClick={() => editFileRef.current?.click()}
+                className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold border-dashed border transition-opacity"
+                style={{ borderColor: "var(--border)", color: "var(--muted2)", background: "var(--card3)", opacity: extracting ? .6 : 1 }}>
+                <Camera size={12} />{extracting ? "Scanning…" : "Scan New Receipt"}
+              </button>
+              {(editImageUrl || editCost.receipt_image_url) && (
+                <div className="mt-2 flex items-center gap-2 text-xs" style={{ color: "var(--accent)" }}>
+                  <span>📎 Receipt attached</span>
+                  <a href={editImageUrl || editCost.receipt_image_url!} target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--muted2)" }}>View</a>
+                </div>
+              )}
+            </div>
             <form className="p-5 space-y-3"
               action={async (fd: FormData) => {
                 setBusy(true);
-                try { await updateCost(editCost.id, fd); toast.success("Cost updated"); setEditCost(null); }
+                try { await updateCost(editCost.id, fd); toast.success("Cost updated"); setEditCost(null); setEditImageUrl(""); }
                 catch { toast.error("Failed to update cost"); }
                 finally { setBusy(false); }
               }}>
+              <input type="hidden" name="receipt_image_url" value={editImageUrl || editCost.receipt_image_url || ""} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Date *</label>
@@ -392,8 +470,32 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
               <h3 className="font-semibold">New Cost</h3>
               <button onClick={() => setModal(false)} style={{ color: "var(--muted2)" }}>✕</button>
             </div>
+            {/* Scan Receipt */}
+            <div className="px-5 pt-4">
+              <input ref={newFileRef} type="file" accept="image/*" className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleScanReceipt(f, "new"); e.target.value = ""; }} />
+              <button type="button" disabled={extracting} onClick={() => newFileRef.current?.click()}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold border-dashed border-2 transition-opacity"
+                style={{ borderColor: "var(--accent)", color: "var(--accent)", background: "rgba(16,185,129,.05)", opacity: extracting ? .6 : 1 }}>
+                <Camera size={15} />{extracting ? "Scanning receipt…" : "📎 Scan Receipt with AI"}
+              </button>
+              {newImageUrl && (
+                <div className="mt-2 flex items-center gap-2 text-xs" style={{ color: "var(--accent)" }}>
+                  <span>✓ Receipt saved</span>
+                  <a href={newImageUrl} target="_blank" rel="noreferrer" className="underline" style={{ color: "var(--muted2)" }}>View</a>
+                </div>
+              )}
+            </div>
             <form className="p-5 space-y-3"
-              action={async (fd: FormData) => { setBusy(true); await createCost(fd); setModal(false); setBusy(false); }}>
+              action={async (fd: FormData) => {
+                setBusy(true);
+                try {
+                  await createCost(fd);
+                  setModal(false);
+                  setNewAmount(""); setNewDetails(""); setNewCategoryId(""); setNewImageUrl("");
+                } finally { setBusy(false); }
+              }}>
+              <input type="hidden" name="receipt_image_url" value={newImageUrl} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Date *</label>
@@ -401,17 +503,17 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                 </div>
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Amount *</label>
-                  <input name="amount" type="number" step="0.01" required className={inputStyle} style={inputCss} />
+                  <input name="amount" type="number" step="0.01" required value={newAmount} onChange={e => setNewAmount(e.target.value)} className={inputStyle} style={inputCss} />
                 </div>
               </div>
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Details</label>
-                <input name="cost_details" className={inputStyle} style={inputCss} />
+                <input name="cost_details" value={newDetails} onChange={e => setNewDetails(e.target.value)} className={inputStyle} style={inputCss} />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Category</label>
-                  <select name="cost_category_id" className={inputStyle} style={inputCss}>
+                  <select name="cost_category_id" value={newCategoryId} onChange={e => setNewCategoryId(e.target.value)} className={inputStyle} style={inputCss}>
                     <option value="">— None —</option>
                     {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { Trash2, X, Printer, RefreshCw } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -98,7 +99,7 @@ const inpS = { background: "var(--background)", borderColor: "var(--border)", co
 // ── System balance calculator ────────────────────────────────────────────────
 function calcSystemBalance(invoices: Invoice[], costs: Cost[], asOfDate: string): number {
   const revenue = invoices
-    .filter(i => i.status === "Completed" && i.transaction_date <= asOfDate)
+    .filter(i => (i.status === "Completed" || i.status === "Paid") && i.transaction_date <= asOfDate)
     .reduce((s, i) => s + i.amount, 0);
   const totalCosts = costs
     .filter(c => c.transaction_date <= asOfDate)
@@ -110,6 +111,7 @@ function calcSystemBalance(invoices: Invoice[], costs: Cost[], asOfDate: string)
 export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts, orgName, orgRegNo, currency, defaultStart, defaultEnd }: Props) {
   const toast = useToast();
   const { confirm, dialogProps } = useConfirm();
+  const router = useRouter();
   const [tab, setTab] = useState<"is" | "bs" | "bank" | "cashflow">("is");
   const [start, setStart] = useState(defaultStart);
   const [end, setEnd] = useState(defaultEnd);
@@ -185,7 +187,14 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
   // ── Handlers ──────────────────────────────────────────────────────────────
   async function handleDeleteTxn(id: number) {
     if (!await confirm("Delete this entry?", "This bank transaction record will be permanently removed.")) return;
-    await runAction(() => deleteBankTransaction(id), toast, "Entry deleted");
+    const ok = await runAction(() => deleteBankTransaction(id), toast, "Entry deleted");
+    if (ok) router.refresh();
+  }
+
+  async function handleDeleteBalance(id: number) {
+    if (!await confirm("Delete this snapshot?", "This bank balance record will be permanently removed.")) return;
+    const ok = await runAction(() => deleteBankBalance(id), toast, "Snapshot deleted");
+    if (ok) router.refresh();
   }
 
   function handleResolveClick(entry: Cashflow) {
@@ -475,10 +484,7 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
                             </button>
                           )}
                           <button
-                            onClick={async () => {
-                              if (!await confirm("Delete this snapshot?", "This bank balance record will be permanently removed.")) return;
-                              await runAction(() => deleteBankBalance(entry.id), toast, "Snapshot deleted");
-                            }}
+                            onClick={() => handleDeleteBalance(entry.id)}
                             className="w-10 h-10 rounded-xl flex items-center justify-center"
                             style={{ background: "var(--danger-bg)", color: "var(--red-c)" }}><Trash2 size={14} /></button>
                         </div>
@@ -526,10 +532,7 @@ export function AccountingClient({ invoices, costs, cashflow, bankTxns, accounts
                                   </button>
                                 )}
                                 <button
-                                  onClick={async () => {
-                                    if (!await confirm("Delete this snapshot?", "This bank balance record will be permanently removed.")) return;
-                                    await runAction(() => deleteBankBalance(entry.id), toast, "Snapshot deleted");
-                                  }}
+                                  onClick={() => handleDeleteBalance(entry.id)}
                                   className="w-7 h-7 flex items-center justify-center rounded-lg"
                                   style={{ background: "var(--danger-bg)", color: "var(--red-c)" }}><Trash2 size={13} /></button>
                               </div>

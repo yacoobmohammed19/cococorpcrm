@@ -157,11 +157,18 @@ type InsightData = {
   overdueCount: number; overdueAmount: number; staleLeads: number; totalLeads: number; wonLeads: number; cur: string;
 };
 
+type ChatMessage = { role: "user" | "ai"; content: string };
+
 function AiInsightCard({ data }: { data: InsightData }) {
   const [text, setText] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showChat, setShowChat] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
   const fetched = useRef(false);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
 
   const fetchInsight = useCallback(async (force = false) => {
     const cacheKey = "crm_dash_insight_v2";
@@ -200,6 +207,38 @@ function AiInsightCard({ data }: { data: InsightData }) {
     if (!fetched.current) { fetched.current = true; fetchInsight(); }
   }, [fetchInsight]);
 
+  useEffect(() => {
+    if (showChat && chatBottomRef.current) {
+      chatBottomRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatMessages, showChat]);
+
+  async function sendChat() {
+    const msg = chatInput.trim();
+    if (!msg || chatLoading) return;
+    setChatInput("");
+    const next: ChatMessage[] = [...chatMessages, { role: "user", content: msg }];
+    setChatMessages(next);
+    setChatLoading(true);
+    try {
+      const res = await fetch("/api/ai-insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "chat",
+          data: {
+            metrics: { revenue: data.revenue, opex: data.opex, profit: data.profit, margin: data.margin, pending: data.pending, overdueCount: data.overdueCount, overdueAmount: data.overdueAmount, staleLeads: data.staleLeads, totalLeads: data.totalLeads, wonLeads: data.wonLeads, currency: data.cur },
+            messages: next,
+            briefing: text,
+          },
+        }),
+      });
+      const json = await res.json() as { result?: string; error?: string };
+      if (json.result) setChatMessages(prev => [...prev, { role: "ai", content: json.result! }]);
+    } catch { /* silent */ }
+    finally { setChatLoading(false); }
+  }
+
   return (
     <div className="rounded-xl p-4 mb-3" style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)", borderLeft: "3px solid var(--accent)" }}>
       <div className="flex items-center justify-between mb-2">
@@ -207,15 +246,26 @@ function AiInsightCard({ data }: { data: InsightData }) {
           <span style={{ fontSize: 14 }}>✨</span>
           <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--accent)" }}>AI Business Insight</span>
         </div>
-        <button
-          onClick={() => fetchInsight(true)}
-          disabled={loading}
-          title="Refresh insight"
-          className="text-xs px-2 py-0.5 rounded transition-opacity hover:opacity-80"
-          style={{ color: "var(--muted2)", border: "1px solid var(--border)", background: "var(--card3)", opacity: loading ? 0.5 : 1 }}
-        >
-          {loading ? "…" : "↻ Refresh"}
-        </button>
+        <div className="flex items-center gap-1.5">
+          {text && (
+            <button
+              onClick={() => setShowChat(v => !v)}
+              className="text-xs px-2 py-0.5 rounded transition-all hover:opacity-90"
+              style={{ color: showChat ? "#fff" : "var(--purple-c)", border: "1px solid var(--purple-c)", background: showChat ? "var(--purple-c)" : "transparent" }}
+            >
+              💬 Chat
+            </button>
+          )}
+          <button
+            onClick={() => fetchInsight(true)}
+            disabled={loading}
+            title="Refresh insight"
+            className="text-xs px-2 py-0.5 rounded transition-opacity hover:opacity-80"
+            style={{ color: "var(--muted2)", border: "1px solid var(--border)", background: "var(--card3)", opacity: loading ? 0.5 : 1 }}
+          >
+            {loading ? "…" : "↻ Refresh"}
+          </button>
+        </div>
       </div>
       {loading && (
         <div className="space-y-1.5">
@@ -229,6 +279,50 @@ function AiInsightCard({ data }: { data: InsightData }) {
       )}
       {!loading && error && (
         <p className="text-xs" style={{ color: "var(--red-c)" }}>{error}</p>
+      )}
+
+      {/* Inline chat */}
+      {showChat && (
+        <div className="mt-3 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
+          <div className="space-y-2 mb-2 max-h-52 overflow-y-auto pr-1">
+            {chatMessages.length === 0 && (
+              <p className="text-xs text-center py-2" style={{ color: "var(--muted2)" }}>Ask anything about your business metrics…</p>
+            )}
+            {chatMessages.map((m, i) => (
+              <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div className="rounded-xl px-3 py-2 max-w-[88%] text-xs leading-relaxed"
+                  style={{
+                    background: m.role === "user" ? "var(--accent)" : "var(--card3)",
+                    color: m.role === "user" ? "#fff" : "var(--foreground)",
+                  }}>
+                  {m.content}
+                </div>
+              </div>
+            ))}
+            {chatLoading && (
+              <div className="flex justify-start">
+                <div className="rounded-xl px-3 py-2 text-xs" style={{ background: "var(--card3)", color: "var(--muted2)" }}>Thinking…</div>
+              </div>
+            )}
+            <div ref={chatBottomRef} />
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={chatInput}
+              onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
+              placeholder="Ask a follow-up question…"
+              className="flex-1 px-3 py-1.5 text-xs rounded-lg border outline-none focus:ring-1"
+              style={{ background: "var(--card3)", borderColor: "var(--border)", color: "var(--foreground)" }}
+            />
+            <button
+              onClick={sendChat}
+              disabled={chatLoading || !chatInput.trim()}
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg disabled:opacity-40 transition-opacity"
+              style={{ background: "var(--accent)", color: "#fff" }}
+            >Send</button>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -354,24 +448,27 @@ function FilterBar({ filters, setFilters, statuses, customers, costCategories, a
 
 // ── Custom KPI Builder ────────────────────────────────────────────────────────
 
-function CustomKpiBuilder({ onClose, onSave, tableMap, dimMaps, cur }: {
+function CustomKpiBuilder({ onClose, onSave, tableMap, dimMaps, cur, editKpi }: {
   onClose: () => void;
   onSave: (kpi: CustomKpi) => void;
   tableMap: Record<TableKey, Record<string, unknown>[]>;
   dimMaps: Record<string, Record<number, string>>;
   cur: string;
+  editKpi?: CustomKpi | null;
 }) {
-  const [name, setName] = useState("");
-  const [table, setTable] = useState<TableKey>("fact_invoices");
-  const [agg, setAgg] = useState<AggType>("SUM");
-  const [column, setColumn] = useState("");
-  const [filterCol, setFilterCol] = useState("");
-  const [filterVals, setFilterVals] = useState<string[]>([]);
-  const [format, setFormat] = useState<FormatType>("currency");
-  const [color, setColor] = useState("green");
-  const [desc, setDesc] = useState("");
+  const [name, setName] = useState(editKpi?.name ?? "");
+  const [table, setTable] = useState<TableKey>(editKpi?.table ?? "fact_invoices");
+  const [agg, setAgg] = useState<AggType>(editKpi?.agg ?? "SUM");
+  const [column, setColumn] = useState(editKpi?.column ?? "");
+  const [filterCol, setFilterCol] = useState(editKpi?.filterCol ?? "");
+  const [filterVals, setFilterVals] = useState<string[]>(editKpi?.filterVals ?? []);
+  const [format, setFormat] = useState<FormatType>(editKpi?.format ?? "currency");
+  const [color, setColor] = useState(editKpi?.color ?? "green");
+  const [desc, setDesc] = useState(editKpi?.desc ?? "");
+  const initialRender = useRef(true);
 
   useEffect(() => {
+    if (initialRender.current) { initialRender.current = false; return; }
     const data = tableMap[table] || [];
     const cols = data.length ? Object.keys(data[0]) : [];
     const numericCols = cols.filter(c => {
@@ -409,7 +506,7 @@ function CustomKpiBuilder({ onClose, onSave, tableMap, dimMaps, cur }: {
       <div className="w-full sm:max-w-lg rounded-t-2xl sm:rounded-xl shadow-2xl flex flex-col max-h-[90vh]"
         style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
         <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: "var(--border)" }}>
-          <h2 className="font-semibold text-sm">Add Dashboard Metric</h2>
+          <h2 className="font-semibold text-sm">{editKpi ? "Edit Dashboard Metric" : "Add Dashboard Metric"}</h2>
           <button onClick={onClose} style={{ color: "var(--muted2)" }}>✕</button>
         </div>
         <div className="p-5 space-y-4 overflow-y-auto">
@@ -514,10 +611,10 @@ function CustomKpiBuilder({ onClose, onSave, tableMap, dimMaps, cur }: {
         <div className="px-5 pb-5 pt-2 flex gap-2 border-t shrink-0" style={{ borderColor: "var(--border)" }}>
           <button onClick={onClose} className="flex-1 py-2 rounded text-sm font-semibold"
             style={{ background: "var(--card3)", color: "var(--muted)", border: "1px solid var(--border)" }}>Cancel</button>
-          <button onClick={() => { if (!name.trim() || !column) return; onSave({ id: Date.now().toString(), name, table, agg, column, filterCol, filterVals, format, color, desc }); onClose(); }}
+          <button onClick={() => { if (!name.trim() || !column) return; onSave({ id: editKpi?.id ?? Date.now().toString(), name, table, agg, column, filterCol, filterVals, format, color, desc }); onClose(); }}
             disabled={!name.trim() || !column}
             className="flex-1 py-2 rounded text-sm font-semibold disabled:opacity-40"
-            style={{ background: "var(--accent)", color: "#fff" }}>Add Metric</button>
+            style={{ background: "var(--accent)", color: "#fff" }}>{editKpi ? "Save Changes" : "Add Metric"}</button>
         </div>
       </div>
     </div>
@@ -551,6 +648,7 @@ export function DashboardCharts({
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showKpiConfig, setShowKpiConfig] = useState(false);
   const [showKpiBuilder, setShowKpiBuilder] = useState(false);
+  const [editingKpi, setEditingKpi] = useState<CustomKpi | null>(null);
   const [nowMs] = useState(() => Date.now());
 
   // Reactive theme detection so recharts colours update when user toggles theme
@@ -872,16 +970,27 @@ export function DashboardCharts({
                 {customKpis.map(kpi => {
                   const val = calcCustomMetric(kpi, tableMap);
                   const formatted = fmtCustomKpi(val, kpi.format ?? "number", cur);
+                  const kpiColor = KPI_COLOR_MAP[kpi.color] || "var(--pink)";
                   return (
-                    <div key={kpi.id} className="relative group">
-                      <KpiCard label={kpi.name} value={formatted}
-                        sub={kpi.desc || kpi.agg}
-                        color={KPI_COLOR_MAP[kpi.color] || "var(--pink)"} />
-                      <button
-                        onClick={() => saveCustomKpis(customKpis.filter(k => k.id !== kpi.id))}
-                        className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full text-xs items-center justify-center hidden group-hover:flex"
-                        style={{ background: "var(--red-c)", color: "#fff" }}
-                        title="Remove metric">✕</button>
+                    <div key={kpi.id} className="rounded-xl flex flex-col overflow-hidden"
+                      style={{ background: "var(--card)", border: "1px solid var(--border)", borderTop: `3px solid ${kpiColor}`, boxShadow: "var(--shadow-sm)" }}>
+                      <div className="p-4 flex-1">
+                        <div className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: "var(--muted2)" }}>{kpi.name}</div>
+                        <div className="text-xl font-bold font-mono truncate leading-none" style={{ color: kpiColor }}>{formatted}</div>
+                        {(kpi.desc || kpi.agg) && <div className="text-[11px] mt-1.5" style={{ color: "var(--muted2)" }}>{kpi.desc || kpi.agg}</div>}
+                      </div>
+                      <div className="flex justify-end gap-1 px-2.5 py-1.5 border-t" style={{ borderColor: "var(--border)" }}>
+                        <button
+                          onClick={() => { setEditingKpi(kpi); setShowKpiBuilder(true); }}
+                          className="w-6 h-6 flex items-center justify-center rounded text-xs hover:opacity-80"
+                          style={{ background: "var(--card3)", color: "var(--muted2)", border: "1px solid var(--border)" }}
+                          title="Edit metric">✏</button>
+                        <button
+                          onClick={() => saveCustomKpis(customKpis.filter(k => k.id !== kpi.id))}
+                          className="w-6 h-6 flex items-center justify-center rounded text-xs hover:opacity-80"
+                          style={{ background: "var(--danger-bg)", color: "var(--red-c)" }}
+                          title="Remove metric">✕</button>
+                      </div>
                     </div>
                   );
                 })}
@@ -1201,11 +1310,18 @@ export function DashboardCharts({
       {/* Custom KPI Builder */}
       {showKpiBuilder && (
         <CustomKpiBuilder
-          onClose={() => setShowKpiBuilder(false)}
-          onSave={kpi => saveCustomKpis([...customKpis, kpi])}
+          onClose={() => { setShowKpiBuilder(false); setEditingKpi(null); }}
+          onSave={kpi => {
+            if (editingKpi) {
+              saveCustomKpis(customKpis.map(k => k.id === editingKpi.id ? { ...kpi, id: editingKpi.id } : k));
+            } else {
+              saveCustomKpis([...customKpis, kpi]);
+            }
+          }}
           tableMap={tableMap}
           dimMaps={dimMaps}
           cur={cur}
+          editKpi={editingKpi}
         />
       )}
     </div>
