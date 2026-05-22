@@ -12,9 +12,8 @@ export default async function CustomerKpiPage() {
       .is("deleted_at", null),
     supabase
       .from("fact_costs")
-      .select("customer_id, amount")
-      .is("deleted_at", null)
-      .not("customer_id", "is", null),
+      .select("customer_id, amount, apportion_to_customers")
+      .is("deleted_at", null),
     supabase.from("organizations").select("currency").single(),
   ]);
 
@@ -26,10 +25,19 @@ export default async function CustomerKpiPage() {
     invByCustomer.get(cid)!.push({ amount: Number(inv.amount), status: inv.status, date: inv.transaction_date || "" });
   }
 
+  const customerCount = Math.max((customers || []).length, 1);
   const cacByCustomer = new Map<number, number>();
   for (const cost of costs || []) {
-    const cid = cost.customer_id as number;
-    cacByCustomer.set(cid, (cacByCustomer.get(cid) ?? 0) + Number(cost.amount));
+    const c = cost as { customer_id: number | null; amount: number; apportion_to_customers: boolean };
+    if (c.apportion_to_customers) {
+      // Overhead cost — split equally across all active customers
+      const share = Number(c.amount) / customerCount;
+      for (const customer of customers || []) {
+        cacByCustomer.set(customer.id, (cacByCustomer.get(customer.id) ?? 0) + share);
+      }
+    } else if (c.customer_id) {
+      cacByCustomer.set(c.customer_id, (cacByCustomer.get(c.customer_id) ?? 0) + Number(c.amount));
+    }
   }
 
   const rows = (customers || []).map(c => {

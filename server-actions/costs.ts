@@ -27,6 +27,7 @@ export async function createCost(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/costs");
   revalidatePath("/dashboard");
+  revalidatePath("/customers/kpi");
 }
 
 export async function updateCost(id: number, formData: FormData) {
@@ -49,6 +50,7 @@ export async function updateCost(id: number, formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath("/costs");
   revalidatePath("/dashboard");
+  revalidatePath("/customers/kpi");
 }
 
 export async function deleteCost(id: number) {
@@ -60,6 +62,7 @@ export async function deleteCost(id: number) {
   if (error) throw new Error(error.message);
   revalidatePath("/costs");
   revalidatePath("/dashboard");
+  revalidatePath("/customers/kpi");
 }
 
 export async function recordCashflow(formData: FormData) {
