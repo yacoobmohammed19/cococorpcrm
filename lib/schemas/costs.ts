@@ -10,6 +10,7 @@ export const CostSchema = z.object({
   customer_id: z.coerce.number().optional().nullable(),
   recouped: z.string().optional().default(""),
   receipt_image_url: z.string().optional().nullable(),
+  apportion_to_customers: z.coerce.boolean().default(false),
 });
 
 export const CashflowSchema = z.object({

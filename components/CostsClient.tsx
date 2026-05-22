@@ -16,7 +16,7 @@ type Cost = {
   category_name: string | null; amount: number; account_name: string | null; recouped: string | null;
   cost_category_id: number | null; account_id: number | null;
   customer_id: number | null; customer_name: string | null;
-  receipt_image_url: string | null;
+  receipt_image_url: string | null; apportion_to_customers: boolean;
 };
 type Category = { id: number; name: string };
 type Account = { id: number; name: string };
@@ -61,6 +61,8 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
   const [newCategoryId, setNewCategoryId] = useState("");
   const [newImageUrl, setNewImageUrl] = useState("");
   const [editImageUrl, setEditImageUrl] = useState("");
+  const [newApportion, setNewApportion] = useState(false);
+  const [editApportion, setEditApportion] = useState(false);
 
   async function handleScanReceipt(file: File, mode: "new" | "edit") {
     setExtracting(true);
@@ -166,7 +168,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
           </p>
         </div>
         <button
-          onClick={() => { setCreateCostDate(new Date().toISOString().slice(0, 10)); setModal(true); }}
+          onClick={() => { setCreateCostDate(new Date().toISOString().slice(0, 10)); setNewApportion(false); setModal(true); }}
           className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all hover:opacity-90"
           style={{ background: "var(--primary)", color: "var(--primary-fg)" }}
         >
@@ -263,7 +265,10 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                 <div className="flex items-start justify-between mb-1">
                   <div className="flex-1 mr-3">
                     <p className="font-semibold text-sm leading-tight">{c.cost_details || "—"}</p>
-                    <p className="text-xs mt-0.5" style={{ color: "var(--muted2)" }}>{c.category_name || "Uncategorized"}</p>
+                    <p className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: "var(--muted2)" }}>
+                    {c.category_name || "Uncategorized"}
+                    {c.apportion_to_customers && <span className="px-1.5 py-0.5 rounded-full text-xs font-semibold" style={{ background: "rgba(99,102,241,.15)", color: "#818cf8" }}>All · {cur}{fmt(c.amount / Math.max(customers.length, 1))}/ea</span>}
+                  </p>
                   </div>
                   <p className="text-xl font-bold font-mono shrink-0" style={{ color: "var(--red-c)" }}>{cur} {fmt(c.amount)}</p>
                 </div>
@@ -274,7 +279,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                   {c.receipt_image_url && <a href={c.receipt_image_url} target="_blank" rel="noreferrer" className="px-1.5 py-0.5 rounded text-xs" style={{ background: "var(--card3)", color: "var(--muted2)" }}>📎 Receipt</a>}
                 </div>
                 <div className="flex gap-2 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
-                  <button onClick={() => { setEditCostDate(c.transaction_date.slice(0, 10)); setEditCost(c); }} className="flex-1 py-2 rounded-xl text-xs font-semibold" style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted)" }}>✏️ Edit</button>
+                  <button onClick={() => { setEditCostDate(c.transaction_date.slice(0, 10)); setEditApportion(c.apportion_to_customers); setEditCost(c); }} className="flex-1 py-2 rounded-xl text-xs font-semibold" style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted)" }}>✏️ Edit</button>
                   <button onClick={async () => { if (!await confirm("Delete this cost?", "This cost record will be permanently removed.")) return; await runAction(() => deleteCost(c.id), toast, "Cost deleted"); }}
                     className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(239,68,68,.1)", color: "var(--red-c)" }}>🗑️</button>
                 </div>
@@ -300,7 +305,13 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: "var(--muted2)" }}>{c.transaction_date}</td>
                       <td className="px-3 py-2 max-w-[200px] truncate">{c.cost_details || "—"}</td>
                       <td className="px-3 py-2" style={{ color: "var(--muted)" }}>{c.category_name || "—"}</td>
-                      <td className="px-3 py-2 max-w-[120px] truncate" style={{ color: "var(--muted)" }}>{c.customer_name || "—"}</td>
+                      <td className="px-3 py-2 max-w-[140px]">
+                        {c.apportion_to_customers
+                          ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap" style={{ background: "rgba(99,102,241,.15)", color: "#818cf8" }}>
+                              All · {cur}{fmt(c.amount / Math.max(customers.length, 1))}/ea
+                            </span>
+                          : <span className="truncate block" style={{ color: "var(--muted)" }}>{c.customer_name || "—"}</span>}
+                      </td>
                       <td className="px-3 py-2 font-mono font-semibold whitespace-nowrap" style={{ color: "var(--red-c)" }}>{cur} {fmt(c.amount)}</td>
                       <td className="px-3 py-2" style={{ color: "var(--muted)" }}>{c.account_name || "—"}</td>
                       <td className="px-3 py-2">
@@ -311,7 +322,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex gap-1">
-                          <button onClick={() => { setEditCostDate(c.transaction_date.slice(0, 10)); setEditCost(c); }}
+                          <button onClick={() => { setEditCostDate(c.transaction_date.slice(0, 10)); setEditApportion(c.apportion_to_customers); setEditCost(c); }}
                             className="px-2 py-1 rounded text-xs" style={{ border: "1px solid var(--border)", background: "var(--card2)" }}>✏️</button>
                           <button onClick={async () => { if (!await confirm("Delete this cost?", "This cost record will be permanently removed.")) return; await runAction(() => deleteCost(c.id), toast, "Cost deleted"); }}
                             className="px-2 py-1 rounded text-xs" style={{ border: "1px solid var(--border)", background: "var(--card2)" }}>🗑️</button>
@@ -372,12 +383,12 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
       {editCost && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-start sm:justify-center sm:p-4 sm:pt-16 overflow-y-auto"
           style={{ background: "rgba(0,0,0,.6)", backdropFilter: "blur(4px)" }}
-          onClick={e => { if (e.target === e.currentTarget) setEditCost(null); }}>
+          onClick={e => { if (e.target === e.currentTarget) { setEditCost(null); setEditApportion(false); } }}>
           <div className="w-full sm:max-w-md rounded-t-2xl sm:rounded-xl max-h-[92vh] overflow-y-auto" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
             <div className="sm:hidden w-10 h-1 rounded-full mx-auto mt-3 mb-1" style={{ background: "var(--border)" }} />
             <div className="flex justify-between items-center px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
               <h3 className="font-semibold">Edit Cost</h3>
-              <button onClick={() => setEditCost(null)} style={{ color: "var(--muted2)" }}>✕</button>
+              <button onClick={() => { setEditCost(null); setEditApportion(false); }} style={{ color: "var(--muted2)" }}>✕</button>
             </div>
             {/* Scan Receipt for Edit */}
             <div className="px-5 pt-4">
@@ -398,7 +409,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
             <form className="p-5 space-y-3"
               action={async (fd: FormData) => {
                 setBusy(true);
-                try { await updateCost(editCost.id, fd); toast.success("Cost updated"); setEditCost(null); setEditImageUrl(""); }
+                try { await updateCost(editCost.id, fd); toast.success("Cost updated"); setEditCost(null); setEditImageUrl(""); setEditApportion(false); }
                 catch { toast.error("Failed to update cost"); }
                 finally { setBusy(false); }
               }}>
@@ -433,7 +444,22 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                   </select>
                 </div>
               </div>
-              {customers.length > 0 && (
+              {/* Apportion toggle */}
+              <div className="rounded-xl px-3 py-2.5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input type="checkbox" name="apportion_to_customers" checked={editApportion} onChange={e => setEditApportion(e.target.checked)} className="w-4 h-4 rounded" style={{ accentColor: "var(--accent)" }} />
+                  <div>
+                    <p className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>Apportion to all customers</p>
+                    <p className="text-xs" style={{ color: "var(--muted2)" }}>Core/overhead cost split equally across all clients</p>
+                  </div>
+                </label>
+                {editApportion && customers.length > 0 && (
+                  <p className="text-xs mt-2 pl-6.5" style={{ color: "#818cf8" }}>
+                    {cur}{fmt(editCost.amount / customers.length)} per customer · {customers.length} clients
+                  </p>
+                )}
+              </div>
+              {customers.length > 0 && !editApportion && (
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Customer (for CAC)</label>
                   <select name="customer_id" defaultValue={editCost.customer_id ?? ""} className={inputStyle} style={inputCss}>
@@ -450,7 +476,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                 </select>
               </div>
               <div className="flex gap-3 pt-2 pb-2">
-                <button type="button" onClick={() => setEditCost(null)} className="flex-1 py-2.5 text-sm rounded-xl border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>Cancel</button>
+                <button type="button" onClick={() => { setEditCost(null); setEditApportion(false); }} className="flex-1 py-2.5 text-sm rounded-xl border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>Cancel</button>
                 <button type="submit" disabled={busy} className="flex-1 py-2.5 text-sm font-semibold rounded-xl" style={{ background: "var(--accent)", color: "#fff", opacity: busy ? .6 : 1 }}>
                   {busy ? "Saving…" : "Update Cost"}
                 </button>
@@ -492,7 +518,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                 try {
                   await createCost(fd);
                   setModal(false);
-                  setNewAmount(""); setNewDetails(""); setNewCategoryId(""); setNewImageUrl("");
+                  setNewAmount(""); setNewDetails(""); setNewCategoryId(""); setNewImageUrl(""); setNewApportion(false);
                 } finally { setBusy(false); }
               }}>
               <input type="hidden" name="receipt_image_url" value={newImageUrl} />
@@ -526,7 +552,22 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                   </select>
                 </div>
               </div>
-              {customers.length > 0 && (
+              {/* Apportion toggle */}
+              <div className="rounded-xl px-3 py-2.5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input type="checkbox" name="apportion_to_customers" checked={newApportion} onChange={e => setNewApportion(e.target.checked)} className="w-4 h-4 rounded" style={{ accentColor: "var(--accent)" }} />
+                  <div>
+                    <p className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>Apportion to all customers</p>
+                    <p className="text-xs" style={{ color: "var(--muted2)" }}>Core/overhead cost split equally across all clients</p>
+                  </div>
+                </label>
+                {newApportion && customers.length > 0 && (
+                  <p className="text-xs mt-2 pl-6.5" style={{ color: "#818cf8" }}>
+                    {cur}{fmt(Number(newAmount || 0) / customers.length)} per customer · {customers.length} clients
+                  </p>
+                )}
+              </div>
+              {customers.length > 0 && !newApportion && (
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Customer (for CAC)</label>
                   <select name="customer_id" className={inputStyle} style={inputCss}>
