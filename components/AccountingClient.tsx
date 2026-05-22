@@ -93,14 +93,12 @@ const inp = "w-full px-3 py-2 rounded border text-sm outline-none focus:ring-1 f
 const inpS = { background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" } as const;
 
 // ── System balance calculator ────────────────────────────────────────────────
-function calcSystemBalance(invoices: Invoice[], costs: Cost[], asOfDate: string, fromDate?: string): number {
+function calcSystemBalance(invoices: Invoice[], costs: Cost[], asOfDate: string): number {
   const revenue = invoices
-    .filter(i => (i.status === "Completed" || i.status === "Paid")
-      && i.transaction_date <= asOfDate
-      && (!fromDate || i.transaction_date >= fromDate))
+    .filter(i => (i.status === "Completed" || i.status === "Paid") && i.transaction_date <= asOfDate)
     .reduce((s, i) => s + i.amount, 0);
   const totalCosts = costs
-    .filter(c => c.transaction_date <= asOfDate && (!fromDate || c.transaction_date >= fromDate))
+    .filter(c => c.transaction_date <= asOfDate)
     .reduce((s, c) => s + c.amount, 0);
   return revenue - totalCosts;
 }
@@ -160,7 +158,7 @@ export function AccountingClient({ invoices, costs, cashflow, accounts, orgName,
   }
 
   function handleResolveClick(entry: Cashflow) {
-    const sysBal = calcSystemBalance(invoices, costs, entry.record_date, defaultStart);
+    const sysBal = calcSystemBalance(invoices, costs, entry.record_date);
     const variance = entry.balance - sysBal;
     setResolveType(variance > 0 ? "income" : "cost");
     setResolveDate(entry.record_date);
@@ -284,7 +282,7 @@ export function AccountingClient({ invoices, costs, cashflow, accounts, orgName,
         const latestSnapshotDate = acctEntries.length > 0 ? acctEntries.map(e => e.record_date).sort().reverse()[0] : null;
         const multiAccount = acctEntries.length > 1;
 
-        const sysBalToday = calcSystemBalance(invoices, costs, today, defaultStart);
+        const sysBalToday = calcSystemBalance(invoices, costs, today);
         const currentVariance = totalBankBal != null ? totalBankBal - sysBalToday : null;
         const varColor = currentVariance === null ? "var(--muted2)"
           : Math.abs(currentVariance) < 1 ? "var(--accent)"
@@ -406,7 +404,7 @@ export function AccountingClient({ invoices, costs, cashflow, accounts, orgName,
                 {/* Mobile Cards */}
                 <div className="sm:hidden divide-y" style={{ borderColor: "var(--border)", background: "var(--card2)" }}>
                   {sortedCf.map(entry => {
-                    const sysBal = calcSystemBalance(invoices, costs, entry.record_date, defaultStart);
+                    const sysBal = calcSystemBalance(invoices, costs, entry.record_date);
                     const variance = entry.balance - sysBal;
                     const isBalanced = Math.abs(variance) < 1;
                     const acc = accounts.find(a => a.id === entry.account_id);
@@ -466,7 +464,7 @@ export function AccountingClient({ invoices, costs, cashflow, accounts, orgName,
                     </thead>
                     <tbody>
                       {sortedCf.map(entry => {
-                        const sysBal = calcSystemBalance(invoices, costs, entry.record_date, defaultStart);
+                        const sysBal = calcSystemBalance(invoices, costs, entry.record_date);
                         const variance = entry.balance - sysBal;
                         const isBalanced = Math.abs(variance) < 1;
                         const acc = accounts.find(a => a.id === entry.account_id);
@@ -505,14 +503,14 @@ export function AccountingClient({ invoices, costs, cashflow, accounts, orgName,
                   </table>
                 </div>
                 <div className="px-4 py-2.5 text-xs" style={{ background: "var(--card)", color: "var(--muted2)", borderTop: "1px solid var(--border)" }}>
-                  System Balance = completed revenue − costs from {defaultStart} to snapshot date (matches dashboard FY view)
+                  System Balance = all completed invoices − all costs up to snapshot date
                 </div>
               </div>
             )}
 
             {/* Resolve Modal */}
             {resolveEntry && (() => {
-              const sysBal = calcSystemBalance(invoices, costs, resolveEntry.record_date, defaultStart);
+              const sysBal = calcSystemBalance(invoices, costs, resolveEntry.record_date);
               const variance = resolveEntry.balance - sysBal;
               const absVar = Math.abs(variance);
               const isIncome = variance > 0;
