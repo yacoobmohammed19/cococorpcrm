@@ -95,11 +95,11 @@ async function executeWrite(
         .from("fact_leads")
         .insert({
           name: args.name,
-          email: args.email || null,
           phone: args.phone || null,
-          opportunity_value: args.estimated_value || null,
-          source: args.source || null,
-          notes: args.notes || null,
+          contact: args.contact || null,
+          lead_date: args.lead_date || null,
+          opportunity_value: args.opportunity_value || null,
+          weight: args.weight || null,
           status_id: defaultStatus?.id,
           org_id: orgId,
         })

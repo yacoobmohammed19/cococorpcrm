@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server";
 import { setActiveOrganization, signout } from "@/server-actions/auth";
 import { CollapsibleSidebar } from "@/components/CollapsibleSidebar";
 import { BotNav } from "@/components/SideNav";
+import { MobileHeader } from "@/components/MobileHeader";
 import { FAB } from "@/components/FAB";
 import { FABProvider } from "@/components/FABContext";
 import { ToastProvider } from "@/components/Toast";
@@ -56,30 +57,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Mobile header */}
-        <header className="md:hidden flex items-center justify-between p-3 border-b"
-          style={{ background: "var(--sidebar-bg)", borderColor: "var(--sidebar-border)" }}>
-          <h1 className="text-base font-bold tracking-widest">
-            <span style={{ color: "var(--sidebar-indicator)" }}>COCO</span>
-            <span style={{ color: "var(--sidebar-fg-active)" }}>CORP</span>
-          </h1>
-          <div className="flex items-center gap-2">
-            <form action={setActiveOrganization}>
-              <select name="org_id" defaultValue={activeOrgId}
-                className="text-xs rounded px-2 py-1 border"
-                style={{ background: "rgba(255,255,255,0.08)", borderColor: "var(--sidebar-border)", color: "var(--sidebar-fg)" }}>
-                {orgs.map(o => (
-                  <option key={o.org_id} value={o.org_id}>{o.name}</option>
-                ))}
-              </select>
-            </form>
-            <form action={signout}>
-              <button className="text-xs rounded border px-2 py-1" style={{ borderColor: "var(--sidebar-border)", color: "var(--sidebar-fg)" }}>
-                Out
-              </button>
-            </form>
-          </div>
-        </header>
+        {/* Mobile header with slide-out drawer */}
+        <MobileHeader
+          orgs={orgs}
+          activeOrgId={activeOrgId}
+          setActiveOrganization={setActiveOrganization}
+          signout={signout}
+        />
 
         <FABProvider>
           <ToastProvider>

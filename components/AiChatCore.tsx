@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useLayoutEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export type Message = { role: "user" | "assistant"; content: string };
 
@@ -43,6 +45,30 @@ function TypingDots() {
   );
 }
 
+const mdComponents: React.ComponentProps<typeof ReactMarkdown>["components"] = {
+  p: ({ children }) => <p className="mb-1.5 last:mb-0 leading-relaxed">{children}</p>,
+  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+  em: ({ children }) => <em className="italic">{children}</em>,
+  ul: ({ children }) => <ul className="mb-1.5 space-y-0.5 pl-4" style={{ listStyleType: "disc" }}>{children}</ul>,
+  ol: ({ children }) => <ol className="mb-1.5 space-y-0.5 pl-4" style={{ listStyleType: "decimal" }}>{children}</ol>,
+  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+  h1: ({ children }) => <p className="font-bold text-base mb-1">{children}</p>,
+  h2: ({ children }) => <p className="font-semibold mb-1">{children}</p>,
+  h3: ({ children }) => <p className="font-medium mb-0.5">{children}</p>,
+  code: ({ children, className }) => {
+    const isBlock = className?.includes("language-");
+    return isBlock
+      ? <code className="block text-xs font-mono rounded-lg p-2 my-1 overflow-x-auto" style={{ background: "rgba(0,0,0,.12)" }}>{children}</code>
+      : <code className="text-xs font-mono px-1 py-0.5 rounded" style={{ background: "rgba(0,0,0,.1)" }}>{children}</code>;
+  },
+  pre: ({ children }) => <pre className="text-xs font-mono rounded-lg p-2 my-1 overflow-x-auto" style={{ background: "rgba(0,0,0,.12)" }}>{children}</pre>,
+  blockquote: ({ children }) => <blockquote className="border-l-2 pl-2 my-1 opacity-80" style={{ borderColor: "var(--accent)" }}>{children}</blockquote>,
+  hr: () => <hr className="my-2 opacity-20 border-current" />,
+  table: ({ children }) => <div className="overflow-x-auto my-1.5"><table className="text-xs w-full border-collapse">{children}</table></div>,
+  th: ({ children }) => <th className="text-left font-semibold px-2 py-1 border-b" style={{ borderColor: "rgba(0,0,0,.15)" }}>{children}</th>,
+  td: ({ children }) => <td className="px-2 py-1 border-b" style={{ borderColor: "rgba(0,0,0,.08)" }}>{children}</td>,
+};
+
 function MessageBubble({ msg }: { msg: Message }) {
   const isUser = msg.role === "user";
   return (
@@ -54,15 +80,17 @@ function MessageBubble({ msg }: { msg: Message }) {
         </div>
       )}
       <div
-        className={`max-w-[82%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${isUser ? "rounded-tr-sm" : "rounded-tl-sm"}`}
+        className={`max-w-[82%] px-3.5 py-2.5 rounded-2xl text-sm ${isUser ? "rounded-tr-sm" : "rounded-tl-sm"}`}
         style={{
           background: isUser ? "var(--accent)" : "var(--card)",
           color: isUser ? "#fff" : "var(--foreground)",
           border: isUser ? "none" : "1px solid var(--border)",
-          whiteSpace: "pre-wrap",
           wordBreak: "break-word",
         }}>
-        {msg.content}
+        {isUser
+          ? <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+          : <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{msg.content}</ReactMarkdown>
+        }
       </div>
     </div>
   );
