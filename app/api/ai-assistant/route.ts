@@ -6,18 +6,39 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 const S = SchemaType;
 
+// Write tools require user confirmation before executing.
+const WRITE_TOOLS = new Set([
+  "create_customer", "update_customer",
+  "create_invoice", "update_invoice_status",
+  "create_lead",
+  "log_activity",
+  "create_cost", "record_cashflow",
+]);
+
+const TOOL_LABELS: Record<string, string> = {
+  create_customer: "Create Customer",
+  update_customer: "Update Customer",
+  create_invoice: "Create Invoice",
+  update_invoice_status: "Update Invoice Status",
+  create_lead: "Create Lead",
+  log_activity: "Log Activity",
+  create_cost: "Record Cost",
+  record_cashflow: "Record Bank Balance",
+};
+
 const BASE_SYSTEM_PROMPT = `You are Coco, a smart AI assistant built into CocoCRM. You help users manage their business through natural conversation.
 
 You can:
 - Search and manage customers, invoices, leads, and costs
-- Create and update invoices, leads, and customers
+- Create and update invoices, leads, customers, and costs
 - Log activities (calls, emails, meetings)
 - Show stats, financial summaries, and business insights
-- Perform dynamic calculations on business data (e.g. "what was my profit last month?", "which customer has the highest revenue?")
+- Perform dynamic calculations on business data
 
 Guidelines:
-- Be concise and friendly. Confirm actions after completing them.
-- When creating invoices or customers, confirm key details in your response.
+- Be concise and friendly.
+- When creating or updating records, collect information conversationally. Ask for missing fields one or two at a time.
+- Before calling any write function, summarise what you are about to save in one clear sentence (e.g. "Creating invoice INV-045 for Acme Corp — R 5,000, due 2026-06-30."). The user will see a confirmation card and must approve before the record is saved.
 - Format amounts as currency (e.g. R 5,000).
 - If you need a customer ID but only have a name, use search_customers first.
 - Use get_financial_summary for detailed financial questions.
@@ -189,6 +210,35 @@ const crmTools: Tool[] = [
           properties: {
             period_months: { type: S.NUMBER, description: "Number of months to look back (default 12)" },
           },
+        },
+      },
+      {
+        name: "create_cost",
+        description: "Record a new business expense / cost",
+        parameters: {
+          type: S.OBJECT,
+          properties: {
+            amount: { type: S.NUMBER, description: "Cost amount" },
+            transaction_date: { type: S.STRING, description: "YYYY-MM-DD" },
+            cost_details: { type: S.STRING, description: "Description of the cost" },
+            cost_category_id: { type: S.NUMBER, description: "Cost category ID (optional)" },
+            account_id: { type: S.NUMBER, description: "Bank account ID (optional)" },
+          },
+          required: ["amount", "transaction_date"],
+        },
+      },
+      {
+        name: "record_cashflow",
+        description: "Record an actual bank balance snapshot for an account",
+        parameters: {
+          type: S.OBJECT,
+          properties: {
+            balance: { type: S.NUMBER, description: "Actual bank balance amount" },
+            record_date: { type: S.STRING, description: "YYYY-MM-DD" },
+            account_id: { type: S.NUMBER, description: "Bank account ID" },
+            notes: { type: S.STRING },
+          },
+          required: ["balance", "record_date", "account_id"],
         },
       },
     ],
@@ -509,14 +559,33 @@ LIVE BUSINESS SNAPSHOT (${new Date().toISOString().slice(0, 10)}):
 
     let result = await chat.sendMessage(lastMessage);
 
-    // Agentic loop: keep resolving tool calls until Gemini returns text
+    // Agentic loop: resolve read tool calls; pause on first write tool call for user approval.
     let iterations = 0;
     while (result.response.functionCalls()?.length && iterations < 5) {
       iterations++;
       const calls = result.response.functionCalls()!;
 
+      // Separate read vs write calls
+      const readCalls = calls.filter(c => !WRITE_TOOLS.has(c.name));
+      const writeCalls = calls.filter(c => WRITE_TOOLS.has(c.name));
+
+      if (writeCalls.length > 0) {
+        // Return the write action as a pending confirmation — do NOT execute.
+        const writeCall = writeCalls[0];
+        const textSoFar = result.response.text()?.trim() || "";
+        return NextResponse.json({
+          reply: textSoFar || "I have all the information needed. Please review and confirm:",
+          pendingAction: {
+            tool: writeCall.name,
+            args: writeCall.args,
+            label: TOOL_LABELS[writeCall.name] || writeCall.name,
+          },
+        });
+      }
+
+      // Execute read calls normally
       const toolParts: Part[] = await Promise.all(
-        calls.map(async call => {
+        readCalls.map(async call => {
           let output: unknown;
           try {
             output = await executeTool(call.name, call.args as Record<string, unknown>, supabase, orgId);

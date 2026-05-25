@@ -8,6 +8,7 @@ import { createLead } from "@/server-actions/leads";
 import { createInvoice } from "@/server-actions/invoices";
 import { createCost, recordCashflow } from "@/server-actions/costs";
 import { COST_TYPES, type CostTypeValue } from "@/lib/schemas/costs";
+import { useFAB } from "@/components/FABContext";
 
 type Account = { id: number; name: string };
 type Customer = { id: number; name: string };
@@ -23,30 +24,33 @@ type Props = {
   costCategories: CostCategory[];
 };
 
-type ModalType = "lead" | "invoice" | "cost" | "cashflow" | null;
-
-const MODAL_LABELS: Record<NonNullable<ModalType>, string> = {
+const MODAL_LABELS = {
   lead: "Lead", invoice: "Invoice", cost: "Cost", cashflow: "Balance snapshot",
-};
+} as const;
 
 export function FAB({ accounts, customers, paymentTypes, statuses, costCategories }: Props) {
+  const { activeModal, openModal: ctxOpenModal, closeModal: ctxCloseModal } = useFAB();
   const [open, setOpen] = useState(false);
-  const [modal, setModal] = useState<ModalType>(null);
   const [fabDate, setFabDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
   const [fabCostType, setFabCostType] = useState<CostTypeValue>("operational");
   const router = useRouter();
   const toast = useToast();
 
-  function openModal(type: ModalType) { setFabDate(new Date().toISOString().slice(0, 10)); setFabCostType("operational"); setModal(type); setOpen(false); }
-  function closeModal() { setModal(null); }
+  function openModal(type: "lead" | "invoice" | "cost" | "cashflow") {
+    setFabDate(new Date().toISOString().slice(0, 10));
+    setFabCostType("operational");
+    ctxOpenModal(type);
+    setOpen(false);
+  }
+  function closeModal() { ctxCloseModal(); }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>, action: (fd: FormData) => Promise<void>) {
     e.preventDefault();
     setBusy(true);
     try {
       await action(new FormData(e.currentTarget));
-      toast.success(`${MODAL_LABELS[modal!]} saved`);
+      toast.success(`${MODAL_LABELS[activeModal!]} saved`);
       closeModal();
       router.refresh();
     } catch (err) {
@@ -71,7 +75,7 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
           <button type="button" onClick={closeModal} style={{ color: "var(--muted2)", background: "none", border: "none", cursor: "pointer", fontSize: 20 }}>✕</button>
         </div>
         <form onSubmit={onSubmit}>
-          <div className="p-5 space-y-3">{children}</div>
+          <div className="p-5 space-y-3 overflow-y-auto max-h-[70vh]">{children}</div>
           <div className="flex justify-end gap-3 px-5 py-4 border-t" style={{ borderColor: "var(--border)" }}>
             <button type="button" onClick={closeModal} className="px-4 py-2 rounded text-sm"
               style={{ background: "var(--card3)", color: "var(--muted)", border: "1px solid var(--border)" }}>Cancel</button>
@@ -87,16 +91,15 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
 
   return (
     <>
-      {/* FAB button */}
-      <div className="fixed bottom-20 right-4 z-[150] md:bottom-6">
-        {/* Expanded menu */}
+      {/* Desktop-only floating FAB — mobile uses the centre nav button */}
+      <div className="hidden md:block fixed bottom-6 right-6 z-[150]">
         {open && (
-          <div className="absolute bottom-14 right-0 flex flex-col gap-2 items-end">
+          <div className="absolute bottom-16 right-0 flex flex-col gap-2 items-end">
             {[
-              { label: "📋 New Lead", type: "lead" as ModalType },
-              { label: "🧾 New Invoice", type: "invoice" as ModalType },
-              { label: "💸 New Cost", type: "cost" as ModalType },
-              { label: "🏦 Record Balance", type: "cashflow" as ModalType },
+              { label: "📋 New Lead", type: "lead" as const },
+              { label: "🧾 New Invoice", type: "invoice" as const },
+              { label: "💸 New Cost", type: "cost" as const },
+              { label: "🏦 Record Balance", type: "cashflow" as const },
             ].map(opt => (
               <button key={opt.type} onClick={() => openModal(opt.type)}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold shadow-lg whitespace-nowrap transition-all"
@@ -113,17 +116,16 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
         </button>
       </div>
 
-      {/* Backdrop to close menu */}
-      {open && <div className="fixed inset-0 z-[140]" onClick={() => setOpen(false)} />}
+      {open && <div className="hidden md:block fixed inset-0 z-[140]" onClick={() => setOpen(false)} />}
 
       {/* Lead Modal */}
-      {modal === "lead" && (
+      {activeModal === "lead" && (
         <Modal title="📋 New Lead" onSubmit={e => handleSubmit(e, createLead)}>
           <div>
             <label style={labelCss}>Lead Name *</label>
             <input name="name" required className={inputCss} style={inputStyle} placeholder="Contact or company name" />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label style={labelCss}>Phone</label>
               <input name="phone" className={inputCss} style={inputStyle} placeholder="+27 xx xxx xxxx" />
@@ -133,7 +135,7 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
               <input name="contact" className={inputCss} style={inputStyle} placeholder="Contact name" />
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label style={labelCss}>Status</label>
               <select name="status_id" defaultValue="1" className={inputCss} style={inputStyle}>
@@ -146,7 +148,7 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
             </div>
           </div>
           <div>
-            <label style={labelCss}>Opportunity Value ({"{cur}"})</label>
+            <label style={labelCss}>Opportunity Value</label>
             <input name="opportunity_value" type="number" min="0" step="0.01" defaultValue="0" className={inputCss} style={inputStyle} />
           </div>
           <input type="hidden" name="weight" value="0.5" />
@@ -154,7 +156,7 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
       )}
 
       {/* Invoice Modal */}
-      {modal === "invoice" && (
+      {activeModal === "invoice" && (
         <Modal title="🧾 New Invoice" onSubmit={e => handleSubmit(e, async fd => {
           fd.set("lines", JSON.stringify([{ description: fd.get("description") || "Service", quantity: 1, unit_price: Number(fd.get("amount") || 0) }]));
           await createInvoice(fd);
@@ -166,7 +168,7 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
               {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label style={labelCss}>Invoice # *</label>
               <input name="invoice_number" required className={inputCss} style={inputStyle} placeholder="INV-001" />
@@ -202,9 +204,9 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
       )}
 
       {/* Cost Modal */}
-      {modal === "cost" && (
+      {activeModal === "cost" && (
         <Modal title="💸 New Cost" onSubmit={e => handleSubmit(e, createCost)}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label style={labelCss}>Date *</label>
               <DateInput name="transaction_date" value={fabDate} onChange={setFabDate} placeholder="Date" />
@@ -218,7 +220,7 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
             <label style={labelCss}>Description</label>
             <input name="cost_details" className={inputCss} style={inputStyle} placeholder="What was this cost for?" />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label style={labelCss}>Category</label>
               <select name="cost_category_id" className={inputCss} style={inputStyle}>
@@ -237,26 +239,17 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
           <div>
             <label style={labelCss}>Cost Type</label>
             <input type="hidden" name="include_in_pnl" value={fabCostType === "operational" ? "true" : "false"} />
-            <select
-              name="cost_type"
-              value={fabCostType}
-              onChange={e => setFabCostType(e.target.value as CostTypeValue)}
-              className={inputCss} style={inputStyle}>
+            <select name="cost_type" value={fabCostType} onChange={e => setFabCostType(e.target.value as CostTypeValue)} className={inputCss} style={inputStyle}>
               {COST_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
-            {fabCostType !== "operational" && (
-              <p className="text-xs mt-1" style={{ color: "#f59e0b" }}>
-                This cost will be excluded from operational P&L.
-              </p>
-            )}
           </div>
         </Modal>
       )}
 
       {/* Cashflow Modal */}
-      {modal === "cashflow" && (
+      {activeModal === "cashflow" && (
         <Modal title="🏦 Record Bank Balance" onSubmit={e => handleSubmit(e, recordCashflow)}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label style={labelCss}>Date *</label>
               <DateInput name="record_date" value={fabDate} onChange={setFabDate} placeholder="Date" />

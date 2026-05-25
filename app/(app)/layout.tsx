@@ -4,6 +4,7 @@ import { setActiveOrganization, signout } from "@/server-actions/auth";
 import { CollapsibleSidebar } from "@/components/CollapsibleSidebar";
 import { BotNav } from "@/components/SideNav";
 import { FAB } from "@/components/FAB";
+import { FABProvider } from "@/components/FABContext";
 import { ToastProvider } from "@/components/Toast";
 import { AiAssistant } from "@/components/AiAssistant";
 
@@ -80,24 +81,33 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </header>
 
-        <ToastProvider>
-          <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6">{children}</main>
+        <FABProvider>
+          <ToastProvider>
+            <main className="flex-1 p-4 md:p-6 pb-[76px] md:pb-6">{children}</main>
 
-          <FAB
-            accounts={accounts || []}
-            customers={customers || []}
-            paymentTypes={payTypes || []}
-            statuses={statuses || []}
-            costCategories={costCats || []}
-          />
-          <AiAssistant />
+            <FAB
+              accounts={accounts || []}
+              customers={customers || []}
+              paymentTypes={payTypes || []}
+              statuses={statuses || []}
+              costCategories={costCats || []}
+            />
+            <AiAssistant />
 
-          {/* Mobile bottom nav */}
-          <nav className="md:hidden fixed bottom-0 left-0 right-0 flex border-t z-40"
-            style={{ background: "var(--sidebar-bg)", borderColor: "var(--sidebar-border)" }}>
-            <BotNav />
-          </nav>
-        </ToastProvider>
+            {/* Mobile bottom nav — 64 px bar + safe-area inset */}
+            <nav
+              className="md:hidden fixed bottom-0 left-0 right-0 flex border-t z-40"
+              style={{
+                background: "var(--sidebar-bg)",
+                borderColor: "var(--sidebar-border)",
+                paddingBottom: "env(safe-area-inset-bottom)",
+                height: "calc(64px + env(safe-area-inset-bottom))",
+              }}
+            >
+              <BotNav />
+            </nav>
+          </ToastProvider>
+        </FABProvider>
       </div>
     </div>
   );
