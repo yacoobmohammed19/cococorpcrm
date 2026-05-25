@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/hooks/useConfirm";
 import { runAction } from "@/lib/action-utils";
 import { createCost, updateCost, deleteCost } from "@/server-actions/costs";
+import { COST_TYPES, type CostTypeValue } from "@/lib/schemas/costs";
 
 type Cost = {
   id: number; transaction_date: string; cost_details: string | null;
@@ -17,11 +18,18 @@ type Cost = {
   cost_category_id: number | null; account_id: number | null;
   customer_id: number | null; customer_name: string | null;
   receipt_image_url: string | null; apportion_to_customers: boolean;
+  cost_type: string; include_in_pnl: boolean;
 };
 type Category = { id: number; name: string };
 type Account = { id: number; name: string };
 type Customer = { id: number; name: string };
 type Props = { costs: Cost[]; categories: Category[]; accounts: Account[]; customers: Customer[]; currency: string };
+
+const COST_TYPE_LABELS: Record<string, string> = Object.fromEntries(COST_TYPES.map(t => [t.value, t.label]));
+const NON_OPERATIONAL_BADGE: Record<string, string> = {
+  sadaqah: "#a855f7", zakat: "#f59e0b", owner_draw: "#3b82f6",
+  capex: "#06b6d4", personal: "#ec4899",
+};
 
 function fmt(n: number) { return Number(n).toLocaleString("en-ZA", { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
 function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
@@ -71,6 +79,10 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
   const [editImageUrl, setEditImageUrl] = useState("");
   const [newApportion, setNewApportion] = useState(false);
   const [editApportion, setEditApportion] = useState(false);
+  const [newCostType, setNewCostType] = useState<CostTypeValue>("operational");
+  const [newIncludeInPnl, setNewIncludeInPnl] = useState(true);
+  const [editCostType, setEditCostType] = useState<CostTypeValue>("operational");
+  const [editIncludeInPnl, setEditIncludeInPnl] = useState(true);
 
   async function handleScanReceipt(file: File, mode: "new" | "edit") {
     setExtracting(true);
@@ -293,7 +305,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                   {c.receipt_image_url && <a href={c.receipt_image_url} target="_blank" rel="noreferrer" className="px-1.5 py-0.5 rounded text-xs" style={{ background: "var(--card3)", color: "var(--muted2)" }}>📎 Receipt</a>}
                 </div>
                 <div className="flex gap-2 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
-                  <button onClick={() => { setEditCostDate(c.transaction_date.slice(0, 10)); setEditApportion(c.apportion_to_customers); setEditCost(c); }} className="flex-1 py-2 rounded-xl text-xs font-semibold" style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted)" }}>✏️ Edit</button>
+                  <button onClick={() => { setEditCostDate(c.transaction_date.slice(0, 10)); setEditApportion(c.apportion_to_customers); setEditCostType(c.cost_type as CostTypeValue); setEditIncludeInPnl(c.include_in_pnl); setEditCost(c); }} className="flex-1 py-2 rounded-xl text-xs font-semibold" style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted)" }}>✏️ Edit</button>
                   <button onClick={async () => { if (!await confirm("Delete this cost?", "This cost record will be permanently removed.")) return; await runAction(() => deleteCost(c.id), toast, "Cost deleted"); }}
                     className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(239,68,68,.1)", color: "var(--red-c)" }}>🗑️</button>
                 </div>
@@ -308,7 +320,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
               <table className="w-full text-xs border-collapse">
                 <thead>
                   <tr style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
-                    {["Date", "Details", "Category", "Customer", "Amount", "Account", "Recouped", "Receipt", ""].map(h => (
+                    {["Date", "Details", "Category", "Type", "Customer", "Amount", "Account", "Recouped", "Receipt", ""].map(h => (
                       <th key={h} className="px-3 py-2.5 text-left font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: "var(--muted2)" }}>{h}</th>
                     ))}
                   </tr>
@@ -319,6 +331,14 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: "var(--muted2)" }}>{c.transaction_date}</td>
                       <td className="px-3 py-2 max-w-[200px] truncate">{c.cost_details || "—"}</td>
                       <td className="px-3 py-2" style={{ color: "var(--muted)" }}>{c.category_name || "—"}</td>
+                      <td className="px-3 py-2">
+                        {c.cost_type !== "operational" ? (
+                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap"
+                            style={{ background: `${NON_OPERATIONAL_BADGE[c.cost_type]}22`, color: NON_OPERATIONAL_BADGE[c.cost_type] }}>
+                            {COST_TYPE_LABELS[c.cost_type]}
+                          </span>
+                        ) : <span style={{ color: "var(--muted2)" }}>—</span>}
+                      </td>
                       <td className="px-3 py-2 max-w-[140px]">
                         {c.apportion_to_customers
                           ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap" style={{ background: "rgba(99,102,241,.15)", color: "#818cf8" }}>
@@ -336,7 +356,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex gap-1">
-                          <button onClick={() => { setEditCostDate(c.transaction_date.slice(0, 10)); setEditApportion(c.apportion_to_customers); setEditCost(c); }}
+                          <button onClick={() => { setEditCostDate(c.transaction_date.slice(0, 10)); setEditApportion(c.apportion_to_customers); setEditCostType(c.cost_type as CostTypeValue); setEditIncludeInPnl(c.include_in_pnl); setEditCost(c); }}
                             className="px-2 py-1 rounded text-xs" style={{ border: "1px solid var(--border)", background: "var(--card2)" }}>✏️</button>
                           <button onClick={async () => { if (!await confirm("Delete this cost?", "This cost record will be permanently removed.")) return; await runAction(() => deleteCost(c.id), toast, "Cost deleted"); }}
                             className="px-2 py-1 rounded text-xs" style={{ border: "1px solid var(--border)", background: "var(--card2)" }}>🗑️</button>
@@ -344,7 +364,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                       </td>
                     </tr>
                   ))}
-                  {filtered.length === 0 && <tr><td colSpan={9}><EmptyState icon="💸" title={search || catFilter.length > 0 || acctFilter.length > 0 || custFilter.length > 0 || dateFrom || dateTo || recoupedFilter ? "No costs match your filters" : "No costs yet"} description={search || catFilter.length > 0 || acctFilter.length > 0 || custFilter.length > 0 || dateFrom || dateTo || recoupedFilter ? "Try adjusting your filters." : "Record your first cost to start tracking expenses."} /></td></tr>}
+                  {filtered.length === 0 && <tr><td colSpan={10}><EmptyState icon="💸" title={search || catFilter.length > 0 || acctFilter.length > 0 || custFilter.length > 0 || dateFrom || dateTo || recoupedFilter ? "No costs match your filters" : "No costs yet"} description={search || catFilter.length > 0 || acctFilter.length > 0 || custFilter.length > 0 || dateFrom || dateTo || recoupedFilter ? "Try adjusting your filters." : "Record your first cost to start tracking expenses."} /></td></tr>}
                 </tbody>
               </table>
             </div>
@@ -397,12 +417,12 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
       {editCost && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-start sm:justify-center sm:p-4 sm:pt-16 overflow-y-auto"
           style={{ background: "rgba(0,0,0,.6)", backdropFilter: "blur(4px)" }}
-          onClick={e => { if (e.target === e.currentTarget) { setEditCost(null); setEditApportion(false); } }}>
+          onClick={e => { if (e.target === e.currentTarget) { setEditCost(null); setEditApportion(false); setEditCostType("operational"); setEditIncludeInPnl(true); } }}>
           <div className="w-full sm:max-w-md rounded-t-2xl sm:rounded-xl max-h-[92vh] overflow-y-auto" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
             <div className="sm:hidden w-10 h-1 rounded-full mx-auto mt-3 mb-1" style={{ background: "var(--border)" }} />
             <div className="flex justify-between items-center px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
               <h3 className="font-semibold">Edit Cost</h3>
-              <button onClick={() => { setEditCost(null); setEditApportion(false); }} style={{ color: "var(--muted2)" }}>✕</button>
+              <button onClick={() => { setEditCost(null); setEditApportion(false); setEditCostType("operational"); setEditIncludeInPnl(true); }} style={{ color: "var(--muted2)" }}>✕</button>
             </div>
             {/* Scan Receipt for Edit */}
             <div className="px-5 pt-4">
@@ -423,7 +443,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
             <form className="p-5 space-y-3"
               action={async (fd: FormData) => {
                 setBusy(true);
-                try { await updateCost(editCost.id, fd); toast.success("Cost updated"); setEditCost(null); setEditImageUrl(""); setEditApportion(false); }
+                try { await updateCost(editCost.id, fd); toast.success("Cost updated"); setEditCost(null); setEditImageUrl(""); setEditApportion(false); setEditCostType("operational"); setEditIncludeInPnl(true); }
                 catch { toast.error("Failed to update cost"); }
                 finally { setBusy(false); }
               }}>
@@ -458,6 +478,38 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                   </select>
                 </div>
               </div>
+              {/* Cost type + P&L inclusion */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Cost Type</label>
+                  <select
+                    name="cost_type"
+                    value={editCostType}
+                    onChange={e => {
+                      const t = e.target.value as CostTypeValue;
+                      setEditCostType(t);
+                      setEditIncludeInPnl(t === "operational");
+                    }}
+                    className={inputStyle} style={inputCss}>
+                    {COST_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div className="flex items-end pb-1">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="hidden" name="include_in_pnl" value={editIncludeInPnl ? "true" : "false"} />
+                    <input
+                      type="checkbox"
+                      checked={editIncludeInPnl}
+                      onChange={e => setEditIncludeInPnl(e.target.checked)}
+                      className="w-4 h-4 rounded"
+                      style={{ accentColor: "var(--accent)" }} />
+                    <div>
+                      <p className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>Include in P&L</p>
+                      <p className="text-xs" style={{ color: "var(--muted2)" }}>Counts toward operational profit</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
               {/* Apportion toggle */}
               <div className="rounded-xl px-3 py-2.5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                 <label className="flex items-center gap-2.5 cursor-pointer select-none">
@@ -490,7 +542,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                 </select>
               </div>
               <div className="flex gap-3 pt-2 pb-2">
-                <button type="button" onClick={() => { setEditCost(null); setEditApportion(false); }} className="flex-1 py-2.5 text-sm rounded-xl border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>Cancel</button>
+                <button type="button" onClick={() => { setEditCost(null); setEditApportion(false); setEditCostType("operational"); setEditIncludeInPnl(true); }} className="flex-1 py-2.5 text-sm rounded-xl border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>Cancel</button>
                 <button type="submit" disabled={busy} className="flex-1 py-2.5 text-sm font-semibold rounded-xl" style={{ background: "var(--accent)", color: "#fff", opacity: busy ? .6 : 1 }}>
                   {busy ? "Saving…" : "Update Cost"}
                 </button>
@@ -532,7 +584,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                 try {
                   await createCost(fd);
                   setModal(false);
-                  setNewAmount(""); setNewDetails(""); setNewCategoryId(""); setNewImageUrl(""); setNewApportion(false);
+                  setNewAmount(""); setNewDetails(""); setNewCategoryId(""); setNewImageUrl(""); setNewApportion(false); setNewCostType("operational"); setNewIncludeInPnl(true);
                 } finally { setBusy(false); }
               }}>
               <input type="hidden" name="receipt_image_url" value={newImageUrl} />
@@ -564,6 +616,38 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                     <option value="">— None —</option>
                     {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                   </select>
+                </div>
+              </div>
+              {/* Cost type + P&L inclusion */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Cost Type</label>
+                  <select
+                    name="cost_type"
+                    value={newCostType}
+                    onChange={e => {
+                      const t = e.target.value as CostTypeValue;
+                      setNewCostType(t);
+                      setNewIncludeInPnl(t === "operational");
+                    }}
+                    className={inputStyle} style={inputCss}>
+                    {COST_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div className="flex items-end pb-1">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="hidden" name="include_in_pnl" value={newIncludeInPnl ? "true" : "false"} />
+                    <input
+                      type="checkbox"
+                      checked={newIncludeInPnl}
+                      onChange={e => setNewIncludeInPnl(e.target.checked)}
+                      className="w-4 h-4 rounded"
+                      style={{ accentColor: "var(--accent)" }} />
+                    <div>
+                      <p className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>Include in P&L</p>
+                      <p className="text-xs" style={{ color: "var(--muted2)" }}>Counts toward operational profit</p>
+                    </div>
+                  </label>
                 </div>
               </div>
               {/* Apportion toggle */}

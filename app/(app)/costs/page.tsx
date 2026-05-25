@@ -7,7 +7,7 @@ export default async function CostsPage() {
   const [{ data: costs }, { data: categories }, { data: accounts }, { data: customers }, { data: org }] = await Promise.all([
     supabase
       .from("fact_costs")
-      .select("id, transaction_date, cost_details, amount, recouped, cost_category_id, account_id, customer_id, receipt_image_url, apportion_to_customers, dim_cost_categories(name), dim_accounts(name), dim_customers(name)")
+      .select("id, transaction_date, cost_details, amount, recouped, cost_category_id, account_id, customer_id, receipt_image_url, apportion_to_customers, cost_type, include_in_pnl, dim_cost_categories(name), dim_accounts(name), dim_customers(name)")
       .is("deleted_at", null)
       .order("transaction_date", { ascending: false }),
     supabase.from("dim_cost_categories").select("id, name").order("name"),
@@ -30,6 +30,8 @@ export default async function CostsPage() {
     customer_name: (c.dim_customers as unknown as { name: string } | null)?.name ?? null,
     receipt_image_url: (c as Record<string, unknown>).receipt_image_url as string | null ?? null,
     apportion_to_customers: Boolean((c as Record<string, unknown>).apportion_to_customers),
+    cost_type: ((c as Record<string, unknown>).cost_type as string) ?? "operational",
+    include_in_pnl: (c as Record<string, unknown>).include_in_pnl !== false,
   }));
 
   return (

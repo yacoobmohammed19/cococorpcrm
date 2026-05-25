@@ -7,6 +7,7 @@ import { useToast } from "@/components/Toast";
 import { createLead } from "@/server-actions/leads";
 import { createInvoice } from "@/server-actions/invoices";
 import { createCost, recordCashflow } from "@/server-actions/costs";
+import { COST_TYPES, type CostTypeValue } from "@/lib/schemas/costs";
 
 type Account = { id: number; name: string };
 type Customer = { id: number; name: string };
@@ -33,10 +34,11 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
   const [modal, setModal] = useState<ModalType>(null);
   const [fabDate, setFabDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
+  const [fabCostType, setFabCostType] = useState<CostTypeValue>("operational");
   const router = useRouter();
   const toast = useToast();
 
-  function openModal(type: ModalType) { setFabDate(new Date().toISOString().slice(0, 10)); setModal(type); setOpen(false); }
+  function openModal(type: ModalType) { setFabDate(new Date().toISOString().slice(0, 10)); setFabCostType("operational"); setModal(type); setOpen(false); }
   function closeModal() { setModal(null); }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>, action: (fd: FormData) => Promise<void>) {
@@ -231,6 +233,22 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
                 {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </div>
+          </div>
+          <div>
+            <label style={labelCss}>Cost Type</label>
+            <input type="hidden" name="include_in_pnl" value={fabCostType === "operational" ? "true" : "false"} />
+            <select
+              name="cost_type"
+              value={fabCostType}
+              onChange={e => setFabCostType(e.target.value as CostTypeValue)}
+              className={inputCss} style={inputStyle}>
+              {COST_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+            {fabCostType !== "operational" && (
+              <p className="text-xs mt-1" style={{ color: "#f59e0b" }}>
+                This cost will be excluded from operational P&L.
+              </p>
+            )}
           </div>
         </Modal>
       )}

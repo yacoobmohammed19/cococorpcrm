@@ -79,15 +79,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
                 style={{ color: "var(--muted2)" }}>
-                Organisation <span style={{ color: "var(--red-c)" }}>*</span>
-              </label>
-              <input name="org_name" required placeholder="Your organisation name"
-                className="w-full px-4 py-2.5 rounded-xl border text-sm outline-none focus:ring-2 focus:ring-[var(--accent)] transition-all"
-                style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }} />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
-                style={{ color: "var(--muted2)" }}>
                 Email <span style={{ color: "var(--red-c)" }}>*</span>
               </label>
               <input name="email" type="email" required placeholder="you@example.com"

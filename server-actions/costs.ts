@@ -10,6 +10,9 @@ export async function createCost(formData: FormData) {
   const supabase = await createServerClient();
 
   const apportion = formData.get("apportion_to_customers") === "on";
+  const costType = (formData.get("cost_type") as string) || "operational";
+  const includeInPnlRaw = formData.get("include_in_pnl");
+  const includeInPnl = includeInPnlRaw !== null ? includeInPnlRaw === "true" || includeInPnlRaw === "on" : costType === "operational";
   const parsed = CostSchema.parse({
     org_id: orgId,
     transaction_date: formData.get("transaction_date"),
@@ -21,6 +24,8 @@ export async function createCost(formData: FormData) {
     recouped: formData.get("recouped") || "",
     receipt_image_url: formData.get("receipt_image_url") || null,
     apportion_to_customers: apportion,
+    cost_type: costType,
+    include_in_pnl: includeInPnl,
   });
 
   const { error } = await supabase.from("fact_costs").insert(parsed);
@@ -35,6 +40,9 @@ export async function updateCost(id: number, formData: FormData) {
 
   const receiptUrl = formData.get("receipt_image_url");
   const apportion = formData.get("apportion_to_customers") === "on";
+  const costType = (formData.get("cost_type") as string) || "operational";
+  const includeInPnlRaw = formData.get("include_in_pnl");
+  const includeInPnl = includeInPnlRaw !== null ? includeInPnlRaw === "true" || includeInPnlRaw === "on" : costType === "operational";
   const { error } = await supabase.from("fact_costs").update({
     transaction_date: formData.get("transaction_date"),
     cost_details: formData.get("cost_details") || null,
@@ -44,6 +52,8 @@ export async function updateCost(id: number, formData: FormData) {
     customer_id: apportion ? null : (formData.get("customer_id") ? Number(formData.get("customer_id")) : null),
     recouped: formData.get("recouped") || "",
     apportion_to_customers: apportion,
+    cost_type: costType,
+    include_in_pnl: includeInPnl,
     ...(receiptUrl !== null ? { receipt_image_url: receiptUrl || null } : {}),
   }).eq("id", id);
 

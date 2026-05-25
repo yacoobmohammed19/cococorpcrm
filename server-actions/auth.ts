@@ -7,43 +7,31 @@ import { createServerClient } from "@/lib/supabase/server";
 export async function login(formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
-  const orgName = String(formData.get("org_name") ?? "").trim();
   const supabase = await createServerClient();
-
-  if (!orgName) {
-    redirect("/login?error=" + encodeURIComponent("Please enter your organisation name."));
-  }
 
   const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
   if (authError) {
     redirect("/login?error=" + encodeURIComponent(authError.message));
   }
 
-  // Validate user is a member of the named org
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     redirect("/login?error=" + encodeURIComponent("Authentication failed. Please try again."));
   }
 
-  const { data: memberships } = await supabase
-    .from("memberships").select("org_id").eq("user_id", user.id);
+  // Use existing active_org_id if already set, otherwise pick first membership
+  const existingOrgId = user.user_metadata?.active_org_id as string | undefined;
+  if (!existingOrgId) {
+    const { data: memberships } = await supabase
+      .from("memberships").select("org_id").eq("user_id", user.id).limit(1);
 
-  if (!memberships || memberships.length === 0) {
-    await supabase.auth.signOut();
-    redirect("/login?error=" + encodeURIComponent("No organisation found for this account."));
+    if (!memberships || memberships.length === 0) {
+      await supabase.auth.signOut();
+      redirect("/login?error=" + encodeURIComponent("No organisation found for this account."));
+    }
+
+    await supabase.auth.updateUser({ data: { active_org_id: memberships[0].org_id } });
   }
-
-  const orgIds = memberships.map((m: { org_id: string }) => m.org_id);
-  const { data: orgs } = await supabase
-    .from("organizations").select("id, name")
-    .in("id", orgIds).ilike("name", `%${orgName}%`).limit(1);
-
-  if (!orgs || orgs.length === 0) {
-    await supabase.auth.signOut();
-    redirect("/login?error=" + encodeURIComponent(`Organisation "${orgName}" not found for this account.`));
-  }
-
-  await supabase.auth.updateUser({ data: { active_org_id: orgs[0].id } });
 
   revalidatePath("/", "layout");
   redirect("/dashboard");

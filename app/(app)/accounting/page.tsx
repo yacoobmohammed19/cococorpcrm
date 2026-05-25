@@ -10,7 +10,7 @@ export default async function AccountingPage() {
 
   const [{ data: invoices }, { data: costs }, { data: cashflow }, { data: org }, { data: accounts }] = await Promise.all([
     supabase.from("fact_invoices").select("id, amount, status, transaction_date, customer_id").is("deleted_at", null),
-    supabase.from("fact_costs").select("id, amount, transaction_date, cost_category_id, dim_cost_categories(name)").is("deleted_at", null),
+    supabase.from("fact_costs").select("id, amount, transaction_date, cost_category_id, cost_type, include_in_pnl, dim_cost_categories(name)").is("deleted_at", null),
     supabase.from("fact_cashflow").select("id, balance, account_id, record_date, notes").order("record_date", { ascending: false }),
     supabase.from("organizations").select("currency, name, reg_no").single(),
     supabase.from("dim_accounts").select("id, name").order("name"),
@@ -23,7 +23,7 @@ export default async function AccountingPage() {
     <section>
       <AccountingClient
         invoices={(invoices || []).map(i => ({ id: i.id, amount: Number(i.amount || 0), status: i.status || "", transaction_date: i.transaction_date || "", customer_id: i.customer_id }))}
-        costs={(costs || []).map(c => ({ id: c.id, amount: Number(c.amount || 0), transaction_date: c.transaction_date || "", cost_category_id: c.cost_category_id, category_name: (c.dim_cost_categories as unknown as { name: string } | null)?.name ?? "Other" }))}
+        costs={(costs || []).map(c => ({ id: c.id, amount: Number(c.amount || 0), transaction_date: c.transaction_date || "", cost_category_id: c.cost_category_id, category_name: (c.dim_cost_categories as unknown as { name: string } | null)?.name ?? "Other", cost_type: ((c as Record<string, unknown>).cost_type as string) ?? "operational", include_in_pnl: (c as Record<string, unknown>).include_in_pnl !== false }))}
         cashflow={(cashflow || []).map(r => ({ id: r.id, balance: Number(r.balance || 0), account_id: r.account_id, record_date: r.record_date || "", notes: r.notes ?? null }))}
         accounts={(accounts || []).map(a => ({ id: a.id, name: a.name }))}
         orgName={org?.name || "Company"}
