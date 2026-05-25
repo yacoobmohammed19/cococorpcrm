@@ -39,6 +39,9 @@ const COLORS = ["#10b981", "#e84393", "#8b5cf6", "#f59e0b", "#06b6d4", "#ef4444"
 const LS_SECTION_ORDER = "crm_dash_section_order";
 const LS_CUSTOM_KPIS = "crm_dash_custom_kpis";
 const LS_KPI_HIDDEN = "crm_dash_kpi_hidden";
+const LS_KPI_ORDER = "crm_dash_kpi_order";
+const LS_REVENUE_TARGET = "crm_dash_revenue_target";
+const DEFAULT_KPI_ORDER = ["total_leads","won_leads","conversion_pct","revenue","opex","profit","pipeline","avg_deal","total_customers","pending","bank_balance"];
 
 type TableKey = "fact_leads" | "fact_invoices" | "fact_costs";
 type AggType = "SUM" | "AVG" | "COUNT" | "COUNTDISTINCT" | "MIN" | "MAX";
@@ -90,12 +93,20 @@ function fmtCustomKpi(v: number, format: FormatType, cur: string): string {
   return fmt(v);
 }
 
+function pctDelta(cur: number, prev: number): number | null {
+  if (prev === 0) return cur > 0 ? 100 : null;
+  return ((cur - prev) / Math.abs(prev)) * 100;
+}
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function KpiCard({ label, value, sub, color, onClick }: { label: string; value: string; sub?: string; color: string; onClick?: () => void }) {
+function KpiCard({ label, value, sub, color, onClick, delta, goalPct }: {
+  label: string; value: string; sub?: string; color: string;
+  onClick?: () => void; delta?: number | null; goalPct?: number | null;
+}) {
   return (
     <div
-      className={`rounded-xl p-4 transition-all ${onClick ? "cursor-pointer hover:scale-[1.02] hover:shadow-md" : ""}`}
+      className={`rounded-xl p-4 transition-all flex flex-col ${onClick ? "cursor-pointer hover:scale-[1.02] hover:shadow-md" : ""}`}
       style={{
         background: "var(--card)",
         border: "1px solid var(--border)",
@@ -104,9 +115,32 @@ function KpiCard({ label, value, sub, color, onClick }: { label: string; value: 
       }}
       onClick={onClick}
     >
-      <div className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: "var(--muted2)" }}>{label}</div>
+      <div className="flex items-start justify-between mb-2">
+        <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--muted2)" }}>{label}</div>
+        {delta != null && (
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full ml-1 shrink-0 leading-none"
+            title="vs previous period"
+            style={{
+              background: delta >= 0 ? "rgba(16,185,129,.15)" : "rgba(239,68,68,.12)",
+              color: delta >= 0 ? "var(--accent)" : "var(--red-c)",
+            }}>
+            {delta >= 0 ? "↑" : "↓"}{Math.abs(delta).toFixed(0)}%
+          </span>
+        )}
+      </div>
       <div className="text-xl font-bold font-mono truncate leading-none" style={{ color }}>{value}</div>
       {sub && <div className="text-[11px] mt-1.5" style={{ color: "var(--muted2)" }}>{sub}</div>}
+      {goalPct != null && (
+        <div className="mt-2.5">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[9px] uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Monthly Target</span>
+            <span className="text-[9px] font-bold" style={{ color: goalPct >= 100 ? "var(--accent)" : "var(--muted2)" }}>{goalPct.toFixed(0)}%</span>
+          </div>
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--card3)" }}>
+            <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(100, goalPct)}%`, background: color }} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -126,7 +160,7 @@ function Section({ id, title, children, order, totalSections, onMove, defaultOpe
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="mb-3">
+    <div id={`section-${id}`} className="mb-3">
       <div className="flex items-center rounded-xl text-sm font-semibold"
         style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}>
         <button onClick={() => setOpen(!open)}
@@ -146,6 +180,39 @@ function Section({ id, title, children, order, totalSections, onMove, defaultOpe
         </div>
       </div>
       {open && <div className="pt-3">{children}</div>}
+    </div>
+  );
+}
+
+// ── Today's Focus ─────────────────────────────────────────────────────────────
+
+function TodayFocus({ overdueCount, overdueTotal, staleCount, dueThisWeek, cur, onScrollTo }: {
+  overdueCount: number; overdueTotal: number; staleCount: number; dueThisWeek: number;
+  cur: string; onScrollTo: (id: string) => void;
+}) {
+  const items = [
+    overdueCount > 0 && { icon: "🔴", label: `${overdueCount} overdue invoice${overdueCount > 1 ? "s" : ""} — ${cur} ${fmt(overdueTotal)}`, section: "alerts", urgent: true },
+    staleCount > 0 && { icon: "🟡", label: `${staleCount} lead${staleCount > 1 ? "s" : ""} need${staleCount === 1 ? "s" : ""} follow-up`, section: "alerts", urgent: false },
+    dueThisWeek > 0 && { icon: "📅", label: `${dueThisWeek} invoice${dueThisWeek > 1 ? "s" : ""} due this week`, section: "revenue", urgent: false },
+  ].filter((x): x is { icon: string; label: string; section: string; urgent: boolean } => !!x);
+
+  if (items.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-2 mb-4">
+      {items.map((item, i) => (
+        <button key={i} onClick={() => onScrollTo(item.section)}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-opacity hover:opacity-75"
+          style={{
+            background: item.urgent ? "rgba(239,68,68,.08)" : "var(--card2)",
+            border: `1px solid ${item.urgent ? "var(--red-c)" : "var(--border)"}`,
+            color: item.urgent ? "var(--red-c)" : "var(--foreground)",
+          }}>
+          <span>{item.icon}</span>
+          <span>{item.label}</span>
+          <span className="ml-0.5" style={{ color: "var(--muted2)" }}>→</span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -645,6 +712,29 @@ export function DashboardCharts({
     return readLS(LS_CUSTOM_KPIS, [] as CustomKpi[]);
   });
   const [hiddenKpis, setHiddenKpis] = useState<string[]>(() => readLS(LS_KPI_HIDDEN, [] as string[]));
+  const [monthlyTarget, setMonthlyTarget] = useState<number>(() => {
+    const fromDb = savedDashboardSettings?.monthlyRevenueTarget;
+    if (typeof fromDb === "number" && fromDb > 0) return fromDb;
+    return readLS(LS_REVENUE_TARGET, 0);
+  });
+  const [kpiOrder, setKpiOrder] = useState<string[]>(() => {
+    const stored = readLS(LS_KPI_ORDER, [] as string[]);
+    // Resolve initial custom kpi ids from the same source as customKpis
+    const initCustom: CustomKpi[] = (() => {
+      const fromDb = savedDashboardSettings?.customKpis;
+      if (Array.isArray(fromDb) && fromDb.length > 0) return fromDb as CustomKpi[];
+      return readLS(LS_CUSTOM_KPIS, [] as CustomKpi[]);
+    })();
+    const customIds = initCustom.map((k: CustomKpi) => k.id);
+    const allKnown = [...DEFAULT_KPI_ORDER, ...customIds];
+    const merged = stored.filter((k: string) => allKnown.includes(k));
+    allKnown.forEach(k => { if (!merged.includes(k)) merged.push(k); });
+    return merged;
+  });
+  const [draggingKpiKey, setDraggingKpiKey] = useState<string | null>(null);
+  const [dragOverKpiKey, setDragOverKpiKey] = useState<string | null>(null);
+  const dragKpiRef = useRef<string | null>(null);
+  const overKpiRef = useRef<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showKpiConfig, setShowKpiConfig] = useState(false);
   const [showKpiBuilder, setShowKpiBuilder] = useState(false);
@@ -671,6 +761,15 @@ export function DashboardCharts({
 
   const saveCustomKpis = (kpis: CustomKpi[]) => {
     setCustomKpis(kpis);
+    // Sync kpiOrder: append newly added ids, remove deleted ids
+    setKpiOrder(prev => {
+      const newIds = kpis.map(k => k.id);
+      const oldIds = customKpis.map(k => k.id);
+      let next = prev.filter(key => !oldIds.includes(key) || newIds.includes(key));
+      newIds.forEach(id => { if (!next.includes(id)) next.push(id); });
+      try { localStorage.setItem(LS_KPI_ORDER, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
     try { localStorage.setItem(LS_CUSTOM_KPIS, JSON.stringify(kpis)); } catch { /* ignore */ }
     // Debounce DB save so rapid adds/removes don't hammer the server
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -684,6 +783,54 @@ export function DashboardCharts({
     setHiddenKpis(next);
     try { localStorage.setItem(LS_KPI_HIDDEN, JSON.stringify(next)); } catch { /* ignore */ }
   };
+
+  const updateTarget = (v: number) => {
+    setMonthlyTarget(v);
+    try { localStorage.setItem(LS_REVENUE_TARGET, String(v)); } catch { /* ignore */ }
+  };
+
+  const scrollToSection = useCallback((sectionId: string) => {
+    const el = document.getElementById(`section-${sectionId}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  const handleKpiDragStart = useCallback((key: string) => {
+    dragKpiRef.current = key;
+    setDraggingKpiKey(key);
+  }, []);
+
+  const handleKpiDragEnter = useCallback((key: string) => {
+    if (key === dragKpiRef.current) return;
+    overKpiRef.current = key;
+    setDragOverKpiKey(key);
+  }, []);
+
+  const handleKpiDrop = useCallback(() => {
+    const from = dragKpiRef.current;
+    const to = overKpiRef.current;
+    if (!from || !to || from === to) return;
+    setKpiOrder(prev => {
+      const next = [...prev];
+      const fi = next.indexOf(from);
+      const ti = next.indexOf(to);
+      if (fi < 0 || ti < 0) return prev;
+      next.splice(fi, 1);
+      next.splice(ti, 0, from);
+      try { localStorage.setItem(LS_KPI_ORDER, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+    dragKpiRef.current = null;
+    overKpiRef.current = null;
+    setDraggingKpiKey(null);
+    setDragOverKpiKey(null);
+  }, []);
+
+  const handleKpiDragEnd = useCallback(() => {
+    dragKpiRef.current = null;
+    overKpiRef.current = null;
+    setDraggingKpiKey(null);
+    setDragOverKpiKey(null);
+  }, []);
 
   const moveSection = useCallback((id: string, dir: -1 | 1) => {
     setSectionOrder(prev => {
@@ -896,6 +1043,48 @@ export function DashboardCharts({
     .slice(0, 10),
   [metrics.openLeads, nowMs]);
 
+  // ── Previous-period comparison ───────────────────────────────────────────
+  const prevPeriodDates = useMemo(() => {
+    const now = new Date();
+    if (!filters.dateFrom && !filters.dateTo) {
+      // No filter → compare this calendar month vs last calendar month
+      const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastOfPrev = new Date(firstOfMonth.getTime() - 86400000);
+      const firstOfPrev = new Date(lastOfPrev.getFullYear(), lastOfPrev.getMonth(), 1);
+      return { from: firstOfPrev.toISOString().slice(0, 10), to: lastOfPrev.toISOString().slice(0, 10) };
+    }
+    const fromMs = filters.dateFrom ? new Date(filters.dateFrom).getTime() : new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const toMs = filters.dateTo ? new Date(filters.dateTo).getTime() : now.getTime();
+    const dur = Math.max(toMs - fromMs, 86400000);
+    const prevToMs = fromMs - 86400000;
+    return { from: new Date(prevToMs - dur).toISOString().slice(0, 10), to: new Date(prevToMs).toISOString().slice(0, 10) };
+  }, [filters.dateFrom, filters.dateTo]);
+
+  const prevMetrics = useMemo(() => {
+    const prevLeads = rawLeads.filter(l => dateInRange(l.lead_date, prevPeriodDates.from, prevPeriodDates.to));
+    const prevInv = rawInvoices.filter(i => dateInRange(i.transaction_date, prevPeriodDates.from, prevPeriodDates.to));
+    const prevCosts = rawCosts.filter(c => dateInRange(c.transaction_date, prevPeriodDates.from, prevPeriodDates.to));
+    const completedInv = prevInv.filter(i => isCompleted(i.status));
+    const revenue = completedInv.reduce((s, i) => s + Number(i.amount || 0), 0);
+    const opex = prevCosts.reduce((s, c) => s + Number(c.amount || 0), 0);
+    const wonLeads = prevLeads.filter(l => l.status_id === wonStatusId);
+    const totalRev = prevLeads.reduce((s, l) => s + Number(l.total_revenue || 0), 0);
+    return {
+      revenue, opex, profit: revenue - opex,
+      total_leads: prevLeads.length, won_leads: wonLeads.length,
+      conversion_pct: prevLeads.length > 0 ? wonLeads.length / prevLeads.length * 100 : 0,
+      pipeline: prevLeads.reduce((s, l) => s + Number(l.opportunity_weighted || 0), 0),
+      pending: prevInv.filter(i => isPending(i.status)).reduce((s, i) => s + Number(i.amount || 0), 0),
+      avg_deal: wonLeads.length > 0 ? totalRev / wonLeads.length : 0,
+    };
+  }, [rawLeads, rawInvoices, rawCosts, prevPeriodDates, wonStatusId]);
+
+  const dueThisWeek = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const in7 = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+    return rawInvoices.filter(i => isPending(i.status) && i.due_date && i.due_date >= today && i.due_date <= in7).length;
+  }, [rawInvoices]);
+
   // ── Monthly table ────────────────────────────────────────────────────────
   const monthlyTable = [...monthlyData].reverse().map((row, i, arr) => {
     const prevRev = arr[i + 1]?.Revenue ?? null;
@@ -922,7 +1111,58 @@ export function DashboardCharts({
     { key: "pending", label: "Pending", value: `${cur} ${fmt(metrics.pending)}`, sub: "awaiting payment", color: "var(--amber-c)" },
     { key: "bank_balance", label: "Bank Balance", value: metrics.bank_balance > 0 ? `${cur} ${fmt(metrics.bank_balance)}` : "—", sub: bankLastDate ? new Date(bankLastDate).toLocaleDateString("en-ZA") : "", color: metrics.bank_balance > 0 ? "var(--accent)" : "var(--muted2)" },
   ];
-  const visibleKpis = builtinKpis.filter(k => !hiddenKpis.includes(k.key));
+  type KpiRenderItem =
+    | { type: "builtin"; key: string; label: string; value: string; sub?: string; color: string; delta?: number | null; onClick?: () => void; goalPct?: number | null }
+    | { type: "custom"; key: string; kpi: CustomKpi; formatted: string; kpiColor: string };
+
+  const goalPct = monthlyTarget > 0 ? Math.min(100, (metrics.revenue / monthlyTarget) * 100) : null;
+
+  const orderedKpiItems = useMemo((): KpiRenderItem[] => {
+    const builtinByKey = Object.fromEntries(builtinKpis.map(k => [k.key, k]));
+    const customById = Object.fromEntries(customKpis.map(k => [k.id, k]));
+    const allKeys = [...kpiOrder];
+    customKpis.forEach(k => { if (!allKeys.includes(k.id)) allKeys.push(k.id); });
+
+    const sectionMap: Record<string, string> = {
+      revenue: "revenue", opex: "costs", profit: "revenue", pending: "revenue",
+      total_leads: "pipeline", won_leads: "pipeline", conversion_pct: "pipeline",
+      pipeline: "pipeline", avg_deal: "pipeline", total_customers: "revenue",
+      bank_balance: "cashflow",
+    };
+    const deltaMap: Record<string, number | null> = {
+      revenue: pctDelta(metrics.revenue, prevMetrics.revenue),
+      opex: pctDelta(metrics.opex, prevMetrics.opex),
+      profit: pctDelta(metrics.profit, prevMetrics.profit),
+      total_leads: pctDelta(metrics.total_leads, prevMetrics.total_leads),
+      won_leads: pctDelta(metrics.won_leads, prevMetrics.won_leads),
+      conversion_pct: pctDelta(metrics.conversion_pct, prevMetrics.conversion_pct),
+      pipeline: pctDelta(metrics.pipeline, prevMetrics.pipeline),
+      avg_deal: pctDelta(metrics.avg_deal, prevMetrics.avg_deal),
+      pending: pctDelta(metrics.pending, prevMetrics.pending),
+    };
+
+    const items: KpiRenderItem[] = [];
+    for (const key of allKeys) {
+      if (builtinByKey[key]) {
+        if (hiddenKpis.includes(key)) continue;
+        const k = builtinByKey[key];
+        items.push({
+          type: "builtin", key, label: k.label, value: k.value, sub: k.sub, color: k.color,
+          delta: deltaMap[key] ?? null,
+          onClick: sectionMap[key] ? () => scrollToSection(sectionMap[key]) : undefined,
+          goalPct: key === "revenue" ? goalPct : null,
+        });
+      } else if (customById[key]) {
+        const kpi = customById[key];
+        const val = calcCustomMetric(kpi, tableMap);
+        const formatted = fmtCustomKpi(val, kpi.format ?? "number", cur);
+        const kpiColor = KPI_COLOR_MAP[kpi.color] || "var(--pink)";
+        items.push({ type: "custom", key, kpi, formatted, kpiColor });
+      }
+    }
+    return items;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kpiOrder, hiddenKpis, customKpis, tableMap, cur, metrics, prevMetrics, bankBalance, bankLastDate, goalPct, scrollToSection]);
 
   // ── Section render helpers ───────────────────────────────────────────────
   const sProps = (id: string, i: number) => ({
@@ -943,6 +1183,16 @@ export function DashboardCharts({
         </span>
       </div>
 
+      {/* Today's Focus */}
+      <TodayFocus
+        overdueCount={overdueInvoices.length}
+        overdueTotal={overdueInvoices.reduce((s, i) => s + i.amount, 0)}
+        staleCount={staleLeads.length}
+        dueThisWeek={dueThisWeek}
+        cur={cur}
+        onScrollTo={scrollToSection}
+      />
+
       {/* Filters */}
       <FilterBar filters={filters} setFilters={setFilters}
         statuses={statuses} customers={customers} costCategories={costCategories} accounts={accounts} paymentTypes={paymentTypes}
@@ -959,41 +1209,53 @@ export function DashboardCharts({
                 ⚙ Configure
               </button>
             }>
-            {visibleKpis.length > 0 && (
+            {orderedKpiItems.length > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3 mb-3">
-                {visibleKpis.map(k => <KpiCard key={k.key} label={k.label} value={k.value} sub={k.sub} color={k.color} />)}
-              </div>
-            )}
-            {/* Custom KPIs */}
-            {customKpis.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3 mb-3">
-                {customKpis.map(kpi => {
-                  const val = calcCustomMetric(kpi, tableMap);
-                  const formatted = fmtCustomKpi(val, kpi.format ?? "number", cur);
-                  const kpiColor = KPI_COLOR_MAP[kpi.color] || "var(--pink)";
-                  return (
-                    <div key={kpi.id} className="rounded-xl flex flex-col overflow-hidden"
-                      style={{ background: "var(--card)", border: "1px solid var(--border)", borderTop: `3px solid ${kpiColor}`, boxShadow: "var(--shadow-sm)" }}>
-                      <div className="p-4 flex-1">
-                        <div className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: "var(--muted2)" }}>{kpi.name}</div>
-                        <div className="text-xl font-bold font-mono truncate leading-none" style={{ color: kpiColor }}>{formatted}</div>
-                        {(kpi.desc || kpi.agg) && <div className="text-[11px] mt-1.5" style={{ color: "var(--muted2)" }}>{kpi.desc || kpi.agg}</div>}
+                {orderedKpiItems.map(item => (
+                  <div
+                    key={item.key}
+                    draggable
+                    onDragStart={() => handleKpiDragStart(item.key)}
+                    onDragEnter={() => handleKpiDragEnter(item.key)}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={handleKpiDrop}
+                    onDragEnd={handleKpiDragEnd}
+                    style={{
+                      opacity: draggingKpiKey === item.key ? 0.4 : 1,
+                      outline: dragOverKpiKey === item.key && draggingKpiKey !== item.key ? "2px dashed var(--accent)" : "none",
+                      outlineOffset: 2,
+                      borderRadius: 12,
+                      cursor: "grab",
+                      transition: "opacity 0.15s",
+                    }}
+                  >
+                    {item.type === "builtin" ? (
+                      <KpiCard label={item.label} value={item.value} sub={item.sub} color={item.color}
+                        delta={item.delta} onClick={item.onClick} goalPct={item.goalPct} />
+                    ) : (
+                      <div className="rounded-xl flex flex-col overflow-hidden h-full"
+                        style={{ background: "var(--card)", border: "1px solid var(--border)", borderTop: `3px solid ${item.kpiColor}`, boxShadow: "var(--shadow-sm)" }}>
+                        <div className="p-4 flex-1">
+                          <div className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: "var(--muted2)" }}>{item.kpi.name}</div>
+                          <div className="text-xl font-bold font-mono truncate leading-none" style={{ color: item.kpiColor }}>{item.formatted}</div>
+                          {(item.kpi.desc || item.kpi.agg) && <div className="text-[11px] mt-1.5" style={{ color: "var(--muted2)" }}>{item.kpi.desc || item.kpi.agg}</div>}
+                        </div>
+                        <div className="flex justify-end gap-1 px-2.5 py-1.5 border-t" style={{ borderColor: "var(--border)" }}>
+                          <button
+                            onClick={() => { setEditingKpi(item.kpi); setShowKpiBuilder(true); }}
+                            className="w-6 h-6 flex items-center justify-center rounded text-xs hover:opacity-80"
+                            style={{ background: "var(--card3)", color: "var(--muted2)", border: "1px solid var(--border)" }}
+                            title="Edit metric">✏</button>
+                          <button
+                            onClick={() => saveCustomKpis(customKpis.filter(k => k.id !== item.kpi.id))}
+                            className="w-6 h-6 flex items-center justify-center rounded text-xs hover:opacity-80"
+                            style={{ background: "var(--danger-bg)", color: "var(--red-c)" }}
+                            title="Remove metric">✕</button>
+                        </div>
                       </div>
-                      <div className="flex justify-end gap-1 px-2.5 py-1.5 border-t" style={{ borderColor: "var(--border)" }}>
-                        <button
-                          onClick={() => { setEditingKpi(kpi); setShowKpiBuilder(true); }}
-                          className="w-6 h-6 flex items-center justify-center rounded text-xs hover:opacity-80"
-                          style={{ background: "var(--card3)", color: "var(--muted2)", border: "1px solid var(--border)" }}
-                          title="Edit metric">✏</button>
-                        <button
-                          onClick={() => saveCustomKpis(customKpis.filter(k => k.id !== kpi.id))}
-                          className="w-6 h-6 flex items-center justify-center rounded text-xs hover:opacity-80"
-                          style={{ background: "var(--danger-bg)", color: "var(--red-c)" }}
-                          title="Remove metric">✕</button>
-                      </div>
-                    </div>
-                  );
-                })}
+                    )}
+                  </div>
+                ))}
               </div>
             )}
             <button onClick={() => setShowKpiBuilder(true)}
@@ -1277,6 +1539,33 @@ export function DashboardCharts({
               <button onClick={() => setShowKpiConfig(false)} style={{ color: "var(--muted2)" }}>✕</button>
             </div>
             <div className="p-4 space-y-1.5 max-h-[65vh] overflow-y-auto">
+              {/* Revenue target */}
+              <div className="mb-3 pb-3 border-b" style={{ borderColor: "var(--border)" }}>
+                <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: "var(--muted2)" }}>Monthly Revenue Target</p>
+                <div className="flex gap-2 items-center">
+                  <span className="text-xs shrink-0" style={{ color: "var(--muted2)" }}>{cur}</span>
+                  <input
+                    type="number" min="0" step="1000"
+                    value={monthlyTarget || ""}
+                    onChange={e => updateTarget(parseFloat(e.target.value) || 0)}
+                    placeholder="e.g. 80000"
+                    className="flex-1 px-2 py-1.5 rounded text-sm border outline-none"
+                    style={{ background: "var(--card3)", borderColor: "var(--border)", color: "var(--foreground)" }}
+                  />
+                  {monthlyTarget > 0 && (
+                    <button onClick={() => updateTarget(0)}
+                      className="text-xs px-2 py-1.5 rounded shrink-0"
+                      style={{ color: "var(--muted2)", border: "1px solid var(--border)", background: "var(--card3)" }}>
+                      ✕
+                    </button>
+                  )}
+                </div>
+                {monthlyTarget > 0 && (
+                  <p className="text-[10px] mt-1.5" style={{ color: "var(--muted2)" }}>
+                    Progress bar shows on Revenue KPI tile
+                  </p>
+                )}
+              </div>
               {builtinKpis.map(k => {
                 const hidden = hiddenKpis.includes(k.key);
                 return (
