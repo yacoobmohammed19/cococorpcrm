@@ -12,6 +12,32 @@ import { runAction } from "@/lib/action-utils";
 import { createCost, updateCost, deleteCost } from "@/server-actions/costs";
 import { COST_TYPES, type CostTypeValue } from "@/lib/schemas/costs";
 
+// Resize + JPEG-compress an image before sending to the API.
+// Phone camera shots can be 5–15 MB; base64-encoded JSON payloads that large
+// can exceed the Next.js request body limit, causing req.json() to throw and
+// the route to return an HTML 500 page instead of JSON → "Failed to scan receipt".
+async function compressImage(file: File): Promise<{ base64: string; mimeType: string }> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 1200;
+      let w = img.naturalWidth, h = img.naturalHeight;
+      if (w > MAX || h > MAX) {
+        if (w >= h) { h = Math.round(h * MAX / w); w = MAX; }
+        else { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      resolve({ base64: canvas.toDataURL("image/jpeg", 0.85), mimeType: "image/jpeg" });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Could not load image")); };
+    img.src = url;
+  });
+}
+
 type Cost = {
   id: number; transaction_date: string; cost_details: string | null;
   category_name: string | null; amount: number; account_name: string | null; recouped: string | null;
@@ -87,17 +113,24 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
   async function handleScanReceipt(file: File, mode: "new" | "edit") {
     setExtracting(true);
     try {
-      const reader = new FileReader();
-      const base64 = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      // Compress before sending — large raw images can exceed the server body limit
+      const { base64, mimeType: mType } = await compressImage(file);
+
       const res = await fetch("/api/extract-cost", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: base64, mimeType: file.type }),
+        body: JSON.stringify({ image: base64, mimeType: mType }),
       });
+
+      // Check for HTTP errors before parsing JSON (a non-JSON HTML error page
+      // from the server would cause res.json() to throw the generic catch below)
+      if (!res.ok) {
+        let errMsg = "Receipt scan failed";
+        try { const e = await res.json() as { error?: string }; errMsg = e.error || errMsg; } catch {}
+        toast.error(errMsg);
+        return;
+      }
+
       const data = await res.json() as { amount?: number; date?: string; details?: string; category?: string; imageUrl?: string; error?: string };
 
       if (mode === "new") {
