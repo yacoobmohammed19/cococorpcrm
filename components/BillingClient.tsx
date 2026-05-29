@@ -14,7 +14,8 @@ type Invoice = {
   payment_type_name: string | null; description: string | null;
 };
 type Customer = { id: number; name: string };
-type Props = { invoices: Invoice[]; customers: Customer[]; currency: string; fiscalYearFrom: string };
+type Cost = { id: number; amount: number; transaction_date: string; include_in_pnl: boolean };
+type Props = { invoices: Invoice[]; customers: Customer[]; costs: Cost[]; currency: string; fiscalYearFrom: string };
 
 type DrillDown = { title: string; invoiceIds: number[] } | null;
 
@@ -175,7 +176,7 @@ function DrillDownModal({ title, invoiceIds, invoices, customers, currency, onCl
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export function BillingClient({ invoices: rawInvoices, customers, currency, fiscalYearFrom }: Props) {
+export function BillingClient({ invoices: rawInvoices, customers, costs, currency, fiscalYearFrom }: Props) {
   const cur = currency === "ZAR" ? "R" : "$";
   const toast = useToast();
 
@@ -192,6 +193,7 @@ export function BillingClient({ invoices: rawInvoices, customers, currency, fisc
   const [billFrom, setBillFrom] = useState(fiscalYearFrom);
   const [billTo, setBillTo] = useState(defaultRange(1).to);
   const [billView, setBillView] = useState<"total" | "collected" | "secured">("total");
+  const [mainView, setMainView] = useState<"matrix" | "pnl" | "invoices">("matrix");
   const [statusFilter, setStatusFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState<string[]>([]);
   const [search, setSearch] = useState("");
@@ -263,6 +265,31 @@ export function BillingClient({ invoices: rawInvoices, customers, currency, fisc
     writtenOffIds: filteredInvs.filter(i => i.status === "Written Off").map(i => i.id),
   }), [filteredInvs]);
 
+  // P&L monthly data — revenue (collected + pending) and OPEX per month
+  const pnlMonths = useMemo(() => {
+    return windowMonths.map(m => {
+      const monthInvs = filteredInvs.filter(i => i.transaction_date.slice(0, 7) === m);
+      const collected = monthInvs.filter(i => i.status === "Completed").reduce((s, i) => s + i.amount, 0);
+      const pending = monthInvs.filter(i => i.status === "Pending").reduce((s, i) => s + i.amount, 0);
+      const opex = costs
+        .filter(c => c.include_in_pnl && c.transaction_date.slice(0, 7) === m)
+        .reduce((s, c) => s + c.amount, 0);
+      const revenue = collected + pending; // secured = best current estimate
+      const profit = collected - opex;     // conservative: only collected revenue counts
+      const margin = collected > 0 ? profit / collected : null;
+      return { m, collected, pending, revenue, opex, profit, margin };
+    });
+  }, [filteredInvs, costs, windowMonths]);
+
+  const pnlTotals = useMemo(() => {
+    const collected = pnlMonths.reduce((s, r) => s + r.collected, 0);
+    const pending = pnlMonths.reduce((s, r) => s + r.pending, 0);
+    const opex = pnlMonths.reduce((s, r) => s + r.opex, 0);
+    const profit = collected - opex;
+    const margin = collected > 0 ? profit / collected : null;
+    return { collected, pending, opex, profit, margin };
+  }, [pnlMonths]);
+
   const allInvoices = useMemo(() => {
     let rows = invoices.slice().sort((a, b) => b.transaction_date.localeCompare(a.transaction_date));
     if (statusFilter) rows = rows.filter(i => i.status === statusFilter);
@@ -326,10 +353,18 @@ export function BillingClient({ invoices: rawInvoices, customers, currency, fisc
 
       {/* Controls */}
       <div className="flex flex-wrap gap-3 items-center mb-4">
+        {/* Main view tabs */}
+        <div className="flex rounded overflow-hidden border" style={{ borderColor: "var(--border)" }}>
+          {([["matrix", "Revenue Matrix"], ["pnl", "P&L"], ["invoices", "All Invoices"]] as const).map(([k, l]) => (
+            <button key={k} onClick={() => setMainView(k)} className="px-3 py-1.5 text-xs font-semibold transition-colors"
+              style={{ background: mainView === k ? "var(--accent)" : "var(--card2)", color: mainView === k ? "#fff" : "var(--muted)" }}>{l}</button>
+          ))}
+        </div>
+        {/* Date presets */}
         <div className="flex rounded overflow-hidden border" style={{ borderColor: "var(--border)" }}>
           {[["6m", "6M"], ["12m", "12M"], ["ytd", "YTD"], ["all", "Inception"]].map(([k, l]) => (
             <button key={k} onClick={() => applyPreset(k)} className="px-3 py-1.5 text-xs font-semibold transition-colors"
-              style={{ background: preset === k ? "var(--accent)" : "var(--card2)", color: preset === k ? "#fff" : "var(--muted)" }}>{l}</button>
+              style={{ background: preset === k ? "var(--card3)" : "var(--card2)", color: preset === k ? "var(--foreground)" : "var(--muted)" }}>{l}</button>
           ))}
         </div>
         <div className="flex items-center gap-2">
@@ -339,21 +374,26 @@ export function BillingClient({ invoices: rawInvoices, customers, currency, fisc
           <input type="month" value={billTo} onChange={e => { setBillTo(e.target.value); setPreset("custom"); }}
             className="px-2 py-1.5 text-xs rounded border outline-none" style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--muted)" }} />
         </div>
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          className="px-3 py-1.5 text-xs rounded border outline-none"
-          style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--muted)" }}>
-          <option value="">All Statuses</option>
-          {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <div className="flex rounded overflow-hidden border" style={{ borderColor: "var(--border)" }}>
-          {[["total", "Total"], ["collected", "Collected"], ["secured", "Secured"]].map(([k, l]) => (
-            <button key={k} onClick={() => setBillView(k as typeof billView)} className="px-3 py-1.5 text-xs font-semibold transition-colors"
-              style={{ background: billView === k ? "var(--card3)" : "var(--card2)", color: billView === k ? "var(--foreground)" : "var(--muted)" }}>{l}</button>
-          ))}
-        </div>
+        {mainView !== "pnl" && (
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+            className="px-3 py-1.5 text-xs rounded border outline-none"
+            style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--muted)" }}>
+            <option value="">All Statuses</option>
+            {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        )}
+        {mainView === "matrix" && (
+          <div className="flex rounded overflow-hidden border" style={{ borderColor: "var(--border)" }}>
+            {[["total", "Total"], ["collected", "Collected"], ["secured", "Secured"]].map(([k, l]) => (
+              <button key={k} onClick={() => setBillView(k as typeof billView)} className="px-3 py-1.5 text-xs font-semibold transition-colors"
+                style={{ background: billView === k ? "var(--card3)" : "var(--card2)", color: billView === k ? "var(--foreground)" : "var(--muted)" }}>{l}</button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Summary KPIs — all clickable */}
+      {/* Summary KPIs — shown on matrix and invoices views */}
+      {mainView !== "pnl" && (
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-4">
         {([
           ["Total Billed", grand.completed + grand.pending + grand.writtenOff, "var(--purple-c)", grand.ids],
@@ -371,8 +411,127 @@ export function BillingClient({ invoices: rawInvoices, customers, currency, fisc
           </button>
         ))}
       </div>
+      )} {/* end mainView !== "pnl" */}
 
-      {/* Matrix */}
+      {/* ── P&L Monthly View ─────────────────────────────────────────────────── */}
+      {mainView === "pnl" && (
+        <>
+          {/* P&L KPI summary */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            {([
+              ["Collected", pnlTotals.collected, "var(--accent)"],
+              ["Pending", pnlTotals.pending, "var(--amber-c)"],
+              ["OPEX", pnlTotals.opex, "var(--red-c)"],
+              ["Net Profit", pnlTotals.profit, pnlTotals.profit >= 0 ? "var(--accent)" : "var(--red-c)"],
+            ] as [string, number, string][]).map(([l, v, c]) => (
+              <div key={l} className="rounded-lg p-3" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
+                <div className="text-xs uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>{l}</div>
+                <div className="text-lg font-bold font-mono" style={{ color: c }}>
+                  {l === "Net Profit" && v < 0 ? `(${cur} ${fmt(Math.abs(v))})` : `${cur} ${fmt(v)}`}
+                </div>
+                {l === "Net Profit" && pnlTotals.margin !== null && (
+                  <div className="text-xs mt-0.5" style={{ color: "var(--muted2)" }}>
+                    {(pnlTotals.margin * 100).toFixed(1)}% margin
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Monthly P&L table */}
+          <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+            <div className="px-4 py-3 border-b flex justify-between items-center" style={{ borderColor: "var(--border)", background: "var(--card2)" }}>
+              <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Monthly P&amp;L</h3>
+              <span className="text-xs" style={{ color: "var(--muted2)" }}>Profit = Collected − OPEX (P&amp;L costs only)</span>
+            </div>
+            <div className="overflow-x-auto" style={{ background: "var(--card2)" }}>
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
+                    <th className="px-3 py-2.5 text-left font-semibold sticky left-0 z-10 min-w-[130px]" style={{ background: "var(--card)", color: "var(--muted2)" }}>Line</th>
+                    {windowMonths.map(m => (
+                      <th key={m} className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" style={{ color: "var(--muted2)", minWidth: 88 }}>{mLabel(m)}</th>
+                    ))}
+                    <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" style={{ color: "var(--muted2)" }}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Revenue (collected) */}
+                  <tr className="border-b" style={{ borderColor: "var(--border)" }}>
+                    <td className="px-3 py-2.5 font-semibold sticky left-0 z-10" style={{ background: "var(--card2)", color: "var(--accent)" }}>Revenue</td>
+                    {pnlMonths.map(r => (
+                      <td key={r.m} className="px-3 py-2.5 text-right font-mono whitespace-nowrap" style={{ color: "var(--accent)" }}>
+                        {r.collected > 0 ? `${cur} ${fmt(r.collected)}` : <span style={{ color: "var(--card3)" }}>—</span>}
+                      </td>
+                    ))}
+                    <td className="px-3 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: "var(--accent)" }}>{cur} {fmt(pnlTotals.collected)}</td>
+                  </tr>
+                  {/* Pending (sub-row) */}
+                  <tr className="border-b" style={{ borderColor: "var(--border)" }}>
+                    <td className="px-3 py-2 sticky left-0 z-10 text-xs" style={{ background: "var(--card2)", color: "var(--muted2)", paddingLeft: "1.5rem" }}>+ Pending</td>
+                    {pnlMonths.map(r => (
+                      <td key={r.m} className="px-3 py-2 text-right font-mono text-xs whitespace-nowrap" style={{ color: "var(--amber-c)" }}>
+                        {r.pending > 0 ? `${cur} ${fmt(r.pending)}` : <span style={{ color: "var(--card3)" }}>—</span>}
+                      </td>
+                    ))}
+                    <td className="px-3 py-2 text-right font-mono text-xs whitespace-nowrap" style={{ color: "var(--amber-c)" }}>{pnlTotals.pending > 0 ? `${cur} ${fmt(pnlTotals.pending)}` : "—"}</td>
+                  </tr>
+                  {/* OPEX */}
+                  <tr className="border-b" style={{ borderColor: "var(--border)" }}>
+                    <td className="px-3 py-2.5 font-semibold sticky left-0 z-10" style={{ background: "var(--card2)", color: "var(--red-c)" }}>OPEX</td>
+                    {pnlMonths.map(r => (
+                      <td key={r.m} className="px-3 py-2.5 text-right font-mono whitespace-nowrap" style={{ color: "var(--red-c)" }}>
+                        {r.opex > 0 ? `(${cur} ${fmt(r.opex)})` : <span style={{ color: "var(--card3)" }}>—</span>}
+                      </td>
+                    ))}
+                    <td className="px-3 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: "var(--red-c)" }}>{pnlTotals.opex > 0 ? `(${cur} ${fmt(pnlTotals.opex)})` : "—"}</td>
+                  </tr>
+                  {/* Profit */}
+                  <tr style={{ background: "var(--card)" }}>
+                    <td className="px-3 py-3 font-bold sticky left-0 z-10 border-t-2" style={{ background: "var(--card)", color: "var(--foreground)", borderColor: "var(--border2)" }}>Net Profit</td>
+                    {pnlMonths.map(r => {
+                      const col = r.profit > 0 ? "var(--accent)" : r.profit < 0 ? "var(--red-c)" : "var(--muted2)";
+                      return (
+                        <td key={r.m} className="px-3 py-3 text-right font-mono font-bold whitespace-nowrap border-t-2" style={{ color: col, borderColor: "var(--border2)" }}>
+                          {r.profit === 0 && r.collected === 0 && r.opex === 0
+                            ? <span style={{ color: "var(--card3)" }}>—</span>
+                            : r.profit < 0
+                              ? `(${cur} ${fmt(Math.abs(r.profit))})`
+                              : `${cur} ${fmt(r.profit)}`}
+                        </td>
+                      );
+                    })}
+                    <td className="px-3 py-3 text-right font-mono font-bold whitespace-nowrap border-t-2"
+                      style={{ color: pnlTotals.profit >= 0 ? "var(--accent)" : "var(--red-c)", borderColor: "var(--border2)" }}>
+                      {pnlTotals.profit < 0 ? `(${cur} ${fmt(Math.abs(pnlTotals.profit))})` : `${cur} ${fmt(pnlTotals.profit)}`}
+                    </td>
+                  </tr>
+                  {/* Margin % */}
+                  <tr className="border-t" style={{ borderColor: "var(--border)" }}>
+                    <td className="px-3 py-2 sticky left-0 z-10 text-xs font-semibold" style={{ background: "var(--card2)", color: "var(--muted2)" }}>Margin %</td>
+                    {pnlMonths.map(r => {
+                      const m = r.margin;
+                      const col = m === null ? "var(--muted2)" : m >= 0.4 ? "var(--accent)" : m >= 0.2 ? "var(--amber-c)" : "var(--red-c)";
+                      return (
+                        <td key={r.m} className="px-3 py-2 text-right font-mono text-xs whitespace-nowrap" style={{ color: col }}>
+                          {m === null ? <span style={{ color: "var(--card3)" }}>—</span> : `${(m * 100).toFixed(1)}%`}
+                        </td>
+                      );
+                    })}
+                    <td className="px-3 py-2 text-right font-mono text-xs font-semibold whitespace-nowrap"
+                      style={{ color: pnlTotals.margin === null ? "var(--muted2)" : pnlTotals.margin >= 0.4 ? "var(--accent)" : pnlTotals.margin >= 0.2 ? "var(--amber-c)" : "var(--red-c)" }}>
+                      {pnlTotals.margin === null ? "—" : `${(pnlTotals.margin * 100).toFixed(1)}%`}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Revenue Matrix ────────────────────────────────────────────────────── */}
+      {mainView === "matrix" && (
       <div className="rounded-lg overflow-hidden mb-4" style={{ border: "1px solid var(--border)" }}>
         <div className="px-4 py-3 border-b flex justify-between items-center" style={{ borderColor: "var(--border)", background: "var(--card2)" }}>
           <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Monthly Billing</h3>
@@ -444,8 +603,10 @@ export function BillingClient({ invoices: rawInvoices, customers, currency, fisc
           </table>
         </div>
       </div>
+      )} {/* end mainView === "matrix" */}
 
-      {/* All Invoices List */}
+      {/* ── All Invoices List ─────────────────────────────────────────────────── */}
+      {mainView === "invoices" && (
       <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
         <div className="px-4 py-3 border-b flex flex-wrap justify-between items-center gap-2" style={{ borderColor: "var(--border)", background: "var(--card2)" }}>
           <div className="flex items-center gap-2">
@@ -536,6 +697,7 @@ export function BillingClient({ invoices: rawInvoices, customers, currency, fisc
           </table>
         </div>
       </div>
+      )} {/* end mainView === "invoices" */}
 
       {/* Drill-down modal */}
       {drillDown && (
