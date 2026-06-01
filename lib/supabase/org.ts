@@ -1,5 +1,21 @@
 import { createServerClient } from "@/lib/supabase/server";
 
+/** Returns the current user's role in their active org, or null. */
+export async function getCurrentOrgRole(): Promise<string | null> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  const orgId = String(user.user_metadata?.active_org_id ?? "");
+  if (!orgId) return null;
+  const { data } = await supabase
+    .from("memberships")
+    .select("role")
+    .eq("user_id", user.id)
+    .eq("org_id", orgId)
+    .single();
+  return data?.role ?? null;
+}
+
 export async function getCurrentOrgId() {
   const supabase = await createServerClient();
   const {
