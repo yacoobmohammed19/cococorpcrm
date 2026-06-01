@@ -16,12 +16,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const { data: memberships } = await supabase
     .from("memberships")
-    .select("org_id, organizations(name)")
+    .select("org_id, role, organizations(name)")
     .eq("user_id", user.id);
 
   if (!memberships || memberships.length === 0) redirect("/onboarding");
 
   const activeOrgId = String(user.user_metadata?.active_org_id ?? memberships?.[0]?.org_id ?? "");
+
+  // Resolve current role for the active org
+  const currentRole = memberships.find(m => String(m.org_id) === activeOrgId)?.role ?? null;
 
   const [{ data: accounts }, { data: customers }, { data: payTypes }, { data: statuses }, { data: costCats }] = await Promise.all([
     supabase.from("dim_accounts").select("id, name").order("name"),
@@ -51,6 +54,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         userName={userName}
         orgs={orgs}
         activeOrgId={activeOrgId}
+        role={currentRole}
         setActiveOrganization={setActiveOrganization}
         signout={signout}
       />
@@ -61,6 +65,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <MobileHeader
           orgs={orgs}
           activeOrgId={activeOrgId}
+          role={currentRole}
           setActiveOrganization={setActiveOrganization}
           signout={signout}
         />
@@ -88,7 +93,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 height: "calc(64px + env(safe-area-inset-bottom))",
               }}
             >
-              <BotNav />
+              <BotNav role={currentRole} />
             </nav>
           </ToastProvider>
         </FABProvider>

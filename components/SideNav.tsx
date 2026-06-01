@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LucideIcon, LayoutDashboard, Target, Users, FileText, Package, Receipt, CalendarDays, TrendingDown, Megaphone, BookOpen, BarChart2, Settings, Sparkles } from "lucide-react";
+import { LucideIcon, LayoutDashboard, Target, Users, FileText, Package, Receipt, CalendarDays, TrendingDown, Megaphone, BookOpen, BarChart2, Settings, Sparkles, UsersRound, Building2 } from "lucide-react";
 
 type NavItem = { href: string; label: string; Icon: LucideIcon; group: string };
 
@@ -18,21 +18,31 @@ const sideNav: NavItem[] = [
   { href: "/marketing",   label: "Marketing",   Icon: Megaphone,       group: "Marketing"  },
   { href: "/accounting",  label: "Accounting",  Icon: BookOpen,        group: "Analytics"  },
   { href: "/performance", label: "Snapshots",   Icon: BarChart2,       group: "Analytics"  },
-  { href: "/settings",    label: "Settings",    Icon: Settings,        group: "Config"     },
-  { href: "/chat",        label: "Coco AI",     Icon: Sparkles,        group: "Config"     },
+  { href: "/settings",                label: "Settings",    Icon: Settings,    group: "Config" },
+  { href: "/settings/team",           label: "Team",        Icon: UsersRound,  group: "Config" },
+  { href: "/settings/organisations",  label: "Orgs",        Icon: Building2,   group: "Config" },
+  { href: "/chat",                    label: "Coco AI",     Icon: Sparkles,    group: "Config" },
 ];
+
+// Paths operators are allowed to access
+const OPERATOR_ALLOWED = new Set(["/dashboard", "/leads", "/chat"]);
 
 const groups = ["Overview", "CRM", "Catalog", "Finance", "Marketing", "Analytics", "Config"];
 
-export function SideNav({ collapsed = false }: { collapsed?: boolean }) {
+export function SideNav({ collapsed = false, role }: { collapsed?: boolean; role?: string | null }) {
   const pathname = usePathname();
+
+  const visibleNav = role === "operator"
+    ? sideNav.filter(n => OPERATOR_ALLOWED.has(n.href))
+    : sideNav;
+
   return (
     <nav
       className="flex-1 overflow-y-auto"
       style={{ padding: collapsed ? "0.5rem 0.375rem" : "0.75rem 0.5rem" }}
     >
       {groups.map((group, gi) => {
-        const items = sideNav.filter(n => n.group === group);
+        const items = visibleNav.filter(n => n.group === group);
         if (!items.length) return null;
         return (
           <div key={group} className={collapsed ? "mb-2" : "mb-4"}>
@@ -109,12 +119,19 @@ const botNav: { href: string; label: string; Icon: LucideIcon; centre?: boolean 
   { href: "/leads",     label: "Leads",    Icon: Target           },
 ];
 
-export function BotNav() {
+const operatorBotNav: { href: string; label: string; Icon: LucideIcon; centre?: boolean }[] = [
+  { href: "/dashboard", label: "Home",   Icon: LayoutDashboard },
+  { href: "/chat",      label: "Coco AI", Icon: Sparkles, centre: true },
+  { href: "/leads",     label: "Leads",  Icon: Target           },
+];
+
+export function BotNav({ role }: { role?: string | null }) {
   const pathname = usePathname();
+  const nav = role === "operator" ? operatorBotNav : botNav;
 
   return (
     <>
-      {botNav.map(item => {
+      {nav.map(item => {
         const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
 
         if (item.centre) {

@@ -12,6 +12,7 @@ type Props = {
   userName: string;
   orgs: Org[];
   activeOrgId: string;
+  role: string | null;
   setActiveOrganization: (formData: FormData) => Promise<void>;
   signout: () => Promise<void>;
 };
@@ -26,6 +27,7 @@ export function CollapsibleSidebar({
   userName,
   orgs,
   activeOrgId,
+  role,
   setActiveOrganization,
   signout,
 }: Props) {
@@ -88,7 +90,7 @@ export function CollapsibleSidebar({
       </div>
 
       {/* ── Nav ── */}
-      <SideNav collapsed={collapsed} />
+      <SideNav collapsed={collapsed} role={role} />
 
       {/* ── Footer ── */}
       <div
