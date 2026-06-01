@@ -3,8 +3,8 @@ import Image from "next/image";
 import { login } from "@/server-actions/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const { error } = await searchParams;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; invite?: string }> }) {
+  const { error, invite } = await searchParams;
 
   const admin = createAdminClient();
   const { data: orgData } = await admin
@@ -76,6 +76,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           )}
 
           <form action={login} className="space-y-4">
+            {invite && <input type="hidden" name="invite" value={invite} />}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5"
                 style={{ color: "var(--muted2)" }}>

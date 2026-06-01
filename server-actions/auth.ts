@@ -7,6 +7,7 @@ import { createServerClient } from "@/lib/supabase/server";
 export async function login(formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
+  const inviteToken = String(formData.get("invite") ?? "").trim();
   const supabase = await createServerClient();
 
   const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
@@ -34,17 +35,25 @@ export async function login(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
+  // If user logged in via an invite link, redirect to accept it
+  if (inviteToken) redirect(`/invite/${inviteToken}`);
   redirect("/dashboard");
 }
 
 export async function signup(formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
+  const inviteToken = String(formData.get("invite") ?? "").trim();
   const supabase = await createServerClient();
 
   const { error } = await supabase.auth.signUp({ email, password });
   if (error) {
     throw new Error(error.message);
+  }
+
+  // If signed up via invite, redirect back to the invite acceptance route
+  if (inviteToken) {
+    redirect(`/invite/${inviteToken}`);
   }
 
   redirect("/onboarding");

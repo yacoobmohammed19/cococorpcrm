@@ -27,12 +27,15 @@ export async function createLead(formData: FormData) {
     secured_revenue: formData.get("secured_revenue") || null,
   });
 
+  const { data: { user } } = await supabase.auth.getUser();
+
   const productId = formData.get("product_id");
   const { error } = await supabase.from("fact_leads").insert({
     ...parsed,
     total_revenue: parsed.total_revenue || null,
     secured_revenue: parsed.secured_revenue || null,
     product_id: productId ? Number(productId) : null,
+    created_by: user?.id ?? null,
   });
   if (error) throw new Error(error.message);
   revalidatePath("/leads");
@@ -43,6 +46,7 @@ export async function updateLead(id: number, formData: FormData) {
   const supabase = await createServerClient();
 
   const productId = formData.get("product_id");
+  const assignedTo = formData.get("assigned_to");
   const { error } = await supabase.from("fact_leads").update({
     name: formData.get("name"),
     phone: formData.get("phone") || null,
@@ -59,12 +63,24 @@ export async function updateLead(id: number, formData: FormData) {
     developed: formData.get("developed") === "true",
     completed: formData.get("completed") === "true",
     product_id: productId ? Number(productId) : null,
+    assigned_to: assignedTo || null,
     updated_at: new Date().toISOString(),
   }).eq("id", id);
 
   if (error) throw new Error(error.message);
   revalidatePath("/leads");
   revalidatePath("/dashboard");
+}
+
+/** Quickly assign a lead to a user (operator). Called from the leads list. */
+export async function assignLead(leadId: number, userId: string | null) {
+  const supabase = await createServerClient();
+  const { error } = await supabase
+    .from("fact_leads")
+    .update({ assigned_to: userId, updated_at: new Date().toISOString() })
+    .eq("id", leadId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/leads");
 }
 
 export async function updateLeadStatus(id: number, statusId: number) {

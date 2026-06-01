@@ -7,10 +7,10 @@ import {
   X, Menu,
   LayoutDashboard, Target, Users, FileText, Package,
   Receipt, CalendarDays, TrendingDown, Megaphone,
-  BookOpen, BarChart2, Settings, Sparkles,
+  BookOpen, BarChart2, Settings, Sparkles, UsersRound, Building2,
 } from "lucide-react";
 
-const drawerNav = [
+const allDrawerNav = [
   { href: "/dashboard",  label: "Dashboard",  Icon: LayoutDashboard, group: "Overview"   },
   { href: "/leads",      label: "Leads",       Icon: Target,          group: "CRM"        },
   { href: "/customers",  label: "Customers",   Icon: Users,           group: "CRM"        },
@@ -22,9 +22,12 @@ const drawerNav = [
   { href: "/marketing",  label: "Marketing",   Icon: Megaphone,       group: "Marketing"  },
   { href: "/accounting", label: "Accounting",  Icon: BookOpen,        group: "Analytics"  },
   { href: "/performance",label: "Snapshots",   Icon: BarChart2,       group: "Analytics"  },
-  { href: "/settings",   label: "Settings",    Icon: Settings,        group: "Config"     },
-  { href: "/chat",       label: "Coco AI",     Icon: Sparkles,        group: "Config"     },
+  { href: "/settings",                label: "Settings",  Icon: Settings,    group: "Config" },
+  { href: "/settings/team",           label: "Team",      Icon: UsersRound,  group: "Config" },
+  { href: "/settings/organisations",  label: "Orgs",      Icon: Building2,   group: "Config" },
+  { href: "/chat",                    label: "Coco AI",   Icon: Sparkles,    group: "Config" },
 ];
+const OPERATOR_ALLOWED_MOBILE = new Set(["/dashboard", "/leads", "/chat"]);
 const groups = ["Overview", "CRM", "Catalog", "Finance", "Marketing", "Analytics", "Config"];
 
 type Org = { org_id: string; name: string };
@@ -32,13 +35,17 @@ type Org = { org_id: string; name: string };
 type Props = {
   orgs: Org[];
   activeOrgId: string;
+  role: string | null;
   setActiveOrganization: (fd: FormData) => Promise<void>;
   signout: () => Promise<void>;
 };
 
-export function MobileHeader({ orgs, activeOrgId, setActiveOrganization, signout }: Props) {
+export function MobileHeader({ orgs, activeOrgId, role, setActiveOrganization, signout }: Props) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const drawerNav = role === "operator"
+    ? allDrawerNav.filter(n => OPERATOR_ALLOWED_MOBILE.has(n.href))
+    : allDrawerNav;
 
   return (
     <>
