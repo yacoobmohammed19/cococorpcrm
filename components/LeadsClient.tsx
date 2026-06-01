@@ -11,6 +11,8 @@ import { useConfirm } from "@/hooks/useConfirm";
 import { runAction } from "@/lib/action-utils";
 import { updateLeadStatus, deleteLead, createLead, updateLead, convertLeadToCustomer } from "@/server-actions/leads";
 
+type Operator = { user_id: string; email: string };
+
 // ─── Tinder-style swipe card view ────────────────────────────────────────────
 function SwipeView({ leads, statuses, cur, onStatusChange }: {
   leads: Lead[]; statuses: Status[]; cur: string;
@@ -251,6 +253,7 @@ type Lead = {
   total_revenue: number | null; secured_revenue: number | null;
   contacted: boolean; responded: boolean; developed: boolean; completed: boolean;
   product_id: number | null;
+  assigned_to?: string | null;
 };
 type Customer = { id: number; name: string };
 type Product = { id: number; name: string; unit_price: number };
@@ -261,6 +264,8 @@ type Props = {
   customers: Customer[];
   products?: Product[];
   currency: string;
+  operators?: Operator[];
+  currentRole?: string;
 };
 
 const STATUS_COLORS: Record<number, string> = { 1: "var(--pink)", 2: "var(--amber-c)", 3: "var(--accent)", 4: "var(--red-c)", 5: "var(--muted2)" };
@@ -276,7 +281,7 @@ function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
   a.click(); URL.revokeObjectURL(a.href);
 }
 
-export function LeadsClient({ leads, statuses, customers, products = [], currency }: Props) {
+export function LeadsClient({ leads, statuses, customers, products = [], currency, operators = [], currentRole = "member" }: Props) {
   const cur = currency === "ZAR" ? "R" : "$";
   const toast = useToast();
   const { confirm, dialogProps } = useConfirm();
@@ -735,6 +740,17 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
                   <select name="product_id" defaultValue={modal.lead?.product_id ?? ""} className={inputStyle} style={inputCss}>
                     <option value="">— None (optional) —</option>
                     {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+              )}
+              {operators.length > 0 && ["owner", "admin"].includes(currentRole) && (
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Assign to Operator</label>
+                  <select name="assigned_to" defaultValue={modal.lead?.assigned_to ?? ""} className={inputStyle} style={inputCss}>
+                    <option value="">— Unassigned —</option>
+                    {operators.map(op => (
+                      <option key={op.user_id} value={op.user_id}>{op.email}</option>
+                    ))}
                   </select>
                 </div>
               )}
