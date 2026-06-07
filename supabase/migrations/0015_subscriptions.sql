@@ -16,6 +16,10 @@ create table if not exists subscriptions (
 
 alter table subscriptions enable row level security;
 
+-- Drop auto-generated Supabase policies that query auth.users directly (causes 403)
+drop policy if exists org_insert on subscriptions;
+drop policy if exists org_isolation on subscriptions;
+
 drop policy if exists subscriptions_select on subscriptions;
 drop policy if exists subscriptions_insert on subscriptions;
 drop policy if exists subscriptions_update on subscriptions;
