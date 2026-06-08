@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LucideIcon, LayoutDashboard, Target, Users, FileText, Package, Receipt, CalendarDays, TrendingDown, Megaphone, BookOpen, BarChart2, Settings, Sparkles, UsersRound, Building2 } from "lucide-react";
+import { LucideIcon, LayoutDashboard, Target, Users, FileText, Package, Receipt, CalendarDays, TrendingDown, Megaphone, BookOpen, BarChart2, Settings, Sparkles, UsersRound, Building2, FlaskConical } from "lucide-react";
 
 type NavItem = { href: string; label: string; Icon: LucideIcon; group: string };
 
@@ -12,6 +12,7 @@ const sideNav: NavItem[] = [
   { href: "/customers",   label: "Customers",   Icon: Users,           group: "CRM"        },
   { href: "/quotes",      label: "Quotes",      Icon: FileText,        group: "CRM"        },
   { href: "/products",    label: "Products",    Icon: Package,         group: "Catalog"    },
+  { href: "/rd",          label: "R&D",         Icon: FlaskConical,    group: "Catalog"    },
   { href: "/invoices",    label: "Invoices",    Icon: Receipt,         group: "Finance"    },
   { href: "/billing",     label: "Billing",     Icon: CalendarDays,    group: "Finance"    },
   { href: "/costs",       label: "Costs",       Icon: TrendingDown,    group: "Finance"    },

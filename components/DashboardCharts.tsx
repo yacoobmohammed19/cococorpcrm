@@ -21,7 +21,7 @@ type RawInvoice = {
   id: number; amount: number | null; status: string | null; transaction_date: string | null;
   customer_id: number | null; payment_type_id: number | null; due_date: string | null;
 };
-type RawCost = { id: number; amount: number | null; transaction_date: string | null; cost_category_id: number | null };
+type RawCost = { id: number; amount: number | null; transaction_date: string | null; cost_category_id: number | null; include_in_pnl: boolean | null };
 type RawCashflow = { id: number; balance: number; record_date: string; account_id: number | null };
 type Dim = { id: number; name: string };
 
@@ -41,7 +41,7 @@ const LS_CUSTOM_KPIS = "crm_dash_custom_kpis";
 const LS_KPI_HIDDEN = "crm_dash_kpi_hidden";
 const LS_KPI_ORDER = "crm_dash_kpi_order";
 const LS_REVENUE_TARGET = "crm_dash_revenue_target";
-const DEFAULT_KPI_ORDER = ["total_leads","won_leads","conversion_pct","revenue","opex","profit","pipeline","avg_deal","total_customers","pending","bank_balance"];
+const DEFAULT_KPI_ORDER = ["total_leads","won_leads","conversion_pct","revenue","opex","profit","net_profit","pipeline","avg_deal","total_customers","pending","bank_balance"];
 
 type TableKey = "fact_leads" | "fact_invoices" | "fact_costs";
 type AggType = "SUM" | "AVG" | "COUNT" | "COUNTDISTINCT" | "MIN" | "MAX";
@@ -887,9 +887,13 @@ export function DashboardCharts({
     const pendingInv = fInvoices.filter(i => isPending(i.status));
     const revenue = completedInv.reduce((s, i) => s + Number(i.amount || 0), 0);
     const pending = pendingInv.reduce((s, i) => s + Number(i.amount || 0), 0);
-    const opex = fCosts.reduce((s, c) => s + Number(c.amount || 0), 0);
+    // opex = costs flagged include_in_pnl (true or null defaults to true) — used for gross margin
+    const opex = fCosts.filter(c => c.include_in_pnl !== false).reduce((s, c) => s + Number(c.amount || 0), 0);
+    const all_costs = fCosts.reduce((s, c) => s + Number(c.amount || 0), 0);
     const profit = revenue - opex;
+    const net_profit = revenue - all_costs;
     const margin_pct = revenue > 0 ? profit / revenue * 100 : 0;
+    const net_margin_pct = revenue > 0 ? net_profit / revenue * 100 : 0;
     const wonLeads = fLeads.filter(l => l.status_id === wonStatusId);
     const openLeads = fLeads.filter(l => l.status_id !== wonStatusId && l.status_id !== lostStatusId && l.status_id !== 5);
     // pipelineValue = ALL filtered leads' weighted opportunity (matches index.html)
@@ -908,7 +912,7 @@ export function DashboardCharts({
     const bank_balance_filtered = Object.values(latestByAcct).reduce((s, b) => s + b, 0);
 
     return {
-      revenue, opex, profit, margin_pct, pipeline, avg_deal, pending,
+      revenue, opex, all_costs, profit, net_profit, margin_pct, net_margin_pct, pipeline, avg_deal, pending,
       total_leads: fLeads.length, won_leads: wonLeads.length, open_leads: openLeads.length,
       conversion_pct, total_customers: customers.length, total_invoices: fInvoices.length,
       bank_balance: filters.accountIds.length > 0 ? bank_balance_filtered : bankBalance,
@@ -1102,8 +1106,9 @@ export function DashboardCharts({
     { key: "won_leads", label: "Won", value: String(metrics.won_leads), sub: `of ${metrics.total_leads}`, color: "var(--accent)" },
     { key: "conversion_pct", label: "Conversion", value: `${metrics.conversion_pct.toFixed(1)}%`, sub: `${metrics.won_leads}/${metrics.total_leads}`, color: convColor },
     { key: "revenue", label: "Revenue", value: `${cur} ${fmt(metrics.revenue)}`, sub: `${cur} ${fmt(metrics.pending)} pending`, color: "var(--accent)" },
-    { key: "opex", label: "OPEX", value: `${cur} ${fmt(metrics.opex)}`, sub: "", color: "var(--red-c)" },
-    { key: "profit", label: "Profit", value: `${cur} ${fmt(metrics.profit)}`, sub: `Margin: ${metrics.margin_pct.toFixed(1)}%`, color: profitColor },
+    { key: "opex", label: "OPEX (P&L)", value: `${cur} ${fmt(metrics.opex)}`, sub: "include_in_pnl costs", color: "var(--red-c)" },
+    { key: "profit", label: "Gross Profit", value: `${cur} ${fmt(metrics.profit)}`, sub: `Gross Margin: ${metrics.margin_pct.toFixed(1)}%`, color: profitColor },
+    { key: "net_profit", label: "Net Profit", value: `${cur} ${fmt(metrics.net_profit)}`, sub: `Net Margin: ${metrics.net_margin_pct.toFixed(1)}%`, color: metrics.net_profit >= 0 ? "var(--accent)" : "var(--red-c)" },
     { key: "pipeline", label: "Pipeline", value: `${cur} ${fmt(metrics.pipeline)}`, sub: "", color: "var(--purple-c)" },
     { key: "avg_deal", label: "Avg Deal", value: `${cur} ${fmt(metrics.avg_deal)}`, sub: `${metrics.won_leads} deals`, color: "var(--amber-c)" },
     { key: "total_customers", label: "Customers", value: String(metrics.total_customers), sub: `${metrics.total_invoices} inv`, color: "var(--cyan-c)" },
@@ -1124,7 +1129,7 @@ export function DashboardCharts({
     customKpis.forEach(k => { if (!allKeys.includes(k.id)) allKeys.push(k.id); });
 
     const sectionMap: Record<string, string> = {
-      revenue: "revenue", opex: "costs", profit: "revenue", pending: "revenue",
+      revenue: "revenue", opex: "costs", profit: "revenue", net_profit: "revenue", pending: "revenue",
       total_leads: "pipeline", won_leads: "pipeline", conversion_pct: "pipeline",
       pipeline: "pipeline", avg_deal: "pipeline", total_customers: "revenue",
       bank_balance: "cashflow",
@@ -1133,6 +1138,7 @@ export function DashboardCharts({
       revenue: pctDelta(metrics.revenue, prevMetrics.revenue),
       opex: pctDelta(metrics.opex, prevMetrics.opex),
       profit: pctDelta(metrics.profit, prevMetrics.profit),
+      net_profit: pctDelta(metrics.net_profit, (prevMetrics as typeof metrics).net_profit ?? null),
       total_leads: pctDelta(metrics.total_leads, prevMetrics.total_leads),
       won_leads: pctDelta(metrics.won_leads, prevMetrics.won_leads),
       conversion_pct: pctDelta(metrics.conversion_pct, prevMetrics.conversion_pct),

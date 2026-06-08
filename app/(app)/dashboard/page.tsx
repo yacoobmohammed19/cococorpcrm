@@ -18,7 +18,7 @@ export default async function DashboardPage() {
   ] = await Promise.all([
     supabase.from("fact_leads").select("id, name, status_id, lead_date, opportunity_value, opportunity_weighted, weight, last_follow_up, contacted, responded, developed, completed, created_at, total_revenue").is("deleted_at", null),
     supabase.from("fact_invoices").select("id, amount, status, transaction_date, customer_id, payment_type_id, due_date").is("deleted_at", null),
-    supabase.from("fact_costs").select("id, amount, transaction_date, cost_category_id").is("deleted_at", null),
+    supabase.from("fact_costs").select("id, amount, transaction_date, cost_category_id, include_in_pnl").is("deleted_at", null),
     supabase.from("fact_cashflow").select("id, balance, record_date, account_id").order("record_date", { ascending: false }),
     supabase.from("dim_customers").select("id, name").is("deleted_at", null),
     supabase.from("dim_statuses").select("id, name").order("id"),
