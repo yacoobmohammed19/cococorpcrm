@@ -1,6 +1,8 @@
 import { AiChatCore } from "@/components/AiChatCore";
+import { getCurrentOrgId } from "@/lib/supabase/org";
 
-export default function ChatPage() {
+export default async function ChatPage() {
+  const orgId = await getCurrentOrgId();
   return (
     // -mx-4 -mt-4 removes the layout's p-4 so the chat fills edge-to-edge on mobile.
     // Height = full dynamic viewport minus the fixed mobile header (48px) and bottom nav (64px).
@@ -29,7 +31,7 @@ export default function ChatPage() {
 
       {/* Chat fills remaining space */}
       <div className="flex-1 min-h-0" style={{ background: "var(--card2)" }}>
-        <AiChatCore />
+        <AiChatCore orgId={orgId} />
       </div>
     </div>
   );

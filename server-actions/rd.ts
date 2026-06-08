@@ -123,3 +123,17 @@ export async function finalizeRdProject(projectId: number, productData: {
   revalidatePath("/rd");
   revalidatePath("/products");
 }
+
+export async function addRdProjectUpdate(projectId: number, content: string) {
+  if (!content.trim()) throw new Error("Update content is required");
+  const orgId = await getCurrentOrgId();
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const { error } = await supabase.from("rd_project_updates").insert({
+    org_id: orgId,
+    project_id: projectId,
+    content: content.trim(),
+    author_id: user?.id ?? null,
+  });
+  if (error) throw new Error(error.message);
+}

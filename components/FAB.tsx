@@ -28,6 +28,58 @@ const MODAL_LABELS = {
   lead: "Lead", invoice: "Invoice", cost: "Cost", cashflow: "Balance snapshot",
 } as const;
 
+const inputCss = "w-full px-3 py-2 rounded border text-sm outline-none focus:ring-1 focus:ring-[var(--accent)]";
+const inputStyle = { background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" };
+const labelCss: React.CSSProperties = {
+  display: "block", fontSize: 11, fontWeight: 600,
+  textTransform: "uppercase", letterSpacing: ".4px",
+  color: "var(--muted2)", marginBottom: 4,
+};
+
+function FABModal({
+  title, children, onSubmit, onClose, busy,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onSubmit: (e: React.FormEvent<HTMLFormElement>) => Promise<void>;
+  onClose: () => void;
+  busy: boolean;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-end md:items-center justify-center"
+      style={{ background: "rgba(0,0,0,.6)", backdropFilter: "blur(4px)" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="w-full md:max-w-md rounded-t-2xl md:rounded-xl shadow-2xl"
+        style={{ background: "var(--card2)", border: "1px solid var(--border)" }}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
+          <h2 className="text-base font-semibold">{title}</h2>
+          <button
+            type="button" onClick={onClose}
+            style={{ color: "var(--muted2)", background: "none", border: "none", cursor: "pointer", fontSize: 20 }}
+          >✕</button>
+        </div>
+        <form onSubmit={onSubmit}>
+          <div className="p-5 space-y-3 overflow-y-auto max-h-[70vh]">{children}</div>
+          <div className="flex justify-end gap-3 px-5 py-4 border-t" style={{ borderColor: "var(--border)" }}>
+            <button
+              type="button" onClick={onClose} className="px-4 py-2 rounded text-sm"
+              style={{ background: "var(--card3)", color: "var(--muted)", border: "1px solid var(--border)" }}
+            >Cancel</button>
+            <button
+              type="submit" disabled={busy} className="px-5 py-2 rounded text-sm font-semibold"
+              style={{ background: "var(--accent)", color: "#fff", opacity: busy ? 0.6 : 1 }}
+            >{busy ? "Saving…" : "Save"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export function FAB({ accounts, customers, paymentTypes, statuses, costCategories }: Props) {
   const { activeModal, openModal: ctxOpenModal, closeModal: ctxCloseModal } = useFAB();
   const [open, setOpen] = useState(false);
@@ -61,34 +113,6 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
     }
   }
 
-  const inputCss = "w-full px-3 py-2 rounded border text-sm outline-none focus:ring-1 focus:ring-[var(--accent)]";
-  const inputStyle = { background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" };
-  const labelCss: React.CSSProperties = { display: "block", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".4px", color: "var(--muted2)", marginBottom: 4 };
-
-  const Modal = ({ title, children, onSubmit }: { title: string; children: React.ReactNode; onSubmit: (e: React.FormEvent<HTMLFormElement>) => Promise<void> }) => (
-    <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center"
-      style={{ background: "rgba(0,0,0,.6)", backdropFilter: "blur(4px)" }}
-      onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
-      <div className="w-full md:max-w-md rounded-t-2xl md:rounded-xl shadow-2xl" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
-        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
-          <h2 className="text-base font-semibold">{title}</h2>
-          <button type="button" onClick={closeModal} style={{ color: "var(--muted2)", background: "none", border: "none", cursor: "pointer", fontSize: 20 }}>✕</button>
-        </div>
-        <form onSubmit={onSubmit}>
-          <div className="p-5 space-y-3 overflow-y-auto max-h-[70vh]">{children}</div>
-          <div className="flex justify-end gap-3 px-5 py-4 border-t" style={{ borderColor: "var(--border)" }}>
-            <button type="button" onClick={closeModal} className="px-4 py-2 rounded text-sm"
-              style={{ background: "var(--card3)", color: "var(--muted)", border: "1px solid var(--border)" }}>Cancel</button>
-            <button type="submit" disabled={busy} className="px-5 py-2 rounded text-sm font-semibold"
-              style={{ background: "var(--accent)", color: "#fff", opacity: busy ? .6 : 1 }}>
-              {busy ? "Saving…" : "Save"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-
   return (
     <>
       {/* Desktop-only floating FAB — mobile uses the centre nav button */}
@@ -120,7 +144,7 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
 
       {/* Lead Modal */}
       {activeModal === "lead" && (
-        <Modal title="📋 New Lead" onSubmit={e => handleSubmit(e, createLead)}>
+        <FABModal title="📋 New Lead" busy={busy} onClose={closeModal} onSubmit={e => handleSubmit(e, createLead)}>
           <div>
             <label style={labelCss}>Lead Name *</label>
             <input name="name" required className={inputCss} style={inputStyle} placeholder="Contact or company name" />
@@ -152,12 +176,12 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
             <input name="opportunity_value" type="number" min="0" step="0.01" defaultValue="0" className={inputCss} style={inputStyle} />
           </div>
           <input type="hidden" name="weight" value="0.5" />
-        </Modal>
+        </FABModal>
       )}
 
       {/* Invoice Modal */}
       {activeModal === "invoice" && (
-        <Modal title="🧾 New Invoice" onSubmit={e => handleSubmit(e, async fd => {
+        <FABModal title="🧾 New Invoice" busy={busy} onClose={closeModal} onSubmit={e => handleSubmit(e, async fd => {
           fd.set("lines", JSON.stringify([{ description: fd.get("description") || "Service", quantity: 1, unit_price: Number(fd.get("amount") || 0) }]));
           await createInvoice(fd);
         })}>
@@ -200,12 +224,12 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
               {paymentTypes.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
-        </Modal>
+        </FABModal>
       )}
 
       {/* Cost Modal */}
       {activeModal === "cost" && (
-        <Modal title="💸 New Cost" onSubmit={e => handleSubmit(e, createCost)}>
+        <FABModal title="💸 New Cost" busy={busy} onClose={closeModal} onSubmit={e => handleSubmit(e, createCost)}>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label style={labelCss}>Date *</label>
@@ -243,12 +267,12 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
               {COST_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
           </div>
-        </Modal>
+        </FABModal>
       )}
 
       {/* Cashflow Modal */}
       {activeModal === "cashflow" && (
-        <Modal title="🏦 Record Bank Balance" onSubmit={e => handleSubmit(e, recordCashflow)}>
+        <FABModal title="🏦 Record Bank Balance" busy={busy} onClose={closeModal} onSubmit={e => handleSubmit(e, recordCashflow)}>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label style={labelCss}>Date *</label>
@@ -270,7 +294,7 @@ export function FAB({ accounts, customers, paymentTypes, statuses, costCategorie
             <label style={labelCss}>Notes</label>
             <input name="notes" className={inputCss} style={inputStyle} placeholder="e.g. Month-end balance" />
           </div>
-        </Modal>
+        </FABModal>
       )}
     </>
   );

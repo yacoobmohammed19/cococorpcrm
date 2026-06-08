@@ -1,4 +1,5 @@
 import { createServerClient } from "@/lib/supabase/server";
+import { getCurrentOrgId } from "@/lib/supabase/org";
 import { takeSnapshot } from "@/server-actions/performance";
 
 function fmt(n: number) {
@@ -8,14 +9,16 @@ function pct(n: number) { return (n * 100).toFixed(1) + "%"; }
 
 export default async function PerformancePage() {
   const supabase = await createServerClient();
+  const orgId = await getCurrentOrgId();
 
   const [{ data: snapshots }, { data: org }] = await Promise.all([
     supabase
       .from("fact_performance")
       .select("*")
+      .eq("org_id", orgId)
       .order("snapshot_date", { ascending: false })
       .limit(24),
-    supabase.from("organizations").select("currency, name").single(),
+    supabase.from("organizations").select("currency, name").eq("id", orgId).single(),
   ]);
 
   const currency = org?.currency || "ZAR";

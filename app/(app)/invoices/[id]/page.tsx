@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createServerClient } from "@/lib/supabase/server";
+import { getCurrentOrgId } from "@/lib/supabase/org";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { InvoiceDetailClient } from "@/components/InvoiceDetailClient";
 
@@ -7,6 +8,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const { id } = await params;
   const invoiceId = Number(id);
   const supabase = await createServerClient();
+  const orgId = await getCurrentOrgId();
 
   const [{ data: invoice }, { data: lines }, { data: org }] = await Promise.all([
     supabase
@@ -19,7 +21,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       .select("description, quantity, unit_price, line_total")
       .eq("invoice_id", invoiceId)
       .order("position"),
-    supabase.from("organizations").select("currency").single(),
+    supabase.from("organizations").select("currency").eq("id", orgId).single(),
   ]);
 
   if (!invoice) notFound();

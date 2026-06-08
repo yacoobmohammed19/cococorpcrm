@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { AiChatCore } from "@/components/AiChatCore";
 
-export function AiAssistant() {
+export function AiAssistant({ orgId }: { orgId?: string }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -53,7 +53,7 @@ export function AiAssistant() {
             <button onClick={() => setOpen(false)} className="text-lg leading-none" style={{ color: "var(--muted2)" }}>✕</button>
           </div>
 
-          <AiChatCore compact />
+          <AiChatCore compact orgId={orgId} />
         </div>
       )}
     </>

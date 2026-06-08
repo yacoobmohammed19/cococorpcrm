@@ -1,8 +1,9 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createServerClient } from "@/lib/supabase/server";
 import { getCurrentOrgId, getCurrentOrgRole } from "@/lib/supabase/org";
 import { createOrganization } from "@/server-actions/auth";
-import { Building2, Plus } from "lucide-react";
+import { Building2, Plus, ChevronRight } from "lucide-react";
 
 export default async function OrganisationsPage() {
   const role = await getCurrentOrgRole();
@@ -79,6 +80,16 @@ export default async function OrganisationsPage() {
                   {org.role} · {org.currency}
                 </p>
               </div>
+              {["owner", "admin"].includes(org.role) && (
+                <Link
+                  href={`/settings/organisations/${org.id}`}
+                  className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg shrink-0 transition-opacity hover:opacity-70"
+                  style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--foreground)" }}
+                >
+                  Manage
+                  <ChevronRight size={12} />
+                </Link>
+              )}
             </div>
           ))}
         </div>

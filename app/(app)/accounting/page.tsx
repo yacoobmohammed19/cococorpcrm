@@ -1,19 +1,21 @@
 import { createServerClient } from "@/lib/supabase/server";
+import { getCurrentOrgId } from "@/lib/supabase/org";
 import { AccountingClient } from "@/components/AccountingClient";
 
 export default async function AccountingPage() {
   const supabase = await createServerClient();
+  const orgId = await getCurrentOrgId();
 
   const now = new Date();
   const fyStart = `${now.getFullYear()}-01-01`;
   const fyEnd = now.toISOString().slice(0, 10);
 
   const [{ data: invoices }, { data: costs }, { data: cashflow }, { data: org }, { data: accounts }] = await Promise.all([
-    supabase.from("fact_invoices").select("id, amount, status, transaction_date, customer_id").is("deleted_at", null),
-    supabase.from("fact_costs").select("id, amount, transaction_date, cost_category_id, cost_type, include_in_pnl, dim_cost_categories(name)").is("deleted_at", null),
-    supabase.from("fact_cashflow").select("id, balance, account_id, record_date, notes").order("record_date", { ascending: false }),
-    supabase.from("organizations").select("currency, name, reg_no").single(),
-    supabase.from("dim_accounts").select("id, name").order("name"),
+    supabase.from("fact_invoices").select("id, amount, status, transaction_date, customer_id").eq("org_id", orgId).is("deleted_at", null),
+    supabase.from("fact_costs").select("id, amount, transaction_date, cost_category_id, cost_type, include_in_pnl, dim_cost_categories(name)").eq("org_id", orgId).is("deleted_at", null),
+    supabase.from("fact_cashflow").select("id, balance, account_id, record_date, notes").eq("org_id", orgId).order("record_date", { ascending: false }),
+    supabase.from("organizations").select("currency, name, reg_no").eq("id", orgId).single(),
+    supabase.from("dim_accounts").select("id, name").eq("org_id", orgId).order("name"),
   ]);
 
   const currency = org?.currency || "ZAR";

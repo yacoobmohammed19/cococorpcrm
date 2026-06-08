@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createServerClient } from "@/lib/supabase/server";
+import { getCurrentOrgId } from "@/lib/supabase/org";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { LeadDetailClient } from "@/components/LeadDetailClient";
 
@@ -7,11 +8,12 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const leadId = Number(id);
   const supabase = await createServerClient();
+  const orgId = await getCurrentOrgId();
 
   const [{ data: lead }, { data: statuses }, { data: org }] = await Promise.all([
     supabase.from("fact_leads").select("*").eq("id", leadId).single(),
-    supabase.from("dim_statuses").select("id, name").order("id"),
-    supabase.from("organizations").select("currency").single(),
+    supabase.from("dim_statuses").select("id, name").eq("org_id", orgId).order("id"),
+    supabase.from("organizations").select("currency").eq("id", orgId).single(),
   ]);
 
   if (!lead) notFound();

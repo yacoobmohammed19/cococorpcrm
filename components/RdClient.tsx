@@ -1,14 +1,17 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
+import { GripVertical, MessageSquare } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
 import { useConfirm } from "@/hooks/useConfirm";
 import { runAction } from "@/lib/action-utils";
+import { createClient } from "@/lib/supabase/client";
 import {
   createRdStatus, updateRdStatus, deleteRdStatus, reorderRdStatuses,
-  createRdProject, updateRdProject, updateRdProjectStatus, deleteRdProject, finalizeRdProject,
+  createRdProject, updateRdProject, updateRdProjectStatus, deleteRdProject,
+  finalizeRdProject, addRdProjectUpdate,
 } from "@/server-actions/rd";
 
 type RdStatus = { id: number; name: string; color: string; position: number };
@@ -19,6 +22,7 @@ type RdProject = {
   product_id: number | null; finalized_at: string | null; created_at: string;
 };
 type Member = { user_id: string; email: string };
+type ProjectUpdate = { id: number; content: string; author_id: string | null; created_at: string };
 
 type Props = {
   statuses: RdStatus[];
@@ -43,8 +47,56 @@ function fdate(d: string | null) {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", year: "2-digit" });
 }
+function ftime(d: string) {
+  return new Date(d).toLocaleString("en-ZA", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+}
 
 const SWATCH_COLORS = ["#10b981","#3b82f6","#8b5cf6","#f59e0b","#ef4444","#06b6d4","#e84393","#84cc16","#f97316","#64748b"];
+
+// ProjectCard is stable (defined outside the component) so React doesn't remount it on every render
+function ProjectCard({
+  p, members, currency, canEdit, onEdit, onDragStart, onDragEnd,
+}: {
+  p: RdProject; members: Member[]; currency: string; canEdit: boolean;
+  onEdit: (p: RdProject) => void;
+  onDragStart: (id: number) => void;
+  onDragEnd: () => void;
+}) {
+  const isFinalized = !!p.finalized_at;
+  const assigneeName = members.find(m => m.user_id === p.assigned_to)?.email?.split("@")[0] ?? null;
+  const overdue = p.target_date && !isFinalized && new Date(p.target_date) < new Date();
+  return (
+    <div
+      draggable={canEdit && !isFinalized}
+      onDragStart={() => onDragStart(p.id)}
+      onDragEnd={onDragEnd}
+      onClick={() => onEdit(p)}
+      className="rounded-xl p-3 cursor-pointer select-none transition-shadow hover:shadow-md"
+      style={{ background: "var(--card2)", border: "1px solid var(--border)", opacity: isFinalized ? 0.6 : 1 }}
+    >
+      <div className="flex items-start justify-between gap-2 mb-1.5">
+        <span className="font-semibold text-sm leading-snug flex-1">{p.name}</span>
+        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+          style={{ background: PRIORITY_BG[p.priority], color: PRIORITY_COLORS[p.priority] }}>
+          {p.priority}
+        </span>
+      </div>
+      {p.description && (
+        <p className="text-xs mb-1.5 line-clamp-2" style={{ color: "var(--muted2)" }}>{p.description}</p>
+      )}
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px]" style={{ color: "var(--muted2)" }}>
+        {p.target_date && (
+          <span style={{ color: overdue ? "var(--red-c)" : "var(--muted2)" }}>
+            {overdue ? "⚠ " : ""}Due {fdate(p.target_date)}
+          </span>
+        )}
+        {p.budget_estimate && <span className="font-mono">{currency} {fmt(p.budget_estimate)}</span>}
+        {assigneeName && <span>@{assigneeName}</span>}
+        {isFinalized && <span style={{ color: "var(--accent)" }}>✓ Finalized</span>}
+      </div>
+    </div>
+  );
+}
 
 export function RdClient({ statuses: initialStatuses, projects: initialProjects, members, currency, currentRole }: Props) {
   const toast = useToast();
@@ -52,7 +104,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
   const canEdit = ["owner", "admin", "member"].includes(currentRole);
   const canDelete = ["owner", "admin"].includes(currentRole);
 
-  const [statuses, setStatuses] = useState(initialStatuses);
+  const [statuses, setStatuses] = useState(() => [...initialStatuses].sort((a, b) => a.position - b.position));
   const [projects] = useState(initialProjects);
   const [view, setView] = useState<"kanban" | "table">("kanban");
   const [busy, setBusy] = useState(false);
@@ -65,6 +117,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
 
   // ── Project modal ─────────────────────────────────────────────────────────
   const [projectModal, setProjectModal] = useState<{ open: boolean; project: RdProject | null }>({ open: false, project: null });
+  const [modalTab, setModalTab] = useState<"details" | "updates">("details");
   const [pName, setPName] = useState("");
   const [pDesc, setPDesc] = useState("");
   const [pStatus, setPStatus] = useState<number | null>(null);
@@ -74,6 +127,12 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
   const [pBudget, setPBudget] = useState<number | "">("");
   const [pNotes, setPNotes] = useState("");
 
+  // ── Project updates log ──────────────────────────────────────────────────
+  const [updates, setUpdates] = useState<ProjectUpdate[]>([]);
+  const [updatesLoading, setUpdatesLoading] = useState(false);
+  const [updateInput, setUpdateInput] = useState("");
+  const [updateBusy, setUpdateBusy] = useState(false);
+
   // ── Finalize modal ────────────────────────────────────────────────────────
   const [finalizeProject, setFinalizeProject] = useState<RdProject | null>(null);
   const [fName, setFName] = useState("");
@@ -82,20 +141,45 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
   const [fPrice, setFPrice] = useState<number | "">(0);
   const [fCategory, setFCategory] = useState("");
 
-  // ── Drag & drop ───────────────────────────────────────────────────────────
+  // ── Card drag & drop ──────────────────────────────────────────────────────
   const dragId = useRef<number | null>(null);
+
+  // ── Column drag & drop ────────────────────────────────────────────────────
+  const colDragId = useRef<number | null>(null);
+  const [colDragOver, setColDragOver] = useState<number | null>(null);
+
+  // ── Fetch updates ─────────────────────────────────────────────────────────
+  const loadUpdates = useCallback(async (projectId: number) => {
+    setUpdatesLoading(true);
+    setUpdates([]);
+    try {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("rd_project_updates")
+        .select("id, content, author_id, created_at")
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: false });
+      setUpdates((data as ProjectUpdate[]) ?? []);
+    } catch { /* swallow */ }
+    finally { setUpdatesLoading(false); }
+  }, []);
 
   function openCreate(statusId?: number) {
     setProjectModal({ open: true, project: null });
+    setModalTab("details");
     setPName(""); setPDesc(""); setPStatus(statusId ?? statuses[0]?.id ?? null);
     setPTargetDate(""); setPAssigned(""); setPPriority("medium"); setPBudget(""); setPNotes("");
+    setUpdates([]);
   }
 
   function openEdit(p: RdProject) {
     setProjectModal({ open: true, project: p });
+    setModalTab("details");
     setPName(p.name); setPDesc(p.description ?? ""); setPStatus(p.status_id);
     setPTargetDate(p.target_date ?? ""); setPAssigned(p.assigned_to ?? "");
     setPPriority(p.priority); setPBudget(p.budget_estimate ?? ""); setPNotes(p.notes ?? "");
+    setUpdateInput("");
+    setUpdates([]);
   }
 
   function openFinalize(p: RdProject) {
@@ -109,11 +193,8 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
     setBusy(true);
     try {
       const data = {
-        name: pName.trim(),
-        description: pDesc || null,
-        status_id: pStatus,
-        target_date: pTargetDate || null,
-        assigned_to: pAssigned || null,
+        name: pName.trim(), description: pDesc || null, status_id: pStatus,
+        target_date: pTargetDate || null, assigned_to: pAssigned || null,
         priority: pPriority,
         budget_estimate: pBudget !== "" ? Number(pBudget) : null,
         notes: pNotes || null,
@@ -130,16 +211,24 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
     finally { setBusy(false); }
   }
 
+  async function handlePostUpdate() {
+    if (!updateInput.trim() || !projectModal.project) return;
+    setUpdateBusy(true);
+    try {
+      await addRdProjectUpdate(projectModal.project.id, updateInput.trim());
+      setUpdateInput("");
+      await loadUpdates(projectModal.project.id);
+    } catch { toast.error("Failed to post update"); }
+    finally { setUpdateBusy(false); }
+  }
+
   async function handleFinalize() {
     if (!finalizeProject || !fName.trim()) return;
     setBusy(true);
     try {
       await finalizeRdProject(finalizeProject.id, {
-        name: fName.trim(),
-        sku: fSku || null,
-        description: fDesc || null,
-        unit_price: Number(fPrice) || 0,
-        category: fCategory || null,
+        name: fName.trim(), sku: fSku || null, description: fDesc || null,
+        unit_price: Number(fPrice) || 0, category: fCategory || null,
       });
       toast.success(`"${fName}" added to Products`);
       setFinalizeProject(null);
@@ -147,13 +236,49 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
     finally { setBusy(false); }
   }
 
+  // ── Card drag handlers ────────────────────────────────────────────────────
   async function handleDrop(e: React.DragEvent, statusId: number | null) {
     e.preventDefault();
+    if (colDragId.current !== null) return;
     if (dragId.current === null) return;
     await runAction(() => updateRdProjectStatus(dragId.current!, statusId), toast, "Moved");
     dragId.current = null;
   }
 
+  // ── Column drag handlers ──────────────────────────────────────────────────
+  function handleColDragStart(e: React.DragEvent, colId: number) {
+    e.stopPropagation();
+    colDragId.current = colId;
+    e.dataTransfer.effectAllowed = "move";
+  }
+
+  function handleColDragOver(e: React.DragEvent, colId: number) {
+    if (colDragId.current === null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (colDragOver !== colId) setColDragOver(colId);
+  }
+
+  function handleColDrop(e: React.DragEvent, targetId: number) {
+    e.preventDefault();
+    e.stopPropagation();
+    setColDragOver(null);
+    const fromId = colDragId.current;
+    colDragId.current = null;
+    if (!fromId || fromId === targetId) return;
+
+    const reordered = [...statuses];
+    const fi = reordered.findIndex(s => s.id === fromId);
+    const ti = reordered.findIndex(s => s.id === targetId);
+    if (fi === -1 || ti === -1) return;
+    const [item] = reordered.splice(fi, 1);
+    reordered.splice(ti, 0, item);
+    const withPositions = reordered.map((s, i) => ({ ...s, position: i }));
+    setStatuses(withPositions);
+    void reorderRdStatuses(withPositions.map(s => ({ id: s.id, position: s.position })));
+  }
+
+  // ── Column management ─────────────────────────────────────────────────────
   async function addColumn() {
     if (!newColName.trim()) return;
     setBusy(true);
@@ -187,48 +312,6 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
     finally { setBusy(false); }
   }
 
-  // ── Kanban ────────────────────────────────────────────────────────────────
-
-  function ProjectCard({ p }: { p: RdProject }) {
-    const isFinalized = !!p.finalized_at;
-    const assigneeName = members.find(m => m.user_id === p.assigned_to)?.email?.split("@")[0] ?? null;
-    const overdue = p.target_date && !isFinalized && new Date(p.target_date) < new Date();
-    return (
-      <div
-        draggable={canEdit && !isFinalized}
-        onDragStart={() => { dragId.current = p.id; }}
-        onDragEnd={() => { dragId.current = null; }}
-        onClick={() => openEdit(p)}
-        className="rounded-xl p-3 cursor-pointer select-none"
-        style={{
-          background: "var(--card2)", border: "1px solid var(--border)",
-          opacity: isFinalized ? 0.6 : 1,
-        }}
-      >
-        <div className="flex items-start justify-between gap-2 mb-1.5">
-          <span className="font-semibold text-sm leading-snug flex-1">{p.name}</span>
-          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
-            style={{ background: PRIORITY_BG[p.priority], color: PRIORITY_COLORS[p.priority] }}>
-            {p.priority}
-          </span>
-        </div>
-        {p.description && (
-          <p className="text-xs mb-1.5 line-clamp-2" style={{ color: "var(--muted2)" }}>{p.description}</p>
-        )}
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px]" style={{ color: "var(--muted2)" }}>
-          {p.target_date && (
-            <span style={{ color: overdue ? "var(--red-c)" : "var(--muted2)" }}>
-              {overdue ? "⚠ " : ""}Due {fdate(p.target_date)}
-            </span>
-          )}
-          {p.budget_estimate && <span className="font-mono">{currency} {fmt(p.budget_estimate)}</span>}
-          {assigneeName && <span>@{assigneeName}</span>}
-          {isFinalized && <span style={{ color: "var(--accent)" }}>✓ Finalized</span>}
-        </div>
-      </div>
-    );
-  }
-
   const unassigned = projects.filter(p => p.status_id === null || !statuses.find(s => s.id === p.status_id));
 
   return (
@@ -242,7 +325,6 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* View toggle */}
           <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: "var(--border)" }}>
             {(["kanban", "table"] as const).map(v => (
               <button key={v} onClick={() => setView(v)}
@@ -274,28 +356,64 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
         <div className="flex gap-4 overflow-x-auto pb-4 flex-1 min-h-0" style={{ alignItems: "flex-start" }}>
           {statuses.map(status => {
             const cols = projects.filter(p => p.status_id === status.id);
+            const isDragTarget = colDragOver === status.id && colDragId.current !== status.id;
             return (
               <div key={status.id}
-                className="flex-shrink-0 flex flex-col rounded-xl"
-                style={{ width: 272, background: "var(--card2)", border: "1px solid var(--border)" }}
-                onDragOver={e => e.preventDefault()}
-                onDrop={e => handleDrop(e, status.id)}>
-                {/* Column header */}
-                <div className="flex items-center justify-between px-3 py-2.5 border-b" style={{ borderColor: "var(--border)" }}>
-                  <div className="flex items-center gap-2">
+                className="flex-shrink-0 flex flex-col rounded-xl transition-all"
+                style={{
+                  width: 272,
+                  background: "var(--card2)",
+                  border: isDragTarget ? "2px solid var(--accent)" : "1px solid var(--border)",
+                  boxShadow: isDragTarget ? "0 0 0 3px rgba(16,185,129,.15)" : undefined,
+                }}
+                onDragOver={e => {
+                  if (colDragId.current !== null) { handleColDragOver(e, status.id); return; }
+                  e.preventDefault();
+                }}
+                onDrop={e => {
+                  if (colDragId.current !== null) { handleColDrop(e, status.id); return; }
+                  void handleDrop(e, status.id);
+                }}
+                onDragLeave={() => { if (colDragOver === status.id) setColDragOver(null); }}
+              >
+                {/* Column header — drag handle for reordering */}
+                <div
+                  className="flex items-center justify-between px-3 py-2.5 border-b select-none"
+                  style={{ borderColor: "var(--border)" }}
+                >
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    {/* Grip handle — initiates column drag */}
+                    <div
+                      draggable
+                      onDragStart={e => handleColDragStart(e, status.id)}
+                      onDragEnd={() => { colDragId.current = null; setColDragOver(null); }}
+                      className="cursor-grab active:cursor-grabbing shrink-0 touch-none"
+                      style={{ color: "var(--muted2)" }}
+                      title="Drag to reorder column"
+                    >
+                      <GripVertical size={14} />
+                    </div>
                     <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: status.color }} />
-                    <span className="font-semibold text-sm">{status.name}</span>
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: "var(--card3)", color: "var(--muted2)" }}>
+                    <span className="font-semibold text-sm truncate">{status.name}</span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                      style={{ background: "var(--card3)", color: "var(--muted2)" }}>
                       {cols.length}
                     </span>
                   </div>
                   {canEdit && (
-                    <button onClick={() => openCreate(status.id)} className="text-xs font-bold" style={{ color: "var(--accent)" }}>+</button>
+                    <button onClick={() => openCreate(status.id)} className="text-xs font-bold shrink-0" style={{ color: "var(--accent)" }}>+</button>
                   )}
                 </div>
                 {/* Cards */}
                 <div className="flex flex-col gap-2 p-2 min-h-[80px]">
-                  {cols.map(p => <ProjectCard key={p.id} p={p} />)}
+                  {cols.map(p => (
+                    <ProjectCard
+                      key={p.id} p={p} members={members} currency={currency} canEdit={canEdit}
+                      onEdit={openEdit}
+                      onDragStart={id => { dragId.current = id; }}
+                      onDragEnd={() => { dragId.current = null; }}
+                    />
+                  ))}
                 </div>
               </div>
             );
@@ -305,13 +423,20 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
           {unassigned.length > 0 && (
             <div className="flex-shrink-0 flex flex-col rounded-xl"
               style={{ width: 272, background: "var(--card2)", border: "1px dashed var(--border)" }}
-              onDragOver={e => e.preventDefault()}
-              onDrop={e => handleDrop(e, null)}>
+              onDragOver={e => { if (colDragId.current === null) e.preventDefault(); }}
+              onDrop={e => { if (colDragId.current === null) void handleDrop(e, null); }}>
               <div className="px-3 py-2.5 border-b" style={{ borderColor: "var(--border)" }}>
                 <span className="font-semibold text-sm" style={{ color: "var(--muted2)" }}>Unassigned</span>
               </div>
               <div className="flex flex-col gap-2 p-2">
-                {unassigned.map(p => <ProjectCard key={p.id} p={p} />)}
+                {unassigned.map(p => (
+                  <ProjectCard
+                    key={p.id} p={p} members={members} currency={currency} canEdit={canEdit}
+                    onEdit={openEdit}
+                    onDragStart={id => { dragId.current = id; }}
+                    onDragEnd={() => { dragId.current = null; }}
+                  />
+                ))}
               </div>
             </div>
           )}
@@ -320,7 +445,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
             <div className="flex-1 flex flex-col items-center justify-center py-20 text-center">
               <p className="text-3xl mb-3">🔬</p>
               <p className="font-semibold">No columns yet</p>
-              <p className="text-sm mt-1" style={{ color: "var(--muted2)" }}>Click "⚙ Columns" to set up your board</p>
+              <p className="text-sm mt-1" style={{ color: "var(--muted2)" }}>Click &ldquo;⚙ Columns&rdquo; to set up your board</p>
             </div>
           )}
         </div>
@@ -362,8 +487,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                           {p.priority}
                         </span>
                       </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap"
-                        style={{ color: overdue ? "var(--red-c)" : "var(--muted2)" }}>
+                      <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: overdue ? "var(--red-c)" : "var(--muted2)" }}>
                         {fdate(p.target_date)}{overdue ? " ⚠" : ""}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap font-mono">
@@ -416,7 +540,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
               <button onClick={() => setColPanel(false)} style={{ color: "var(--muted2)" }}>✕</button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
-              {statuses.map((st, i) => (
+              {statuses.map(st => (
                 <div key={st.id}>
                   {editingStatus?.id === st.id ? (
                     <div className="rounded-lg p-3 space-y-2" style={{ background: "var(--card3)", border: "1px solid var(--border)" }}>
@@ -449,7 +573,6 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                 <p className="text-sm text-center py-4" style={{ color: "var(--muted2)" }}>No columns yet</p>
               )}
             </div>
-            {/* Add new column */}
             <div className="border-t p-4 space-y-3 shrink-0" style={{ borderColor: "var(--border)" }}>
               <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Add Column</p>
               <input value={newColName} onChange={e => setNewColName(e.target.value)}
@@ -477,88 +600,175 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
           style={{ background: "rgba(0,0,0,.65)", backdropFilter: "blur(4px)" }}
           onClick={e => { if (e.target === e.currentTarget) setProjectModal({ open: false, project: null }); }}>
           <div className="w-full max-w-lg rounded-xl mb-10" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
+            {/* Modal header */}
             <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
               <h3 className="font-semibold">{projectModal.project ? "Edit Project" : "New R&D Project"}</h3>
               <button onClick={() => setProjectModal({ open: false, project: null })} style={{ color: "var(--muted2)" }}>✕</button>
             </div>
-            <div className="p-5 space-y-3">
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Project Name *</label>
-                <input value={pName} onChange={e => setPName(e.target.value)} className={inp} style={inpS} placeholder="e.g. New mobile app feature" />
+
+            {/* Tabs — only show for existing projects */}
+            {projectModal.project && (
+              <div className="flex border-b px-5" style={{ borderColor: "var(--border)" }}>
+                {(["details", "updates"] as const).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => {
+                      setModalTab(t);
+                      if (t === "updates" && projectModal.project) void loadUpdates(projectModal.project.id);
+                    }}
+                    className="px-4 py-2.5 text-xs font-semibold capitalize border-b-2 -mb-px transition-colors"
+                    style={{
+                      borderColor: modalTab === t ? "var(--accent)" : "transparent",
+                      color: modalTab === t ? "var(--accent)" : "var(--muted2)",
+                    }}
+                  >
+                    {t === "updates" ? (
+                      <span className="flex items-center gap-1.5">
+                        <MessageSquare size={12} />
+                        Updates
+                      </span>
+                    ) : "Details"}
+                  </button>
+                ))}
               </div>
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Description</label>
-                <textarea value={pDesc} onChange={e => setPDesc(e.target.value)} rows={2} className={inp} style={{ ...inpS, resize: "none" }} placeholder="Brief overview…" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+            )}
+
+            {/* Details tab */}
+            {modalTab === "details" && (
+              <div className="p-5 space-y-3">
                 <div>
-                  <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Status / Column</label>
-                  <select value={pStatus ?? ""} onChange={e => setPStatus(e.target.value ? Number(e.target.value) : null)} className={inp} style={inpS}>
-                    <option value="">— Unassigned —</option>
-                    {statuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
+                  <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Project Name *</label>
+                  <input value={pName} onChange={e => setPName(e.target.value)} className={inp} style={inpS} placeholder="e.g. New mobile app feature" />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Priority</label>
-                  <select value={pPriority} onChange={e => setPPriority(e.target.value)} className={inp} style={inpS}>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
+                  <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Description</label>
+                  <textarea value={pDesc} onChange={e => setPDesc(e.target.value)} rows={2} className={inp} style={{ ...inpS, resize: "none" }} placeholder="Brief overview…" />
                 </div>
-                <div>
-                  <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Target Launch Date</label>
-                  <DateInput name="target_date" value={pTargetDate} onChange={setPTargetDate} />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Budget Estimate ({currency})</label>
-                  <input type="number" min={0} step="0.01" value={pBudget} onChange={e => setPBudget(e.target.value === "" ? "" : Number(e.target.value))}
-                    className={inp} style={inpS} placeholder="0.00" />
-                </div>
-                {members.length > 0 && (
-                  <div className="col-span-2">
-                    <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Assign To</label>
-                    <select value={pAssigned} onChange={e => setPAssigned(e.target.value)} className={inp} style={inpS}>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Status / Column</label>
+                    <select value={pStatus ?? ""} onChange={e => setPStatus(e.target.value ? Number(e.target.value) : null)} className={inp} style={inpS}>
                       <option value="">— Unassigned —</option>
-                      {members.map(m => <option key={m.user_id} value={m.user_id}>{m.email}</option>)}
+                      {statuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Priority</label>
+                    <select value={pPriority} onChange={e => setPPriority(e.target.value)} className={inp} style={inpS}>
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Target Launch Date</label>
+                    <DateInput name="target_date" value={pTargetDate} onChange={setPTargetDate} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Budget Estimate ({currency})</label>
+                    <input type="number" min={0} step="0.01" value={pBudget}
+                      onChange={e => setPBudget(e.target.value === "" ? "" : Number(e.target.value))}
+                      className={inp} style={inpS} placeholder="0.00" />
+                  </div>
+                  {members.length > 0 && (
+                    <div className="col-span-2">
+                      <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Assign To</label>
+                      <select value={pAssigned} onChange={e => setPAssigned(e.target.value)} className={inp} style={inpS}>
+                        <option value="">— Unassigned —</option>
+                        {members.map(m => <option key={m.user_id} value={m.user_id}>{m.email}</option>)}
+                      </select>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Notes</label>
+                  <textarea value={pNotes} onChange={e => setPNotes(e.target.value)} rows={2} className={inp} style={{ ...inpS, resize: "none" }} placeholder="Additional notes…" />
+                </div>
+                <div className="flex gap-3 pt-1">
+                  <button type="button" onClick={() => setProjectModal({ open: false, project: null })}
+                    className="flex-1 py-2 text-sm rounded border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
+                    Cancel
+                  </button>
+                  {projectModal.project && !projectModal.project.finalized_at && (
+                    <button type="button" onClick={() => { setProjectModal({ open: false, project: null }); openFinalize(projectModal.project!); }}
+                      className="px-4 py-2 text-sm rounded font-semibold"
+                      style={{ background: "var(--success-bg)", color: "var(--accent)", border: "1px solid rgba(16,185,129,.25)" }}>
+                      Finalize →
+                    </button>
+                  )}
+                  {projectModal.project && canDelete && (
+                    <button type="button" onClick={async () => {
+                      if (!await confirm(`Delete "${projectModal.project!.name}"?`)) return;
+                      await runAction(() => deleteRdProject(projectModal.project!.id), toast, "Deleted");
+                      setProjectModal({ open: false, project: null });
+                    }}
+                      className="px-3 py-2 text-sm rounded"
+                      style={{ background: "rgba(239,68,68,.1)", color: "var(--red-c)" }}>
+                      🗑️
+                    </button>
+                  )}
+                  <button type="button" onClick={saveProject} disabled={busy || !pName.trim()}
+                    className="flex-1 py-2 text-sm font-semibold rounded disabled:opacity-40"
+                    style={{ background: "var(--accent)", color: "#fff" }}>
+                    {busy ? "Saving…" : projectModal.project ? "Save Changes" : "Create Project"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Updates tab */}
+            {modalTab === "updates" && projectModal.project && (
+              <div className="p-5 space-y-4">
+                {/* Post new update */}
+                {canEdit && (
+                  <div className="space-y-2">
+                    <textarea
+                      value={updateInput}
+                      onChange={e => setUpdateInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void handlePostUpdate(); }}
+                      rows={3}
+                      placeholder="Add an update, note, or blocker… (Ctrl+Enter to post)"
+                      className={inp}
+                      style={{ ...inpS, resize: "none" }}
+                    />
+                    <button
+                      onClick={handlePostUpdate}
+                      disabled={updateBusy || !updateInput.trim()}
+                      className="px-4 py-2 text-sm font-semibold rounded disabled:opacity-40"
+                      style={{ background: "var(--accent)", color: "#fff" }}
+                    >
+                      {updateBusy ? "Posting…" : "Post Update"}
+                    </button>
+                  </div>
+                )}
+
+                {/* Updates list */}
+                {updatesLoading ? (
+                  <div className="py-8 text-center text-sm" style={{ color: "var(--muted2)" }}>Loading…</div>
+                ) : updates.length === 0 ? (
+                  <div className="py-8 text-center" style={{ color: "var(--muted2)" }}>
+                    <MessageSquare size={24} className="mx-auto mb-2 opacity-40" />
+                    <p className="text-sm">No updates yet</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+                    {updates.map(u => {
+                      const authorEmail = members.find(m => m.user_id === u.author_id)?.email;
+                      const authorName = authorEmail ? authorEmail.split("@")[0] : "Unknown";
+                      return (
+                        <div key={u.id} className="rounded-xl p-3" style={{ background: "var(--card3)", border: "1px solid var(--border)" }}>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-xs font-semibold" style={{ color: "var(--accent)" }}>@{authorName}</span>
+                            <span className="text-[10px]" style={{ color: "var(--muted2)" }}>{ftime(u.created_at)}</span>
+                          </div>
+                          <p className="text-sm whitespace-pre-wrap leading-relaxed">{u.content}</p>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Notes</label>
-                <textarea value={pNotes} onChange={e => setPNotes(e.target.value)} rows={2} className={inp} style={{ ...inpS, resize: "none" }} placeholder="Additional notes…" />
-              </div>
-              <div className="flex gap-3 pt-1">
-                <button type="button" onClick={() => setProjectModal({ open: false, project: null })}
-                  className="flex-1 py-2 text-sm rounded border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
-                  Cancel
-                </button>
-                {projectModal.project && !projectModal.project.finalized_at && (
-                  <button type="button" onClick={() => { setProjectModal({ open: false, project: null }); openFinalize(projectModal.project!); }}
-                    className="px-4 py-2 text-sm rounded font-semibold"
-                    style={{ background: "var(--success-bg)", color: "var(--accent)", border: "1px solid rgba(16,185,129,.25)" }}>
-                    Finalize →
-                  </button>
-                )}
-                {projectModal.project && canDelete && (
-                  <button type="button" onClick={async () => {
-                    if (!await confirm(`Delete "${projectModal.project!.name}"?`)) return;
-                    await runAction(() => deleteRdProject(projectModal.project!.id), toast, "Deleted");
-                    setProjectModal({ open: false, project: null });
-                  }}
-                    className="px-3 py-2 text-sm rounded"
-                    style={{ background: "rgba(239,68,68,.1)", color: "var(--red-c)" }}>
-                    🗑️
-                  </button>
-                )}
-                <button type="button" onClick={saveProject} disabled={busy || !pName.trim()}
-                  className="flex-1 py-2 text-sm font-semibold rounded disabled:opacity-40"
-                  style={{ background: "var(--accent)", color: "#fff" }}>
-                  {busy ? "Saving…" : projectModal.project ? "Save Changes" : "Create Project"}
-                </button>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       )}
@@ -602,7 +812,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                   className={inp} style={inpS} placeholder="0.00" />
               </div>
               <div className="px-4 py-3 rounded-lg text-xs" style={{ background: "var(--success-bg)", color: "var(--accent)" }}>
-                ✓ Project "{finalizeProject.name}" will be marked as finalized and the product will appear in your catalogue immediately.
+                ✓ Project &ldquo;{finalizeProject.name}&rdquo; will be marked as finalized and the product will appear in your catalogue immediately.
               </div>
               <div className="flex gap-3 pt-1">
                 <button type="button" onClick={() => setFinalizeProject(null)}

@@ -28,7 +28,7 @@ type Dim = { id: number; name: string };
 type Props = {
   rawLeads: RawLead[]; rawInvoices: RawInvoice[]; rawCosts: RawCost[]; rawCashflow: RawCashflow[];
   customers: Dim[]; statuses: Dim[]; paymentTypes: Dim[]; costCategories: Dim[]; accounts: Dim[];
-  currency: string; orgName: string; bankBalance: number; bankLastDate: string | null;
+  currency: string; orgName: string; orgId?: string; bankBalance: number; bankLastDate: string | null;
   fiscalYearStart?: number;
   savedDashboardSettings: Record<string, unknown>;
 };
@@ -226,7 +226,7 @@ type InsightData = {
 
 type ChatMessage = { role: "user" | "ai"; content: string };
 
-function AiInsightCard({ data }: { data: InsightData }) {
+function AiInsightCard({ data, orgId }: { data: InsightData; orgId?: string }) {
   const [text, setText] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -238,7 +238,7 @@ function AiInsightCard({ data }: { data: InsightData }) {
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   const fetchInsight = useCallback(async (force = false) => {
-    const cacheKey = "crm_dash_insight_v2";
+    const cacheKey = orgId ? `crm_dash_insight_v2_${orgId}` : "crm_dash_insight_v2";
     if (!force) {
       try {
         const cached = sessionStorage.getItem(cacheKey);
@@ -268,7 +268,7 @@ function AiInsightCard({ data }: { data: InsightData }) {
     } finally {
       setLoading(false);
     }
-  }, [data.revenue, data.opex, data.profit, data.margin, data.pending, data.overdueCount, data.overdueAmount, data.staleLeads, data.totalLeads, data.wonLeads, data.cur]);
+  }, [data.revenue, data.opex, data.profit, data.margin, data.pending, data.overdueCount, data.overdueAmount, data.staleLeads, data.totalLeads, data.wonLeads, data.cur, orgId]);
 
   useEffect(() => {
     if (!fetched.current) { fetched.current = true; fetchInsight(); }
@@ -698,7 +698,7 @@ function readLS<T>(key: string, fallback: T): T {
 export function DashboardCharts({
   rawLeads, rawInvoices, rawCosts, rawCashflow,
   customers, statuses, paymentTypes, costCategories, accounts,
-  currency, orgName, bankBalance, bankLastDate, fiscalYearStart,
+  currency, orgName, orgId, bankBalance, bankLastDate, fiscalYearStart,
   savedDashboardSettings,
 }: Props) {
   const cur = currency === "ZAR" ? "R" : currency === "USD" ? "$" : currency === "EUR" ? "€" : "R";
@@ -1278,7 +1278,7 @@ export function DashboardCharts({
                 staleLeads: staleLeads.length,
                 totalLeads: metrics.total_leads, wonLeads: metrics.won_leads,
                 cur,
-              }} />
+              }} orgId={orgId} />
             </div>
           </Section>
         );

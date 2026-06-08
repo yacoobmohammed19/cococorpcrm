@@ -12,12 +12,13 @@ export default async function LeadsPage() {
     supabase
       .from("fact_leads")
       .select("id, name, phone, contact, lead_date, status_id, last_follow_up, opportunity_value, opportunity_weighted, weight, total_revenue, secured_revenue, contacted, responded, developed, completed, customer_id, created_at, assigned_to")
+      .eq("org_id", orgId)
       .is("deleted_at", null)
       .order("created_at", { ascending: false }),
-    supabase.from("dim_statuses").select("id, name").order("id"),
-    supabase.from("dim_customers").select("id, name").is("deleted_at", null).order("name"),
-    supabase.from("dim_products").select("id, name, unit_price, is_active").is("deleted_at", null).eq("is_active", true).order("name"),
-    supabase.from("organizations").select("currency").single(),
+    supabase.from("dim_statuses").select("id, name").eq("org_id", orgId).order("id"),
+    supabase.from("dim_customers").select("id, name").eq("org_id", orgId).is("deleted_at", null).order("name"),
+    supabase.from("dim_products").select("id, name, unit_price, is_active").eq("org_id", orgId).is("deleted_at", null).eq("is_active", true).order("name"),
+    supabase.from("organizations").select("currency").eq("id", orgId).single(),
     supabase.from("memberships").select("user_id").eq("org_id", orgId).eq("role", "operator"),
   ]);
 

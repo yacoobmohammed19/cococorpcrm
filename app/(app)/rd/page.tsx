@@ -15,8 +15,8 @@ export default async function RdPage() {
     { data: memberMemberships },
   ] = await Promise.all([
     supabase.from("rd_statuses").select("*").eq("org_id", orgId).order("position"),
-    supabase.from("rd_projects").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
-    supabase.from("organizations").select("currency").single(),
+    supabase.from("rd_projects").select("*").eq("org_id", orgId).is("deleted_at", null).order("created_at", { ascending: false }),
+    supabase.from("organizations").select("currency").eq("id", orgId).single(),
     supabase.from("memberships").select("user_id").eq("org_id", orgId),
   ]);
 

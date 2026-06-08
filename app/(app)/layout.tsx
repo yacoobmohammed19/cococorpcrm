@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { createServerClient } from "@/lib/supabase/server";
 import { setActiveOrganization, signout } from "@/server-actions/auth";
 import { CollapsibleSidebar } from "@/components/CollapsibleSidebar";
@@ -21,17 +22,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   if (!memberships || memberships.length === 0) redirect("/onboarding");
 
-  const activeOrgId = String(user.user_metadata?.active_org_id ?? memberships?.[0]?.org_id ?? "");
+  // Cookie is the authoritative source — updated immediately on org switch
+  const jar = await cookies();
+  const cookieOrgId = jar.get("coco_active_org")?.value;
+  const activeOrgId = cookieOrgId
+    ?? String(user.user_metadata?.active_org_id ?? memberships?.[0]?.org_id ?? "");
 
   // Resolve current role for the active org
   const currentRole = memberships.find(m => String(m.org_id) === activeOrgId)?.role ?? null;
 
   const [{ data: accounts }, { data: customers }, { data: payTypes }, { data: statuses }, { data: costCats }] = await Promise.all([
-    supabase.from("dim_accounts").select("id, name").order("name"),
-    supabase.from("dim_customers").select("id, name").is("deleted_at", null).order("name"),
-    supabase.from("dim_payment_types").select("id, name").order("name"),
-    supabase.from("dim_statuses").select("id, name").order("id"),
-    supabase.from("dim_cost_categories").select("id, name").order("name"),
+    supabase.from("dim_accounts").select("id, name").eq("org_id", activeOrgId).order("name"),
+    supabase.from("dim_customers").select("id, name").eq("org_id", activeOrgId).is("deleted_at", null).order("name"),
+    supabase.from("dim_payment_types").select("id, name").eq("org_id", activeOrgId).order("name"),
+    supabase.from("dim_statuses").select("id, name").eq("org_id", activeOrgId).order("id"),
+    supabase.from("dim_cost_categories").select("id, name").eq("org_id", activeOrgId).order("name"),
   ]);
 
   // Resolve org name safely — Supabase returns joined records as objects for m:1 joins
@@ -81,7 +86,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               statuses={statuses || []}
               costCategories={costCats || []}
             />
-            <AiAssistant />
+            <AiAssistant orgId={activeOrgId} />
 
             {/* Mobile bottom nav — 64 px bar + safe-area inset */}
             <nav

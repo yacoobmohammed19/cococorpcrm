@@ -52,6 +52,32 @@ function aggCampaign(updates: CampaignUpdate[], cid: number) {
   };
 }
 
+function Kpi({ label, value, color, sub }: { label: string; value: string; color: string; sub?: string }) {
+  return (
+    <div className="rounded-lg p-4" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
+      <div className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>{label}</div>
+      <div className="text-xl font-bold font-mono" style={{ color }}>{value}</div>
+      {sub && <div className="text-xs mt-1" style={{ color: "var(--muted2)" }}>{sub}</div>}
+    </div>
+  );
+}
+
+function MktModal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-10 px-4"
+      style={{ background: "rgba(0,0,0,.55)", backdropFilter: "blur(4px)" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full max-w-lg rounded-xl shadow-2xl" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
+          <h2 className="text-base font-semibold">{title}</h2>
+          <button onClick={onClose} className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--card3)] transition-colors" style={{ color: "var(--muted2)" }}><X size={18} /></button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function MarketingClient({ campaigns, updates, currency }: Props) {
   const cur = currency === "ZAR" ? "R" : "$";
   const toast = useToast();
@@ -130,28 +156,6 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
       style={{ background: tab === t ? "var(--accent)" : "var(--card3)", color: tab === t ? "#fff" : "var(--muted)", border: "1px solid var(--border)" }}>
       {label}
     </button>
-  );
-
-  const Kpi = ({ label, value, color, sub }: { label: string; value: string; color: string; sub?: string }) => (
-    <div className="rounded-lg p-4" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
-      <div className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>{label}</div>
-      <div className="text-xl font-bold font-mono" style={{ color }}>{value}</div>
-      {sub && <div className="text-xs mt-1" style={{ color: "var(--muted2)" }}>{sub}</div>}
-    </div>
-  );
-
-  const Modal = ({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) => (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-10 px-4"
-      style={{ background: "rgba(0,0,0,.55)", backdropFilter: "blur(4px)" }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full max-w-lg rounded-xl shadow-2xl" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
-        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
-          <h2 className="text-base font-semibold">{title}</h2>
-          <button onClick={onClose} className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--card3)] transition-colors" style={{ color: "var(--muted2)" }}><X size={18} /></button>
-        </div>
-        {children}
-      </div>
-    </div>
   );
 
   return (
@@ -332,7 +336,7 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
 
       {/* Create Campaign Modal */}
       {campModal && (
-        <Modal title="Create Campaign" onClose={() => setCampModal(false)}>
+        <MktModal title="Create Campaign" onClose={() => setCampModal(false)}>
           <form onSubmit={handleCreateCampaign}>
             <div className="p-5 space-y-3">
               <div>
@@ -388,12 +392,12 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
               </button>
             </div>
           </form>
-        </Modal>
+        </MktModal>
       )}
 
       {/* Log Update Modal */}
       {logModal !== null && (
-        <Modal title={`Log Results — ${campaigns.find(c => c.id === logModal)?.name || ""}`} onClose={() => setLogModal(null)}>
+        <MktModal title={`Log Results — ${campaigns.find(c => c.id === logModal)?.name || ""}`} onClose={() => setLogModal(null)}>
           <form onSubmit={e => handleLogUpdate(e, logModal)}>
             <div className="p-5 space-y-3">
               <div>
@@ -423,7 +427,7 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
               </button>
             </div>
           </form>
-        </Modal>
+        </MktModal>
       )}
       <ConfirmDialog {...dialogProps} confirmLabel="Delete" />
     </div>

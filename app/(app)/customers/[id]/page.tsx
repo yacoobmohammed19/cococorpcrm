@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createServerClient } from "@/lib/supabase/server";
+import { getCurrentOrgId } from "@/lib/supabase/org";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { CustomerDetailClient } from "@/components/CustomerDetailClient";
 
@@ -7,19 +8,20 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const { id } = await params;
   const customerId = Number(id);
   const supabase = await createServerClient();
+  const orgId = await getCurrentOrgId();
 
   const [{ data: customer }, { data: invoices }, { data: org }, { data: paymentTypes }, { data: products }, { data: quotes }, { data: subscriptions }] = await Promise.all([
     supabase.from("dim_customers").select("*").eq("id", customerId).single(),
     supabase.from("fact_invoices")
       .select("id, invoice_number, amount, status, transaction_date, due_date, description, payment_type_id, dim_payment_types(name)")
-      .eq("customer_id", customerId).is("deleted_at", null)
+      .eq("customer_id", customerId).eq("org_id", orgId).is("deleted_at", null)
       .order("transaction_date", { ascending: false }),
-    supabase.from("organizations").select("currency").single(),
-    supabase.from("dim_payment_types").select("id, name").order("name"),
-    supabase.from("dim_products").select("id, name, unit_price, is_active").is("deleted_at", null).order("name"),
+    supabase.from("organizations").select("currency").eq("id", orgId).single(),
+    supabase.from("dim_payment_types").select("id, name").eq("org_id", orgId).order("name"),
+    supabase.from("dim_products").select("id, name, unit_price, is_active").eq("org_id", orgId).is("deleted_at", null).order("name"),
     supabase.from("fact_quotes")
       .select("id, quote_number, status, amount, valid_until, created_at")
-      .eq("customer_id", customerId).is("deleted_at", null)
+      .eq("customer_id", customerId).eq("org_id", orgId).is("deleted_at", null)
       .order("created_at", { ascending: false }),
     supabase.from("subscriptions")
       .select("id, description, amount, frequency, start_date, end_date, status, invoice_prefix, product_id, payment_type_id")

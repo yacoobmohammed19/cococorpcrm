@@ -52,29 +52,6 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
     redirect(`/signup?invite=${encodeURIComponent(token)}&email=${encodeURIComponent(invite.email)}`);
   }
 
-  // User is logged in — accept the invite immediately
-  const { error: memberError } = await admin.from("memberships").upsert(
-    { user_id: user.id, org_id: invite.org_id, role: invite.role },
-    { onConflict: "user_id,org_id" }
-  );
-
-  if (memberError) {
-    return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-8 text-center">
-        <p style={{ color: "var(--muted)" }}>Something went wrong: {memberError.message}</p>
-      </main>
-    );
-  }
-
-  // Mark token as used
-  await admin.from("invite_tokens")
-    .update({ used_at: new Date().toISOString() })
-    .eq("id", invite.id);
-
-  // Switch active org to the newly joined org
-  await admin.auth.admin.updateUserById(user.id, {
-    user_metadata: { active_org_id: invite.org_id },
-  });
-
-  redirect("/dashboard");
+  // Route through the API handler so it can set the org cookie (impossible from a server component)
+  redirect(`/api/accept-invite?token=${encodeURIComponent(token)}`);
 }

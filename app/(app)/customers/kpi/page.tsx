@@ -1,20 +1,24 @@
 import { createServerClient } from "@/lib/supabase/server";
+import { getCurrentOrgId } from "@/lib/supabase/org";
 import { CustomerKpiClient } from "@/components/CustomerKpiClient";
 
 export default async function CustomerKpiPage() {
   const supabase = await createServerClient();
+  const orgId = await getCurrentOrgId();
 
   const [{ data: customers }, { data: invoices }, { data: costs }, { data: org }] = await Promise.all([
-    supabase.from("dim_customers").select("id, name, status").is("deleted_at", null).order("name"),
+    supabase.from("dim_customers").select("id, name, status").eq("org_id", orgId).is("deleted_at", null).order("name"),
     supabase
       .from("fact_invoices")
       .select("customer_id, amount, status, transaction_date")
+      .eq("org_id", orgId)
       .is("deleted_at", null),
     supabase
       .from("fact_costs")
       .select("customer_id, amount, apportion_to_customers")
+      .eq("org_id", orgId)
       .is("deleted_at", null),
-    supabase.from("organizations").select("currency").single(),
+    supabase.from("organizations").select("currency").eq("id", orgId).single(),
   ]);
 
   // Build lookup maps

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import Link from "next/link";
+import { ChevronLeft, ChevronRight, ChevronDown, Plus } from "lucide-react";
 import { SideNav } from "@/components/SideNav";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
@@ -32,6 +33,7 @@ export function CollapsibleSidebar({
   signout,
 }: Props) {
   const [collapsed, setCollapsed] = useState(() => readCollapsed());
+  const [orgOpen, setOrgOpen] = useState(false);
 
   const toggle = () => {
     const next = !collapsed;
@@ -128,24 +130,97 @@ export function CollapsibleSidebar({
               </div>
             </div>
 
-            <form action={setActiveOrganization}>
-              <select
-                name="org_id"
-                defaultValue={activeOrgId}
-                className="w-full text-xs rounded-md px-2 py-1.5 border appearance-none"
+            {/* Org switcher */}
+            <div>
+              {/* Current org button */}
+              <button
+                onClick={() => orgs.length > 1 && setOrgOpen(o => !o)}
+                className="w-full flex items-center gap-2 rounded-lg px-2 py-2 text-xs transition-colors"
                 style={{
-                  background: "rgba(255,255,255,0.06)",
-                  borderColor: "var(--sidebar-border)",
-                  color: "var(--sidebar-fg)",
+                  background: orgOpen ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)",
+                  border: "1px solid var(--sidebar-border)",
+                  cursor: orgs.length > 1 ? "pointer" : "default",
                 }}
               >
-                {orgs.map(o => (
-                  <option key={o.org_id} value={o.org_id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
-            </form>
+                {/* Org initials */}
+                <div
+                  className="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black shrink-0"
+                  style={{ background: "rgba(16,185,129,0.2)", color: "var(--sidebar-indicator)" }}
+                >
+                  {(orgs.find(o => o.org_id === activeOrgId)?.name ?? orgs[0]?.name ?? "").slice(0, 1).toUpperCase()}
+                </div>
+                <span className="flex-1 text-left truncate font-semibold" style={{ color: "var(--sidebar-fg-active)" }}>
+                  {orgs.find(o => o.org_id === activeOrgId)?.name ?? orgs[0]?.name ?? ""}
+                </span>
+                {orgs.length > 1 && (
+                  <ChevronDown
+                    size={12}
+                    style={{
+                      color: "var(--sidebar-fg)",
+                      transform: orgOpen ? "rotate(180deg)" : undefined,
+                      transition: "transform 0.15s",
+                    }}
+                  />
+                )}
+              </button>
+
+              {/* Expanded org list */}
+              {orgOpen && orgs.length > 1 && (
+                <div
+                  className="mt-1 rounded-lg overflow-hidden"
+                  style={{ border: "1px solid var(--sidebar-border)", background: "rgba(0,0,0,0.25)" }}
+                >
+                  {orgs.map(o => {
+                    const isActive = o.org_id === activeOrgId;
+                    return isActive ? (
+                      <div
+                        key={o.org_id}
+                        className="flex items-center gap-2 px-2.5 py-2 text-xs"
+                        style={{ color: "var(--sidebar-indicator)" }}
+                      >
+                        <div
+                          className="w-4 h-4 rounded flex items-center justify-center text-[9px] font-black shrink-0"
+                          style={{ background: "rgba(16,185,129,0.2)" }}
+                        >
+                          {o.name.slice(0, 1).toUpperCase()}
+                        </div>
+                        <span className="flex-1 truncate font-semibold">{o.name}</span>
+                        <span className="text-[9px] font-bold uppercase tracking-wider opacity-70">Active</span>
+                      </div>
+                    ) : (
+                      <form key={o.org_id} action={setActiveOrganization}>
+                        <input type="hidden" name="org_id" value={o.org_id} />
+                        <button
+                          type="submit"
+                          className="w-full flex items-center gap-2 px-2.5 py-2 text-xs transition-colors hover:bg-white/[0.06]"
+                          style={{ color: "var(--sidebar-fg)" }}
+                        >
+                          <div
+                            className="w-4 h-4 rounded flex items-center justify-center text-[9px] font-black shrink-0"
+                            style={{ background: "rgba(255,255,255,0.06)" }}
+                          >
+                            {o.name.slice(0, 1).toUpperCase()}
+                          </div>
+                          <span className="flex-1 truncate text-left">{o.name}</span>
+                        </button>
+                      </form>
+                    );
+                  })}
+                  <Link
+                    href="/settings/management"
+                    onClick={() => setOrgOpen(false)}
+                    className="flex items-center gap-2 px-2.5 py-2 text-xs transition-colors hover:bg-white/[0.06]"
+                    style={{
+                      color: "var(--sidebar-fg)",
+                      borderTop: "1px solid var(--sidebar-border)",
+                    }}
+                  >
+                    <Plus size={11} />
+                    New organisation
+                  </Link>
+                </div>
+              )}
+            </div>
 
             <form action={signout}>
               <button

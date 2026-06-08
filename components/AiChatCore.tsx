@@ -170,12 +170,12 @@ function ConfirmActionCard({
   );
 }
 
-type Props = { compact?: boolean };
+type Props = { compact?: boolean; orgId?: string };
 
-const HISTORY_KEY = "coco_chat_history";
 const MAX_STORED = 100;
 
-export function AiChatCore({ compact = false }: Props) {
+export function AiChatCore({ compact = false, orgId }: Props) {
+  const historyKey = orgId ? `coco_chat_history_${orgId}` : "coco_chat_history";
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -186,18 +186,20 @@ export function AiChatCore({ compact = false }: Props) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useLayoutEffect(() => {
+    setMessages([]);
     try {
-      const stored = localStorage.getItem(HISTORY_KEY);
+      const stored = localStorage.getItem(historyKey);
       if (stored) setMessages(JSON.parse(stored));
     } catch { /* ignore */ }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyKey]);
 
   useEffect(() => {
     if (messages.length === 0) return;
     try {
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(messages.slice(-MAX_STORED)));
+      localStorage.setItem(historyKey, JSON.stringify(messages.slice(-MAX_STORED)));
     } catch { /* ignore */ }
-  }, [messages]);
+  }, [messages, historyKey]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -355,7 +357,7 @@ export function AiChatCore({ compact = false }: Props) {
         {messages.length > 0 && (
           <div className="flex justify-end mb-2">
             <button
-              onClick={() => { setMessages([]); setError(""); setPendingAction(null); try { localStorage.removeItem(HISTORY_KEY); } catch { /* ignore */ } }}
+              onClick={() => { setMessages([]); setError(""); setPendingAction(null); try { localStorage.removeItem(historyKey); } catch { /* ignore */ } }}
               className="text-[11px] px-2.5 py-1 rounded-lg"
               style={{ color: "var(--muted2)", border: "1px solid var(--border)" }}>
               Clear chat

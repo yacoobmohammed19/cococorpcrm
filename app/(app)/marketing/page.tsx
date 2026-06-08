@@ -1,13 +1,15 @@
 import { createServerClient } from "@/lib/supabase/server";
+import { getCurrentOrgId } from "@/lib/supabase/org";
 import { MarketingClient } from "@/components/MarketingClient";
 
 export default async function MarketingPage() {
   const supabase = await createServerClient();
+  const orgId = await getCurrentOrgId();
 
   const [{ data: campaigns, error: campErr }, { data: updates, error: updErr }, { data: org }] = await Promise.all([
-    supabase.from("fact_campaigns").select("id, name, platform, objective, status, total_budget, start_date, end_date, notes").order("id", { ascending: false }),
-    supabase.from("fact_campaign_updates").select("id, campaign_id, date, spend, impressions, clicks, conversions, revenue, notes").order("date", { ascending: false }),
-    supabase.from("organizations").select("currency").single(),
+    supabase.from("fact_campaigns").select("id, name, platform, objective, status, total_budget, start_date, end_date, notes").eq("org_id", orgId).order("id", { ascending: false }),
+    supabase.from("fact_campaign_updates").select("id, campaign_id, date, spend, impressions, clicks, conversions, revenue, notes").eq("org_id", orgId).order("date", { ascending: false }),
+    supabase.from("organizations").select("currency").eq("id", orgId).single(),
   ]);
 
   if (campErr || updErr) {

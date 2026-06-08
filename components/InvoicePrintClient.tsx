@@ -119,6 +119,7 @@ export function InvoicePrintClient({ invoice, org, lines }: Props) {
   const [coPhone, setCoPhone] = useState(org?.phone || "");
   const [coEmail, setCoEmail] = useState(org?.email || "");
   const [coRegNo, setCoRegNo] = useState(org?.reg_no || "");
+  const [coVatNo, setCoVatNo] = useState(org?.vat_no || "");
   const [bankHolder, setBankHolder] = useState(org?.bank_holder || "");
   const [bankName, setBankName] = useState(org?.bank_name || "");
   const [bankAccount, setBankAccount] = useState(org?.bank_account || "");
@@ -412,6 +413,7 @@ export function InvoicePrintClient({ invoice, org, lines }: Props) {
                   ["Phone", coPhone, setCoPhone, "Phone"],
                   ["Email", coEmail, setCoEmail, "Email"],
                   ["Reg No.", coRegNo, setCoRegNo, "Registration number"],
+                  ["VAT No.", coVatNo, setCoVatNo, "VAT number"],
                 ] as [string, string, (v: string) => void, string][]).map(([l, v, set, ph]) => (
                   <tr key={l}>
                     <td style={{ fontWeight: 700, color: "#111", paddingRight: 10, verticalAlign: "top", whiteSpace: "nowrap", width: 90 }}>{l}</td>

@@ -1,19 +1,22 @@
 import { createServerClient } from "@/lib/supabase/server";
+import { getCurrentOrgId } from "@/lib/supabase/org";
 import { CostsClient } from "@/components/CostsClient";
 
 export default async function CostsPage() {
   const supabase = await createServerClient();
+  const orgId = await getCurrentOrgId();
 
   const [{ data: costs }, { data: categories }, { data: accounts }, { data: customers }, { data: org }] = await Promise.all([
     supabase
       .from("fact_costs")
       .select("id, transaction_date, cost_details, amount, recouped, cost_category_id, account_id, customer_id, receipt_image_url, apportion_to_customers, cost_type, include_in_pnl, dim_cost_categories(name), dim_accounts(name), dim_customers(name)")
+      .eq("org_id", orgId)
       .is("deleted_at", null)
       .order("transaction_date", { ascending: false }),
-    supabase.from("dim_cost_categories").select("id, name").order("name"),
-    supabase.from("dim_accounts").select("id, name").order("name"),
-    supabase.from("dim_customers").select("id, name").is("deleted_at", null).order("name"),
-    supabase.from("organizations").select("currency").single(),
+    supabase.from("dim_cost_categories").select("id, name").eq("org_id", orgId).order("name"),
+    supabase.from("dim_accounts").select("id, name").eq("org_id", orgId).order("name"),
+    supabase.from("dim_customers").select("id, name").eq("org_id", orgId).is("deleted_at", null).order("name"),
+    supabase.from("organizations").select("currency").eq("id", orgId).single(),
   ]);
 
   const mappedCosts = (costs || []).map(c => ({

@@ -1,21 +1,25 @@
 import { createServerClient } from "@/lib/supabase/server";
+import { getCurrentOrgId } from "@/lib/supabase/org";
 import { BillingClient } from "@/components/BillingClient";
 
 export default async function BillingPage() {
   const supabase = await createServerClient();
+  const orgId = await getCurrentOrgId();
 
   const [{ data: invoices }, { data: customers }, { data: costs }, { data: org }] = await Promise.all([
     supabase
       .from("fact_invoices")
       .select("id, customer_id, transaction_date, invoice_number, amount, status, description, payment_type_id, dim_payment_types(name)")
+      .eq("org_id", orgId)
       .is("deleted_at", null)
       .order("transaction_date", { ascending: false }),
-    supabase.from("dim_customers").select("id, name").is("deleted_at", null).order("name"),
+    supabase.from("dim_customers").select("id, name").eq("org_id", orgId).is("deleted_at", null).order("name"),
     supabase
       .from("fact_costs")
       .select("id, amount, transaction_date, include_in_pnl")
+      .eq("org_id", orgId)
       .is("deleted_at", null),
-    supabase.from("organizations").select("currency, fiscal_year_start").single(),
+    supabase.from("organizations").select("currency, fiscal_year_start").eq("id", orgId).single(),
   ]);
 
   const fiscalStart = org?.fiscal_year_start ?? 3;
