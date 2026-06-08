@@ -12,29 +12,30 @@ export async function getCurrentOrgId(): Promise<string> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
 
-  // Cookie value takes priority; fall back to user metadata
-  const candidate = cookieOrgId || String(user.user_metadata?.active_org_id ?? "");
-
-  if (candidate) {
-    const { data: scoped } = await supabase
-      .from("memberships")
-      .select("org_id")
-      .eq("user_id", user.id)
-      .eq("org_id", candidate)
-      .single();
-    if (scoped?.org_id) return scoped.org_id as string;
-  }
-
-  // Fall back to first membership
-  const { data: membership } = await supabase
+  // Fetch all memberships in one query, ordered so fallback is deterministic
+  const { data: memberships } = await supabase
     .from("memberships")
     .select("org_id")
     .eq("user_id", user.id)
-    .limit(1)
-    .single();
+    .order("created_at", { ascending: true });
 
-  if (!membership?.org_id) throw new Error("No organization membership found");
-  return membership.org_id as string;
+  if (!memberships || memberships.length === 0) {
+    throw new Error("No organization membership found");
+  }
+
+  const memberOrgIds = new Set(memberships.map(m => String(m.org_id)));
+
+  // Prefer cookie, then metadata — but only if the user actually belongs to that org
+  const candidates = [
+    cookieOrgId,
+    String(user.user_metadata?.active_org_id ?? ""),
+  ];
+  for (const c of candidates) {
+    if (c && memberOrgIds.has(c)) return c;
+  }
+
+  // Deterministic fallback: earliest membership
+  return String(memberships[0].org_id);
 }
 
 /** Returns the caller's role in their active org, or null. */
