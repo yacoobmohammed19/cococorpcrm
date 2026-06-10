@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   X, Menu,
   LayoutDashboard, Target, Users, FileText, Package,
   Receipt, CalendarDays, TrendingDown, Megaphone,
-  BookOpen, BarChart2, Settings, Sparkles, UsersRound, Building2,
+  BookOpen, BarChart2, Settings, Sparkles, UsersRound, Building2, TableProperties,
 } from "lucide-react";
 
 const allDrawerNav = [
@@ -22,6 +23,7 @@ const allDrawerNav = [
   { href: "/marketing",  label: "Marketing",   Icon: Megaphone,       group: "Marketing"  },
   { href: "/accounting", label: "Accounting",  Icon: BookOpen,        group: "Analytics"  },
   { href: "/performance",label: "Snapshots",   Icon: BarChart2,       group: "Analytics"  },
+  { href: "/reports",    label: "Reports",     Icon: TableProperties, group: "Analytics"  },
   { href: "/settings",                label: "Settings",  Icon: Settings,    group: "Config" },
   { href: "/settings/team",           label: "Team",      Icon: UsersRound,  group: "Config" },
   { href: "/settings/organisations",  label: "Orgs",      Icon: Building2,   group: "Config" },
@@ -30,17 +32,12 @@ const allDrawerNav = [
 const OPERATOR_ALLOWED_MOBILE = new Set(["/dashboard", "/leads", "/chat"]);
 const groups = ["Overview", "CRM", "Catalog", "Finance", "Marketing", "Analytics", "Config"];
 
-type Org = { org_id: string; name: string };
-
 type Props = {
-  orgs: Org[];
-  activeOrgId: string;
   role: string | null;
-  setActiveOrganization: (fd: FormData) => Promise<void>;
-  signout: () => Promise<void>;
+  profileMenu?: ReactNode;
 };
 
-export function MobileHeader({ orgs, activeOrgId, role, setActiveOrganization, signout }: Props) {
+export function MobileHeader({ role, profileMenu }: Props) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const drawerNav = role === "operator"
@@ -51,12 +48,8 @@ export function MobileHeader({ orgs, activeOrgId, role, setActiveOrganization, s
     <>
       {/* Top bar */}
       <header
-        className="md:hidden flex items-center justify-between px-3 border-b shrink-0"
-        style={{
-          background: "var(--sidebar-bg)",
-          borderColor: "var(--sidebar-border)",
-          height: 48,
-        }}
+        className="md:hidden flex items-center px-3 border-b shrink-0"
+        style={{ background: "var(--sidebar-bg)", borderColor: "var(--sidebar-border)", height: 48 }}
       >
         {/* Hamburger — opens left drawer */}
         <button
@@ -74,39 +67,12 @@ export function MobileHeader({ orgs, activeOrgId, role, setActiveOrganization, s
           <span style={{ color: "var(--sidebar-fg-active)" }}>CORP</span>
         </h1>
 
-        {/* Right: org select + sign out */}
-        <div className="flex items-center gap-1.5">
-          {orgs.length > 1 && (
-            <form action={setActiveOrganization}>
-              <select
-                name="org_id"
-                defaultValue={activeOrgId}
-                onChange={e => {
-                  const form = e.currentTarget.form!;
-                  form.requestSubmit();
-                }}
-                className="text-xs rounded px-2 py-1 border max-w-[100px] truncate"
-                style={{
-                  background: "rgba(255,255,255,0.08)",
-                  borderColor: "var(--sidebar-border)",
-                  color: "var(--sidebar-fg)",
-                }}
-              >
-                {orgs.map(o => (
-                  <option key={o.org_id} value={o.org_id}>{o.name}</option>
-                ))}
-              </select>
-            </form>
-          )}
-          <form action={signout}>
-            <button
-              className="text-xs rounded border px-2.5 py-1.5 font-medium"
-              style={{ borderColor: "var(--sidebar-border)", color: "var(--sidebar-fg)" }}
-            >
-              Out
-            </button>
-          </form>
-        </div>
+        {/* Profile menu — right slot */}
+        {profileMenu && (
+          <div className="ml-auto">
+            {profileMenu}
+          </div>
+        )}
       </header>
 
       {/* Backdrop */}

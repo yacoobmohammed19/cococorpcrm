@@ -1,9 +1,10 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { LeadSchema } from "@/lib/schemas/leads";
 import { getCurrentOrgId } from "@/lib/supabase/org";
 import { createServerClient } from "@/lib/supabase/server";
+import { dimCacheTag } from "@/lib/supabase/cache";
 
 export async function createLead(formData: FormData) {
   const orgId = await getCurrentOrgId();
@@ -111,6 +112,7 @@ export async function convertLeadToCustomer(leadId: number) {
   if (custErr) throw new Error(custErr.message);
 
   await supabase.from("fact_leads").update({ customer_id: customer.id }).eq("id", leadId);
+  revalidateTag(dimCacheTag(orgId), "default");
   revalidatePath("/leads");
   revalidatePath("/customers");
 }

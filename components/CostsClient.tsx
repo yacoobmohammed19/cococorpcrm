@@ -57,6 +57,88 @@ const NON_OPERATIONAL_BADGE: Record<string, string> = {
   capex: "#06b6d4", personal: "#ec4899",
 };
 
+// ── Drill-down modal ──────────────────────────────────────────────────────────
+
+type CostDrillDown = { title: string; ids: number[] } | null;
+
+function CostDrillDownModal({ title, ids, costs, cur, onClose, onEdit }: {
+  title: string; ids: number[]; costs: Cost[]; cur: string;
+  onClose: () => void; onEdit: (c: Cost) => void;
+}) {
+  const rows = costs.filter(c => ids.includes(c.id)).sort((a, b) => b.transaction_date.localeCompare(a.transaction_date));
+  const total = rows.reduce((s, c) => s + Number(c.amount), 0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      style={{ background: "rgba(0,0,0,.65)", backdropFilter: "blur(4px)" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full sm:max-w-2xl rounded-t-2xl sm:rounded-xl shadow-2xl flex flex-col max-h-[85vh]"
+        style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: "var(--border)" }}>
+          <div>
+            <h2 className="font-semibold text-sm">{title}</h2>
+            <p className="text-xs mt-0.5" style={{ color: "var(--muted2)" }}>
+              {rows.length} item{rows.length !== 1 ? "s" : ""} · {cur} {fmt(total)}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded text-lg" style={{ color: "var(--muted2)" }}>✕</button>
+        </div>
+
+        {/* Rows */}
+        <div className="overflow-y-auto flex-1">
+          {rows.length === 0 && (
+            <p className="p-8 text-center text-sm" style={{ color: "var(--muted2)" }}>No cost entries</p>
+          )}
+          {rows.map(c => (
+            <div key={c.id} className="flex flex-wrap items-center gap-3 px-5 py-3 border-b" style={{ borderColor: "var(--border)" }}>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                  <span className="text-xs font-semibold" style={{ color: "var(--accent)" }}>{c.transaction_date}</span>
+                  <span className="text-xs" style={{ color: "var(--muted2)" }}>{c.category_name || "Uncategorized"}</span>
+                  {c.cost_type !== "operational" && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold"
+                      style={{ background: `${NON_OPERATIONAL_BADGE[c.cost_type]}22`, color: NON_OPERATIONAL_BADGE[c.cost_type] }}>
+                      {COST_TYPE_LABELS[c.cost_type]}
+                    </span>
+                  )}
+                  {c.recouped === "Y" && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: "rgba(16,185,129,.15)", color: "var(--accent)" }}>Recouped</span>
+                  )}
+                </div>
+                <p className="text-xs truncate" style={{ color: "var(--muted)" }}>{c.cost_details || "—"}{c.account_name ? ` · ${c.account_name}` : ""}</p>
+              </div>
+              <span className="font-mono font-bold text-sm shrink-0" style={{ color: "var(--red-c)" }}>{cur} {fmt(c.amount)}</span>
+              <button
+                onClick={() => { onClose(); onEdit(c); }}
+                className="px-2.5 py-1 rounded text-xs shrink-0"
+                style={{ border: "1px solid var(--border)", background: "var(--card2)", color: "var(--muted2)" }}>
+                ✏️ Edit
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        {rows.length > 0 && (
+          <div className="px-5 py-3 border-t flex flex-wrap gap-4 text-xs shrink-0" style={{ borderColor: "var(--border)", background: "var(--card)" }}>
+            {[
+              ["OPEX (P&L)", rows.filter(c => c.include_in_pnl).reduce((s, c) => s + c.amount, 0), "var(--red-c)"],
+              ["Non-P&L", rows.filter(c => !c.include_in_pnl).reduce((s, c) => s + c.amount, 0), "var(--muted2)"],
+              ["Total", total, "var(--foreground)"],
+            ].map(([l, v, color]) => (
+              <div key={l as string}>
+                <span style={{ color: "var(--muted2)" }}>{l}: </span>
+                <span className="font-mono font-semibold" style={{ color: color as string }}>{cur} {fmt(v as number)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function fmt(n: number) { return Number(n).toLocaleString("en-ZA", { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
 function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
   if (!rows.length) return;
@@ -109,6 +191,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
   const [newIncludeInPnl, setNewIncludeInPnl] = useState(true);
   const [editCostType, setEditCostType] = useState<CostTypeValue>("operational");
   const [editIncludeInPnl, setEditIncludeInPnl] = useState(true);
+  const [drillDown, setDrillDown] = useState<CostDrillDown>(null);
 
   async function handleScanReceipt(file: File, mode: "new" | "edit") {
     setExtracting(true);
@@ -409,7 +492,9 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
       {view === "monthly" && (
         <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
           <div className="px-4 py-3 border-b" style={{ borderColor: "var(--border)", background: "var(--card2)" }}>
-            <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Monthly Costs by Category</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>
+              Monthly Costs by Category <span className="font-normal normal-case ml-1" style={{ color: "var(--muted2)" }}>— click any value to drill down</span>
+            </h3>
           </div>
           <div className="overflow-x-auto" style={{ background: "var(--card2)" }}>
             <table className="w-full text-xs border-collapse">
@@ -423,22 +508,63 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
               <tbody>
                 {cats.map(cat => {
                   const rowTotal = months.reduce((s, m) => s + (costByC[cat]?.[m] || 0), 0);
+                  const rowIds = costs.filter(c => (c.category_name || "Other") === cat).map(c => c.id);
                   return (
                     <tr key={cat} className="border-b" style={{ borderColor: "var(--border)" }}>
                       <td className="px-3 py-2 font-semibold sticky left-0 z-10" style={{ background: "var(--card2)" }}>{cat}</td>
                       {months.map(m => {
                         const v = costByC[cat]?.[m] || 0;
-                        return v ? <td key={m} className="px-3 py-2 text-right font-mono whitespace-nowrap" style={{ color: "var(--red-c)" }}>{cur} {fmt(v)}</td>
-                          : <td key={m} className="px-3 py-2 text-right" style={{ color: "var(--card3)" }}>—</td>;
+                        const cellIds = costs.filter(c => (c.category_name || "Other") === cat && c.transaction_date?.slice(0, 7) === m).map(c => c.id);
+                        return v ? (
+                          <td key={m} className="px-3 py-2 text-right font-mono whitespace-nowrap">
+                            <button
+                              onClick={() => setDrillDown({ title: `${cat} — ${mLabel(m)}`, ids: cellIds })}
+                              className="font-mono font-semibold hover:underline cursor-pointer rounded px-1 transition-colors hover:bg-[var(--card3)]"
+                              style={{ color: "var(--red-c)" }}>
+                              {cur} {fmt(v)}
+                            </button>
+                          </td>
+                        ) : <td key={m} className="px-3 py-2 text-right" style={{ color: "var(--card3)" }}>—</td>;
                       })}
-                      <td className="px-3 py-2 text-right font-mono font-bold" style={{ color: "var(--foreground)" }}>{cur} {fmt(rowTotal)}</td>
+                      <td className="px-3 py-2 text-right font-mono font-bold">
+                        {rowTotal > 0 ? (
+                          <button
+                            onClick={() => setDrillDown({ title: `${cat} — All months`, ids: rowIds })}
+                            className="font-mono font-bold hover:underline cursor-pointer rounded px-1 transition-colors hover:bg-[var(--card3)]"
+                            style={{ color: "var(--foreground)" }}>
+                            {cur} {fmt(rowTotal)}
+                          </button>
+                        ) : <span style={{ color: "var(--card3)" }}>—</span>}
+                      </td>
                     </tr>
                   );
                 })}
                 <tr className="border-t-2" style={{ borderColor: "var(--border2)" }}>
                   <td className="px-3 py-2 font-bold sticky left-0" style={{ background: "var(--card)" }}>Total</td>
-                  {months.map(m => <td key={m} className="px-3 py-2 text-right font-mono font-semibold whitespace-nowrap" style={{ color: "var(--red-c)" }}>{cur} {fmt(mTotals[m] || 0)}</td>)}
-                  <td className="px-3 py-2 text-right font-mono font-bold" style={{ color: "var(--red-c)" }}>{cur} {fmt(Object.values(mTotals).reduce((a, b) => a + b, 0))}</td>
+                  {months.map(m => {
+                    const v = mTotals[m] || 0;
+                    const colIds = costs.filter(c => c.transaction_date?.slice(0, 7) === m).map(c => c.id);
+                    return (
+                      <td key={m} className="px-3 py-2 text-right font-mono font-semibold whitespace-nowrap">
+                        {v > 0 ? (
+                          <button
+                            onClick={() => setDrillDown({ title: `All categories — ${mLabel(m)}`, ids: colIds })}
+                            className="font-mono font-semibold hover:underline cursor-pointer rounded px-1 transition-colors hover:bg-[var(--card3)]"
+                            style={{ color: "var(--red-c)" }}>
+                            {cur} {fmt(v)}
+                          </button>
+                        ) : <span style={{ color: "var(--card3)" }}>—</span>}
+                      </td>
+                    );
+                  })}
+                  <td className="px-3 py-2 text-right font-mono font-bold">
+                    <button
+                      onClick={() => setDrillDown({ title: "All costs — full period", ids: costs.filter(c => months.includes(c.transaction_date?.slice(0, 7) ?? "")).map(c => c.id) })}
+                      className="font-mono font-bold hover:underline cursor-pointer rounded px-1 transition-colors hover:bg-[var(--card3)]"
+                      style={{ color: "var(--red-c)" }}>
+                      {cur} {fmt(Object.values(mTotals).reduce((a, b) => a + b, 0))}
+                    </button>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -723,6 +849,23 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
             </form>
           </div>
         </div>
+      )}
+      {drillDown && (
+        <CostDrillDownModal
+          title={drillDown.title}
+          ids={drillDown.ids}
+          costs={costs}
+          cur={cur}
+          onClose={() => setDrillDown(null)}
+          onEdit={c => {
+            setDrillDown(null);
+            setEditCostDate(c.transaction_date.slice(0, 10));
+            setEditApportion(c.apportion_to_customers);
+            setEditCostType(c.cost_type as CostTypeValue);
+            setEditIncludeInPnl(c.include_in_pnl);
+            setEditCost(c);
+          }}
+        />
       )}
       <ConfirmDialog {...dialogProps} confirmLabel="Delete" />
     </div>

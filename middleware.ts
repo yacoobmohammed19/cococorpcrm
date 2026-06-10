@@ -12,21 +12,13 @@ export async function middleware(request: NextRequest) {
   const response = await updateSession(request);
   const { pathname } = request.nextUrl;
 
-  // Only apply role guard to app routes
-  const isAppRoute =
-    !pathname.startsWith("/login") &&
-    !pathname.startsWith("/signup") &&
-    !pathname.startsWith("/reset-password") &&
-    !pathname.startsWith("/onboarding") &&
-    !pathname.startsWith("/invite") &&
-    !pathname.startsWith("/api") &&
-    !pathname.startsWith("/_next");
-
-  if (!isAppRoute) return response;
+  // Only run the role guard when the path is actually operator-restricted —
+  // avoids two DB round-trips on every dashboard/leads/customers navigation.
+  if (!OPERATOR_BLOCKED.some(p => pathname.startsWith(p))) return response;
 
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return response; // layout/auth will handle redirect
+  if (!user) return response;
 
   const orgId = String(user.user_metadata?.active_org_id ?? "");
   if (!orgId) return response;
@@ -38,10 +30,7 @@ export async function middleware(request: NextRequest) {
     .eq("org_id", orgId)
     .single();
 
-  if (
-    membership?.role === "operator" &&
-    OPERATOR_BLOCKED.some(p => pathname.startsWith(p))
-  ) {
+  if (membership?.role === "operator") {
     return NextResponse.redirect(new URL("/leads", request.url));
   }
 

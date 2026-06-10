@@ -269,6 +269,7 @@ type Props = {
 };
 
 const STATUS_COLORS: Record<number, string> = { 1: "var(--pink)", 2: "var(--amber-c)", 3: "var(--accent)", 4: "var(--red-c)", 5: "var(--muted2)" };
+function isClosedStatus(name: string) { const n = name.toLowerCase(); return n.includes("won") || n.includes("lost") || n.includes("closed"); }
 function fmt(n: number | null) { return n == null ? "0" : Number(n).toLocaleString("en-ZA", { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
 function fdate(d: string | null) { if (!d) return "—"; try { return new Date(d).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", year: "2-digit" }); } catch { return "—"; } }
 function pct(n: number | null) { if (!n) return "0%"; return `${Number(n)}%`; }
@@ -294,6 +295,10 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
   const [modal, setModal] = useState<{ open: boolean; lead: Lead | null }>({ open: false, lead: null });
   const [busy, setBusy] = useState(false);
   const [kanbanMode, setKanbanMode] = useState<"standard" | "pipeline">("standard");
+  const [closedExpanded, setClosedExpanded] = useState(false);
+  const [collapsedCols, setCollapsedCols] = useState<Set<number>>(
+    () => new Set(statuses.filter(s => isClosedStatus(s.name)).map(s => s.id))
+  );
   const dragId = useRef<number | null>(null);
 
   const [funnelState, setFunnelState] = useState<FunnelState>({ contacted: false, responded: false, developed: false, completed: false });
@@ -372,7 +377,11 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
   const inputStyle = "w-full px-3 py-2 rounded border text-sm outline-none focus:ring-1 focus:ring-[var(--accent)]";
   const inputCss = { background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" };
 
-  const pipelineTotal = leads.reduce((s, l) => s + (l.opportunity_weighted ?? 0), 0);
+  const openLeads = leads.filter(l => {
+    const st = statuses.find(s => s.id === l.status_id);
+    return !isClosedStatus(st?.name ?? "");
+  });
+  const pipelineTotal = openLeads.reduce((s, l) => s + (l.opportunity_weighted ?? 0), 0);
 
   return (
     <div>
@@ -381,7 +390,7 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Leads</h1>
           <p className="text-sm mt-0.5" style={{ color: "var(--muted2)" }}>
-            {leads.length} leads · {cur} {fmt(pipelineTotal)} weighted pipeline
+            {leads.length} leads · {cur} {fmt(pipelineTotal)} open weighted pipeline
           </p>
         </div>
         <div className="flex gap-2">
@@ -454,11 +463,20 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
       </div>
 
       {/* TABLE VIEW */}
-      {view === "table" && (
+      {view === "table" && (() => {
+        const activeFiltered = filtered.filter(l => {
+          const st = statuses.find(s => s.id === l.status_id);
+          return !isClosedStatus(st?.name ?? "");
+        });
+        const closedFiltered = filtered.filter(l => {
+          const st = statuses.find(s => s.id === l.status_id);
+          return isClosedStatus(st?.name ?? "");
+        });
+        return (
         <>
           {/* Mobile Cards */}
           <div className="sm:hidden space-y-3">
-            {filtered.map(l => {
+            {activeFiltered.map(l => {
               const st = statuses.find(s => s.id === l.status_id);
               const stColor = STATUS_COLORS[l.status_id ?? 0] || "var(--muted2)";
               return (
@@ -498,9 +516,44 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
                 </div>
               );
             })}
-            {filtered.length === 0 && (
-              <EmptyState icon="🎯" title={search || statusFilter ? "No leads match your filters" : "No leads yet"} description={search || statusFilter ? "Try adjusting your filters." : "Add your first lead to start tracking your pipeline."} />
+            {activeFiltered.length === 0 && closedFiltered.length === 0 && (
+              <EmptyState icon="🎯" title={search || statusFilter.length > 0 ? "No leads match your filters" : "No leads yet"} description={search || statusFilter.length > 0 ? "Try adjusting your filters." : "Add your first lead to start tracking your pipeline."} />
             )}
+
+            {/* Collapsed closed leads section on mobile */}
+            {closedFiltered.length > 0 && (
+              <button
+                onClick={() => setClosedExpanded(v => !v)}
+                className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-semibold mt-2"
+                style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted2)" }}
+              >
+                <span>{closedExpanded ? "▼" : "▶"} Closed leads ({closedFiltered.length})</span>
+                <span style={{ color: "var(--muted2)" }}>{closedExpanded ? "Collapse" : "Show"}</span>
+              </button>
+            )}
+            {closedExpanded && closedFiltered.map(l => {
+              const st = statuses.find(s => s.id === l.status_id);
+              const stColor = STATUS_COLORS[l.status_id ?? 0] || "var(--muted2)";
+              return (
+                <div key={l.id} className="rounded-2xl p-4 opacity-75" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex-1 mr-3">
+                      <p className="font-bold text-base leading-tight">{l.name}</p>
+                      {l.contact && <p className="text-xs mt-0.5" style={{ color: "var(--muted2)" }}>👤 {l.contact}</p>}
+                    </div>
+                    {st && <span className="shrink-0 px-2 py-1 rounded-full text-xs font-bold" style={{ background: stColor + "22", color: stColor }}>{st.name}</span>}
+                  </div>
+                  <div className="flex gap-2 pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+                    <button onClick={() => openModal(l)} className="flex items-center gap-1.5 flex-1 justify-center py-2 rounded-lg text-xs font-semibold" style={{ background: "var(--card2)", border: "1px solid var(--border)", color: "var(--muted)" }}>
+                      <Pencil size={12} /> Edit
+                    </button>
+                    <button onClick={() => handleDelete(l.id)} className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: "var(--danger-bg)", color: "var(--red-c)" }}>
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           {/* Desktop Table */}
@@ -515,7 +568,7 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(l => {
+                  {activeFiltered.map(l => {
                     const st = statuses.find(s => s.id === l.status_id);
                     const stColor = STATUS_COLORS[l.status_id ?? 0] || "var(--muted2)";
                     return (
@@ -552,15 +605,65 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
                       </tr>
                     );
                   })}
-                  {filtered.length === 0 && (
-                    <tr><td colSpan={8}><EmptyState icon="🎯" title={search || statusFilter ? "No leads match your filters" : "No leads yet"} description={search || statusFilter ? "Try adjusting your filters." : "Add your first lead to start tracking your pipeline."} /></td></tr>
+                  {activeFiltered.length === 0 && closedFiltered.length === 0 && (
+                    <tr><td colSpan={9}><EmptyState icon="🎯" title={search || statusFilter.length > 0 ? "No leads match your filters" : "No leads yet"} description={search || statusFilter.length > 0 ? "Try adjusting your filters." : "Add your first lead to start tracking your pipeline."} /></td></tr>
                   )}
+                  {/* Closed leads collapsible section */}
+                  {closedFiltered.length > 0 && (
+                    <tr>
+                      <td colSpan={9}>
+                        <button
+                          onClick={() => setClosedExpanded(v => !v)}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-semibold transition-colors hover:bg-[var(--card3)]"
+                          style={{ color: "var(--muted2)", background: "var(--card)", borderTop: "1px solid var(--border)" }}
+                        >
+                          <span style={{ transition: "transform 0.15s", display: "inline-block", transform: closedExpanded ? "rotate(90deg)" : "rotate(0deg)" }}>▶</span>
+                          Closed leads ({closedFiltered.length}) — Won / Lost
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                  {closedExpanded && closedFiltered.map(l => {
+                    const st = statuses.find(s => s.id === l.status_id);
+                    const stColor = STATUS_COLORS[l.status_id ?? 0] || "var(--muted2)";
+                    return (
+                      <tr key={l.id} className="border-b hover:bg-[var(--card3)] opacity-70" style={{ borderColor: "var(--border)", background: "var(--card)" }}>
+                        <td className="px-3 py-2 whitespace-nowrap" style={{ color: "var(--muted2)" }}>{fdate(l.lead_date)}</td>
+                        <td className="px-3 py-2 font-medium max-w-[160px] truncate">{l.name}</td>
+                        <td className="px-3 py-2">
+                          {st && <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: stColor + "22", color: stColor }}>{st.name}</span>}
+                        </td>
+                        <td className="px-3 py-2 max-w-[120px]">
+                          {l.product_id && products.find(p => p.id === l.product_id) && (
+                            <span className="px-2 py-0.5 rounded text-xs truncate block" style={{ background: "rgba(139,92,246,.15)", color: "var(--purple-c)", border: "1px solid rgba(139,92,246,.3)" }}>
+                              {products.find(p => p.id === l.product_id)!.name}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 font-mono whitespace-nowrap">{cur} {fmt(l.opportunity_value)}</td>
+                        <td className="px-3 py-2">{pct(l.weight)}</td>
+                        <td className="px-3 py-2 font-mono whitespace-nowrap" style={{ color: "var(--muted2)" }}>—</td>
+                        <td className="px-3 py-2"><MiniStepper lead={l} /></td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => openModal(l)} title="Edit" className="w-7 h-7 rounded-md flex items-center justify-center transition-colors hover:bg-[var(--card3)]" style={{ color: "var(--muted2)", border: "1px solid var(--border)" }}>
+                              <Pencil size={12} />
+                            </button>
+                            <button onClick={() => handleDelete(l.id)} title="Archive" className="w-7 h-7 rounded-md flex items-center justify-center" style={{ color: "var(--red-c)", background: "var(--danger-bg)" }}>
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
         </>
-      )}
+        );
+      })()}
 
       {/* KANBAN VIEW */}
       {view === "kanban" && (
@@ -587,37 +690,53 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
               const stColor = STATUS_COLORS[status.id] || "var(--muted2)";
               const colWeighted = colLeads.reduce((s, l) => s + (l.opportunity_weighted ?? 0), 0);
               const colOpp = colLeads.reduce((s, l) => s + (l.opportunity_value ?? 0), 0);
+              const isClosed = isClosedStatus(status.name);
+              const isColCollapsed = collapsedCols.has(status.id);
 
               return (
                 <div key={status.id} data-kcol={status.id}
                   className="shrink-0 rounded-lg w-64"
-                  style={{ background: "var(--card)", border: "1px solid var(--border)", minHeight: 200 }}
+                  style={{ background: "var(--card)", border: "1px solid var(--border)", minHeight: isColCollapsed ? 0 : 200, opacity: isClosed ? 0.75 : 1 }}
                   onDragOver={e => { e.preventDefault(); (e.currentTarget as HTMLElement).style.background = "rgba(16,185,129,.08)"; (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)"; }}
                   onDragLeave={e => { (e.currentTarget as HTMLElement).style.background = "var(--card)"; (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; }}
                   onDrop={async e => { (e.currentTarget as HTMLElement).style.background = "var(--card)"; (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; await handleStatusDrop(e, status.id); }}>
 
                   {/* Column header */}
                   {kanbanMode === "standard" ? (
-                    <div className="px-3 py-2.5 border-b flex justify-between items-center" style={{ borderColor: "var(--border)", borderTop: `3px solid ${stColor}` }}>
-                      <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: stColor }}>{status.name}</span>
-                      <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: "var(--card2)", color: "var(--muted2)" }}>{colLeads.length}</span>
+                    <div className="px-3 py-2.5 border-b flex justify-between items-center cursor-pointer select-none"
+                      style={{ borderColor: "var(--border)", borderTop: `3px solid ${stColor}` }}
+                      onClick={isClosed ? () => setCollapsedCols(prev => { const next = new Set(prev); next.has(status.id) ? next.delete(status.id) : next.add(status.id); return next; }) : undefined}
+                    >
+                      <span className="text-xs font-semibold uppercase tracking-wider truncate" style={{ color: stColor }}>{status.name}</span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: "var(--card2)", color: "var(--muted2)" }}>{colLeads.length}</span>
+                        {isClosed && <span className="text-[10px]" style={{ color: "var(--muted2)" }}>{isColCollapsed ? "▶" : "▼"}</span>}
+                      </div>
                     </div>
                   ) : (
-                    <div className="px-3 pt-3 pb-2.5 border-b" style={{ borderColor: "var(--border)", borderTop: `3px solid ${stColor}` }}>
+                    <div className="px-3 pt-3 pb-2.5 border-b cursor-pointer select-none"
+                      style={{ borderColor: "var(--border)", borderTop: `3px solid ${stColor}` }}
+                      onClick={isClosed ? () => setCollapsedCols(prev => { const next = new Set(prev); next.has(status.id) ? next.delete(status.id) : next.add(status.id); return next; }) : undefined}
+                    >
                       <div className="flex justify-between items-center mb-1">
-                        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: stColor }}>{status.name}</span>
-                        <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: "var(--card2)", color: "var(--muted2)" }}>{colLeads.length}</span>
+                        <span className="text-xs font-semibold uppercase tracking-wider truncate" style={{ color: stColor }}>{status.name}</span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: "var(--card2)", color: "var(--muted2)" }}>{colLeads.length}</span>
+                          {isClosed && <span className="text-[10px]" style={{ color: "var(--muted2)" }}>{isColCollapsed ? "▶" : "▼"}</span>}
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Weighted Pipeline</p>
-                        <p className="text-base font-bold font-mono" style={{ color: "var(--purple-c)" }}>{cur} {fmt(colWeighted)}</p>
-                        <p className="text-[10px] font-mono" style={{ color: "var(--muted2)" }}>of {cur} {fmt(colOpp)} total opp</p>
-                      </div>
+                      {!isColCollapsed && (
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Weighted Pipeline</p>
+                          <p className="text-base font-bold font-mono" style={{ color: "var(--purple-c)" }}>{cur} {fmt(colWeighted)}</p>
+                          <p className="text-[10px] font-mono" style={{ color: "var(--muted2)" }}>of {cur} {fmt(colOpp)} total opp</p>
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  {/* Cards */}
-                  <div className="p-2 space-y-2">
+                  {/* Cards — hidden when collapsed */}
+                  {!isColCollapsed && <div className="p-2 space-y-2">
                     {colLeads.map(l => (
                       <div key={l.id} draggable
                         onDragStart={() => { dragId.current = l.id; }}
@@ -663,7 +782,7 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
                     {colLeads.length === 0 && (
                       <p className="text-xs text-center py-4 italic" style={{ color: "var(--muted2)" }}>Empty</p>
                     )}
-                  </div>
+                  </div>}
                 </div>
               );
             })}

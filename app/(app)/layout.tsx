@@ -1,20 +1,23 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createServerClient } from "@/lib/supabase/server";
+import { getServerUser } from "@/lib/supabase/org";
+import { getCachedDimensions } from "@/lib/supabase/cache";
 import { setActiveOrganization, signout } from "@/server-actions/auth";
 import { CollapsibleSidebar } from "@/components/CollapsibleSidebar";
 import { BotNav } from "@/components/SideNav";
 import { MobileHeader } from "@/components/MobileHeader";
+import { UserProfileMenu } from "@/components/OrgSwitcher";
 import { FAB } from "@/components/FAB";
 import { FABProvider } from "@/components/FABContext";
 import { ToastProvider } from "@/components/Toast";
 import { AiAssistant } from "@/components/AiAssistant";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getServerUser();
   if (!user) redirect("/login");
 
+  const supabase = await createServerClient();
   const { data: memberships } = await supabase
     .from("memberships")
     .select("org_id, role, organizations(name)")
@@ -31,13 +34,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Resolve current role for the active org
   const currentRole = memberships.find(m => String(m.org_id) === activeOrgId)?.role ?? null;
 
-  const [{ data: accounts }, { data: customers }, { data: payTypes }, { data: statuses }, { data: costCats }] = await Promise.all([
-    supabase.from("dim_accounts").select("id, name").eq("org_id", activeOrgId).order("name"),
-    supabase.from("dim_customers").select("id, name").eq("org_id", activeOrgId).is("deleted_at", null).order("name"),
-    supabase.from("dim_payment_types").select("id, name").eq("org_id", activeOrgId).order("name"),
-    supabase.from("dim_statuses").select("id, name").eq("org_id", activeOrgId).order("id"),
-    supabase.from("dim_cost_categories").select("id, name").eq("org_id", activeOrgId).order("name"),
-  ]);
+  const { accounts, customers, paymentTypes: payTypes, statuses, costCategories: costCats } =
+    await getCachedDimensions(activeOrgId);
 
   // Resolve org name safely — Supabase returns joined records as objects for m:1 joins
   const orgs = (memberships ?? []).map(m => {
@@ -57,23 +55,41 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <CollapsibleSidebar
         userEmail={user.email ?? ""}
         userName={userName}
-        orgs={orgs}
-        activeOrgId={activeOrgId}
         role={currentRole}
-        setActiveOrganization={setActiveOrganization}
         signout={signout}
       />
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Mobile header with slide-out drawer */}
+        {/* Mobile header — hamburger + profile menu in one bar */}
         <MobileHeader
-          orgs={orgs}
-          activeOrgId={activeOrgId}
           role={currentRole}
-          setActiveOrganization={setActiveOrganization}
-          signout={signout}
+          profileMenu={
+            <UserProfileMenu
+              orgs={orgs}
+              activeOrgId={activeOrgId}
+              userEmail={user.email ?? ""}
+              userName={userName}
+              setActiveOrganization={setActiveOrganization}
+              signout={signout}
+            />
+          }
         />
+
+        {/* Desktop top bar — profile menu top-right */}
+        <header
+          className="hidden md:flex items-center justify-end px-6 py-2 border-b shrink-0 sticky top-0 z-30"
+          style={{ background: "var(--background)", borderColor: "var(--border)", height: 48 }}
+        >
+          <UserProfileMenu
+            orgs={orgs}
+            activeOrgId={activeOrgId}
+            userEmail={user.email ?? ""}
+            userName={userName}
+            setActiveOrganization={setActiveOrganization}
+            signout={signout}
+          />
+        </header>
 
         <FABProvider>
           <ToastProvider>

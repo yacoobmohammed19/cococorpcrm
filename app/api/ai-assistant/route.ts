@@ -6,6 +6,22 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 const S = SchemaType;
 
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+async function sendWithRetry<T>(fn: () => Promise<T>): Promise<T> {
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await fn();
+    } catch (e: unknown) {
+      const err = e as { status?: number; message?: string };
+      const is503 = err.status === 503 || /503|Service Unavailable|high demand/i.test(err.message || "");
+      if (is503 && i < 2) { await sleep(1500 * (i + 1)); continue; }
+      throw e;
+    }
+  }
+  throw new Error("unreachable");
+}
+
 // Detect obvious prompt injection attempts in user input.
 const INJECTION_PATTERNS = [
   /ignore\s+(all\s+)?previous\s+(instructions|rules|prompts)/i,
@@ -67,6 +83,35 @@ const BASE_SYSTEM_PROMPT = `You are Coco, a smart AI assistant built into CocoCR
 - Do NOT use ### headers or horizontal rules (---) in conversational replies. Only use a short heading if presenting a structured report with 4+ sections.
 - Do NOT use *** for bold-italic. Use ** bold or plain text instead.
 - Never pad responses with filler phrases like "Great question!" or "Certainly!".
+
+## Chart generation
+When the user asks for a chart, graph, or visual, you MUST:
+1. Call get_financial_summary (for revenue/profit/costs/trends) or get_customer_balances (for customer breakdowns) FIRST
+2. Write your text answer
+3. Append a chart spec code block IMMEDIATELY after your text
+
+Chart spec format — use EXACTLY this structure:
+\`\`\`chart
+{"type":"bar","title":"Revenue Last 6 Months","xKey":"label","yKey":"value","data":[{"label":"Jan 25","value":45000},{"label":"Feb 25","value":52000}]}
+\`\`\`
+
+STRICT rules:
+- type must be "bar", "line", or "pie"  — "line" for time-series trends, "bar" for comparisons, "pie" for proportions
+- xKey MUST be the string "label"
+- yKey MUST be the string "value"
+- Every data point MUST be {"label": "<string>", "value": <number>} — no other keys
+- Shorten month labels: "2025-01" → "Jan 25", "2025-06" → "Jun 25"
+- Max 12 data points; aggregate the rest into "Other"
+- Do NOT include any text or explanation inside the \`\`\`chart block — only the JSON
+
+Data mapping from get_financial_summary.monthlyBreakdown:
+- Revenue chart: {"label": shortened_month, "value": row.revenue}
+- Costs chart: {"label": shortened_month, "value": row.costs}
+- Profit chart: {"label": shortened_month, "value": row.profit}
+
+Data mapping from get_customer_balances.customers:
+- Outstanding chart: {"label": customer.name, "value": customer.outstanding}
+- Revenue chart: {"label": customer.name, "value": customer.paid}
 
 ## Memory rules
 - When the user says "remember", "keep in mind", "note that", or similar — call save_memory with exactly what they want remembered.
@@ -716,16 +761,17 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const orgId = await getCurrentOrgId();
-    const { messages } = (await req.json()) as {
+    const { messages, proactive } = (await req.json()) as {
       messages: { role: "user" | "assistant"; content: string }[];
+      proactive?: boolean;
     };
 
-    if (!messages?.length) {
+    if (!proactive && !messages?.length) {
       return NextResponse.json({ error: "No messages provided" }, { status: 400 });
     }
 
     // Reject obvious prompt injection attempts
-    const userInput = messages[messages.length - 1].content;
+    const userInput = proactive ? "" : messages[messages.length - 1].content;
     if (hasInjectionAttempt(userInput)) {
       return NextResponse.json({
         reply: "I can only help with CRM tasks — managing customers, invoices, leads, costs, and business data. What would you like to do?",
@@ -777,15 +823,27 @@ LIVE BUSINESS SNAPSHOT (${new Date().toISOString().slice(0, 10)}):
       systemInstruction: systemPrompt,
     });
 
-    const history = messages.slice(0, -1).map(m => ({
-      role: m.role === "user" ? "user" : "model",
+    let history = (proactive ? [] : messages.slice(0, -1)).map(m => ({
+      role: (m.role === "user" ? "user" : "model") as "user" | "model",
       parts: [{ text: m.content }] as Part[],
     }));
+    // Gemini requires history to start with a user turn
+    if (history.length > 0 && history[0].role === "model") {
+      history = [{ role: "user", parts: [{ text: "[session started]" }] as Part[] }, ...history];
+    }
 
     const chat = model.startChat({ history });
-    const lastMessage = messages[messages.length - 1].content;
+    const lastMessage = proactive
+      ? `You are starting a new conversation. The user has just opened Coco AI.
+Call get_financial_summary with period_months=1 and get_dashboard_stats to fetch their live data.
+Then write a warm, concise proactive greeting (2–3 sentences max) that:
+- Mentions the single most important metric or alert (e.g. revenue, overdue invoices, pipeline, stale leads)
+- Is specific with numbers
+- Ends with exactly 2 short suggested follow-up questions the user might want to ask (written as natural sentences on separate lines, e.g. "Want me to show which invoices are overdue?" or "Should I chart your revenue trend?")
+No bullet points. No headers. No filler phrases.`
+      : messages[messages.length - 1].content;
 
-    let result = await chat.sendMessage(lastMessage);
+    let result = await sendWithRetry(() => chat.sendMessage(lastMessage));
 
     // Agentic loop: resolve read tool calls; pause on first write tool call for user approval.
     let iterations = 0;
@@ -823,7 +881,7 @@ LIVE BUSINESS SNAPSHOT (${new Date().toISOString().slice(0, 10)}):
         toolParts.push({ functionResponse: { name: call.name, response: { output } } } as Part);
       }
 
-      result = await chat.sendMessage(toolParts);
+      result = await sendWithRetry(() => chat.sendMessage(toolParts));
     }
 
     const reply = result.response.text();
@@ -833,6 +891,9 @@ LIVE BUSINESS SNAPSHOT (${new Date().toISOString().slice(0, 10)}):
     const err = e as { status?: number; message?: string };
     if (err.status === 429) {
       return NextResponse.json({ error: "Rate limit reached — please wait a moment and try again." }, { status: 429 });
+    }
+    if (err.status === 503 || /503|Service Unavailable|high demand/i.test(err.message || "")) {
+      return NextResponse.json({ error: "AI service is temporarily busy", overloaded: true }, { status: 503 });
     }
     const msg = err.message || String(e);
     return NextResponse.json({ error: `AI error: ${msg}` }, { status: 500 });

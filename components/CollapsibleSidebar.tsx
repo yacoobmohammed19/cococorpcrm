@@ -1,20 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { ChevronLeft, ChevronRight, ChevronDown, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { SideNav } from "@/components/SideNav";
 import { ThemeToggle } from "@/components/ThemeToggle";
-
-type Org = { org_id: string; name: string };
 
 type Props = {
   userEmail: string;
   userName: string;
-  orgs: Org[];
-  activeOrgId: string;
   role: string | null;
-  setActiveOrganization: (formData: FormData) => Promise<void>;
   signout: () => Promise<void>;
 };
 
@@ -23,17 +17,8 @@ function readCollapsed(): boolean {
   try { return localStorage.getItem("sidebar_collapsed") === "true"; } catch { return false; }
 }
 
-export function CollapsibleSidebar({
-  userEmail,
-  userName,
-  orgs,
-  activeOrgId,
-  role,
-  setActiveOrganization,
-  signout,
-}: Props) {
+export function CollapsibleSidebar({ userEmail, userName, role, signout }: Props) {
   const [collapsed, setCollapsed] = useState(() => readCollapsed());
-  const [orgOpen, setOrgOpen] = useState(false);
 
   const toggle = () => {
     const next = !collapsed;
@@ -104,7 +89,7 @@ export function CollapsibleSidebar({
           <ThemeToggle collapsed={collapsed} />
         </div>
 
-        {/* Profile + org switcher */}
+        {/* Profile + sign out */}
         {!collapsed && (
           <div className="px-3 py-2.5 space-y-2">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -115,120 +100,19 @@ export function CollapsibleSidebar({
                 {initial}
               </div>
               <div className="min-w-0">
-                <p
-                  className="text-xs font-semibold truncate"
-                  style={{ color: "var(--sidebar-fg-active)" }}
-                >
+                <p className="text-xs font-semibold truncate" style={{ color: "var(--sidebar-fg-active)" }}>
                   {userName || "User"}
                 </p>
-                <p
-                  className="text-[11px] truncate"
-                  style={{ color: "var(--sidebar-fg)" }}
-                >
+                <p className="text-[11px] truncate" style={{ color: "var(--sidebar-fg)" }}>
                   {userEmail}
                 </p>
               </div>
             </div>
 
-            {/* Org switcher */}
-            <div>
-              {/* Current org button */}
-              <button
-                onClick={() => orgs.length > 1 && setOrgOpen(o => !o)}
-                className="w-full flex items-center gap-2 rounded-lg px-2 py-2 text-xs transition-colors"
-                style={{
-                  background: orgOpen ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)",
-                  border: "1px solid var(--sidebar-border)",
-                  cursor: orgs.length > 1 ? "pointer" : "default",
-                }}
-              >
-                {/* Org initials */}
-                <div
-                  className="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black shrink-0"
-                  style={{ background: "rgba(16,185,129,0.2)", color: "var(--sidebar-indicator)" }}
-                >
-                  {(orgs.find(o => o.org_id === activeOrgId)?.name ?? orgs[0]?.name ?? "").slice(0, 1).toUpperCase()}
-                </div>
-                <span className="flex-1 text-left truncate font-semibold" style={{ color: "var(--sidebar-fg-active)" }}>
-                  {orgs.find(o => o.org_id === activeOrgId)?.name ?? orgs[0]?.name ?? ""}
-                </span>
-                {orgs.length > 1 && (
-                  <ChevronDown
-                    size={12}
-                    style={{
-                      color: "var(--sidebar-fg)",
-                      transform: orgOpen ? "rotate(180deg)" : undefined,
-                      transition: "transform 0.15s",
-                    }}
-                  />
-                )}
-              </button>
-
-              {/* Expanded org list */}
-              {orgOpen && orgs.length > 1 && (
-                <div
-                  className="mt-1 rounded-lg overflow-hidden"
-                  style={{ border: "1px solid var(--sidebar-border)", background: "rgba(0,0,0,0.25)" }}
-                >
-                  {orgs.map(o => {
-                    const isActive = o.org_id === activeOrgId;
-                    return isActive ? (
-                      <div
-                        key={o.org_id}
-                        className="flex items-center gap-2 px-2.5 py-2 text-xs"
-                        style={{ color: "var(--sidebar-indicator)" }}
-                      >
-                        <div
-                          className="w-4 h-4 rounded flex items-center justify-center text-[9px] font-black shrink-0"
-                          style={{ background: "rgba(16,185,129,0.2)" }}
-                        >
-                          {o.name.slice(0, 1).toUpperCase()}
-                        </div>
-                        <span className="flex-1 truncate font-semibold">{o.name}</span>
-                        <span className="text-[9px] font-bold uppercase tracking-wider opacity-70">Active</span>
-                      </div>
-                    ) : (
-                      <form key={o.org_id} action={setActiveOrganization}>
-                        <input type="hidden" name="org_id" value={o.org_id} />
-                        <button
-                          type="submit"
-                          className="w-full flex items-center gap-2 px-2.5 py-2 text-xs transition-colors hover:bg-white/[0.06]"
-                          style={{ color: "var(--sidebar-fg)" }}
-                        >
-                          <div
-                            className="w-4 h-4 rounded flex items-center justify-center text-[9px] font-black shrink-0"
-                            style={{ background: "rgba(255,255,255,0.06)" }}
-                          >
-                            {o.name.slice(0, 1).toUpperCase()}
-                          </div>
-                          <span className="flex-1 truncate text-left">{o.name}</span>
-                        </button>
-                      </form>
-                    );
-                  })}
-                  <Link
-                    href="/settings/management"
-                    onClick={() => setOrgOpen(false)}
-                    className="flex items-center gap-2 px-2.5 py-2 text-xs transition-colors hover:bg-white/[0.06]"
-                    style={{
-                      color: "var(--sidebar-fg)",
-                      borderTop: "1px solid var(--sidebar-border)",
-                    }}
-                  >
-                    <Plus size={11} />
-                    New organisation
-                  </Link>
-                </div>
-              )}
-            </div>
-
             <form action={signout}>
               <button
                 className="w-full text-xs rounded-md px-2 py-1.5 border text-left transition-colors hover:bg-white/[0.06]"
-                style={{
-                  borderColor: "var(--sidebar-border)",
-                  color: "var(--sidebar-fg)",
-                }}
+                style={{ borderColor: "var(--sidebar-border)", color: "var(--sidebar-fg)" }}
               >
                 Sign out
               </button>

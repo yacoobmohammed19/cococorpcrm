@@ -3,6 +3,10 @@
 import { useState, useRef, useEffect, useCallback, useLayoutEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  LineChart, Line, PieChart, Pie, Cell,
+} from "recharts";
 
 export type Message = { role: "user" | "assistant"; content: string };
 
@@ -12,13 +16,84 @@ type PendingAction = {
   label: string;
 };
 
+// ── Chart rendering ───────────────────────────────────────────────────────────
+
+type ChartSpec = { type: "bar" | "line" | "pie"; title?: string; xKey: string; yKey: string; data: Record<string, unknown>[] };
+const CHART_COLORS = ["#10b981","#e84393","#8b5cf6","#f59e0b","#06b6d4","#ef4444","#84cc16","#f97316"];
+const TT_STYLE = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 };
+const TICK_STYLE = { fontSize: 10, fill: "var(--muted2)" };
+
+function ChartBlock({ spec }: { spec: ChartSpec }) {
+  const h = Math.max(160, Math.min(spec.data.length * 20, 220));
+  if (spec.type === "pie") return (
+    <ResponsiveContainer width="100%" height={200}>
+      <PieChart>
+        <Pie data={spec.data} dataKey={spec.yKey} nameKey={spec.xKey} cx="50%" cy="50%" outerRadius={70}>
+          {spec.data.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+        </Pie>
+        <Tooltip contentStyle={TT_STYLE} />
+      </PieChart>
+    </ResponsiveContainer>
+  );
+  if (spec.type === "line") return (
+    <ResponsiveContainer width="100%" height={h}>
+      <LineChart data={spec.data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+        <XAxis dataKey={spec.xKey} tick={TICK_STYLE} axisLine={false} tickLine={false} />
+        <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
+        <Tooltip contentStyle={TT_STYLE} />
+        <Line type="monotone" dataKey={spec.yKey} stroke={CHART_COLORS[0]} strokeWidth={2} dot={false} />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+  return (
+    <ResponsiveContainer width="100%" height={h}>
+      <BarChart data={spec.data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+        <XAxis dataKey={spec.xKey} tick={TICK_STYLE} axisLine={false} tickLine={false} />
+        <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
+        <Tooltip contentStyle={TT_STYLE} />
+        <Bar dataKey={spec.yKey} radius={[3,3,0,0]}>
+          {spec.data.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+function normalizeChartSpec(spec: ChartSpec): ChartSpec {
+  if (!spec.data?.length) return spec;
+  const sample = spec.data[0];
+  // If xKey/yKey already exist in data, no change needed
+  if (sample[spec.xKey] !== undefined && sample[spec.yKey] !== undefined) return spec;
+  // AI used different key names — auto-detect: first string key = label, first number key = value
+  const keys = Object.keys(sample);
+  const numKey = keys.find(k => typeof sample[k] === "number") ?? keys[keys.length - 1];
+  const strKey = keys.find(k => k !== numKey) ?? keys[0];
+  return { ...spec, xKey: strKey, yKey: numKey };
+}
+
+function parseChartBlock(content: string): { text: string; chart: ChartSpec | null } {
+  const match = content.match(/```chart\s*([\s\S]+?)\s*```/);
+  if (!match) return { text: content, chart: null };
+  const text = content.replace(/```chart[\s\S]+?```/, "").trim();
+  try {
+    const raw = JSON.parse(match[1]) as ChartSpec;
+    if (raw.type && Array.isArray(raw.data) && raw.data.length) {
+      const chart = normalizeChartSpec(raw);
+      return { text, chart };
+    }
+  } catch { /* ignore */ }
+  return { text, chart: null };
+}
+
 const QUICK_ACTIONS = [
+  "Chart revenue last 6 months",
+  "Chart profit trend",
+  "Chart costs by category",
   "What's our revenue this month?",
-  "Create a new lead",
-  "Raise an invoice",
-  "Log a cost",
   "Show pending invoices",
-  "What's our profit?",
+  "Create a new lead",
 ];
 
 const TOOL_FIELD_LABELS: Record<string, string> = {
@@ -71,6 +146,7 @@ const mdComponents: React.ComponentProps<typeof ReactMarkdown>["components"] = {
 
 function MessageBubble({ msg }: { msg: Message }) {
   const isUser = msg.role === "user";
+  const { text, chart } = isUser ? { text: msg.content, chart: null } : parseChartBlock(msg.content);
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-3`}>
       {!isUser && (
@@ -79,18 +155,33 @@ function MessageBubble({ msg }: { msg: Message }) {
           C
         </div>
       )}
-      <div
-        className={`max-w-[82%] px-3.5 py-2.5 rounded-2xl text-sm ${isUser ? "rounded-tr-sm" : "rounded-tl-sm"}`}
-        style={{
-          background: isUser ? "var(--accent)" : "var(--card)",
-          color: isUser ? "#fff" : "var(--foreground)",
-          border: isUser ? "none" : "1px solid var(--border)",
-          wordBreak: "break-word",
-        }}>
-        {isUser
-          ? <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-          : <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{msg.content}</ReactMarkdown>
-        }
+      <div className={`max-w-[90%] ${isUser ? "max-w-[82%]" : ""}`}>
+        {text && (
+          <div
+            className={`px-3.5 py-2.5 rounded-2xl text-sm ${isUser ? "rounded-tr-sm" : "rounded-tl-sm"} ${chart ? "mb-2" : ""}`}
+            style={{
+              background: isUser ? "var(--accent)" : "var(--card)",
+              color: isUser ? "#fff" : "var(--foreground)",
+              border: isUser ? "none" : "1px solid var(--border)",
+              wordBreak: "break-word",
+            }}>
+            {isUser
+              ? <p className="leading-relaxed whitespace-pre-wrap">{text}</p>
+              : <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{text}</ReactMarkdown>
+            }
+          </div>
+        )}
+        {chart && (
+          <div className="rounded-2xl rounded-tl-sm overflow-hidden"
+            style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+            {chart.title && (
+              <p className="text-xs font-semibold px-3.5 pt-3 pb-1" style={{ color: "var(--foreground)" }}>{chart.title}</p>
+            )}
+            <div className="px-2 pb-3 pt-1">
+              <ChartBlock spec={chart} />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -180,19 +271,47 @@ export function AiChatCore({ compact = false, orgId }: Props) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [retryStatus, setRetryStatus] = useState("");
   const [pendingAction, setPendingAction] = useState<{ action: PendingAction; description: string } | null>(null);
   const [executing, setExecuting] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const greetedRef = useRef(false);
 
   useLayoutEffect(() => {
     setMessages([]);
+    greetedRef.current = false;
     try {
       const stored = localStorage.getItem(historyKey);
-      if (stored) setMessages(JSON.parse(stored));
+      if (stored) {
+        const msgs = JSON.parse(stored) as Message[];
+        if (msgs.length > 0) {
+          setMessages(msgs);
+          greetedRef.current = true;
+        }
+      }
     } catch { /* ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyKey]);
+
+  // Proactive greeting when chat is opened fresh
+  useEffect(() => {
+    if (greetedRef.current) return;
+    greetedRef.current = true;
+    setLoading(true);
+    fetch("/api/ai-assistant", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: [], proactive: true }),
+    })
+      .then(r => r.json())
+      .then((data: { reply?: string; overloaded?: boolean }) => {
+        if (data.reply) setMessages([{ role: "assistant", content: data.reply }]);
+      })
+      .catch(() => { /* silent — chat just starts empty */ })
+      .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (messages.length === 0) return;
@@ -208,6 +327,7 @@ export function AiChatCore({ compact = false, orgId }: Props) {
   const send = useCallback(async (text: string) => {
     if (!text.trim() || loading) return;
     setError("");
+    setRetryStatus("");
     setPendingAction(null);
     const userMsg: Message = { role: "user", content: text.trim() };
     const next = [...messages, userMsg];
@@ -215,30 +335,45 @@ export function AiChatCore({ compact = false, orgId }: Props) {
     setInput("");
     setLoading(true);
 
-    try {
-      const res = await fetch("/api/ai-assistant", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: next }),
-      });
-      const data = await res.json() as { reply?: string; error?: string; pendingAction?: PendingAction };
+    const MAX_RETRIES = 2;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (attempt > 0) {
+        setRetryStatus(attempt === 1 ? "AI is busy — retrying…" : "Retrying again…");
+        await new Promise(r => setTimeout(r, 3000));
+        setRetryStatus("");
+      }
+      try {
+        const res = await fetch("/api/ai-assistant", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: next }),
+        });
+        const data = await res.json() as { reply?: string; error?: string; pendingAction?: PendingAction; overloaded?: boolean };
 
-      if (data.error) {
-        setError(data.error);
-      } else if (data.pendingAction) {
-        // Add AI reply to chat, then show confirmation card
-        if (data.reply) {
+        if (data.overloaded) {
+          if (attempt < MAX_RETRIES) continue;
+          setError("The AI service is experiencing high demand. Please try again in a moment.");
+          break;
+        }
+        if (data.error) {
+          setError(data.error);
+          break;
+        }
+        if (data.pendingAction) {
+          if (data.reply) setMessages(prev => [...prev, { role: "assistant", content: data.reply! }]);
+          setPendingAction({ action: data.pendingAction, description: data.reply || "" });
+        } else if (data.reply) {
           setMessages(prev => [...prev, { role: "assistant", content: data.reply! }]);
         }
-        setPendingAction({ action: data.pendingAction, description: data.reply || "" });
-      } else if (data.reply) {
-        setMessages(prev => [...prev, { role: "assistant", content: data.reply! }]);
+        break;
+      } catch {
+        setError("Network error — please try again.");
+        break;
       }
-    } catch {
-      setError("Network error — please try again.");
-    } finally {
-      setLoading(false);
     }
+
+    setLoading(false);
+    setRetryStatus("");
   }, [messages, loading]);
 
   async function handleConfirm() {
@@ -337,7 +472,11 @@ export function AiChatCore({ compact = false, orgId }: Props) {
             <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mr-2 mt-0.5 text-xs font-bold"
               style={{ background: "linear-gradient(135deg, var(--accent), var(--purple-c))", color: "#fff" }}>C</div>
             <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-              <TypingDots />
+              {retryStatus ? (
+                <span className="text-xs" style={{ color: "var(--amber-c)" }}>⏳ {retryStatus}</span>
+              ) : (
+                <TypingDots />
+              )}
             </div>
           </div>
         )}

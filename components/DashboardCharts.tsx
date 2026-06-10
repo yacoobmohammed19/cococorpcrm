@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { Fragment, useState, useMemo, useCallback, useEffect, useRef } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   PieChart, Pie, Cell, Legend, AreaChart, Area,
@@ -40,8 +40,28 @@ const LS_CUSTOM_KPIS = "crm_dash_custom_kpis";
 const LS_KPI_HIDDEN = "crm_dash_kpi_hidden";
 const LS_KPI_ORDER = "crm_dash_kpi_order";
 const LS_REVENUE_TARGET = "crm_dash_revenue_target";
+const LS_CALC_MODE = "crm_dash_calc_mode";
+const LS_LAYOUT_HIDDEN = "crm_dash_layout_hidden";
+const LS_LAYOUT_ORDER = "crm_dash_layout_order";
 const DEFAULT_KPI_ORDER = ["total_leads","won_leads","conversion_pct","revenue","opex","profit","net_profit","pipeline","avg_deal","total_customers","pending","bank_balance"];
 const HERO_KPI_KEYS = new Set(["revenue","profit","pipeline","bank_balance","conversion_pct"]);
+
+// Dashboard layout sections
+type SectionDef = { id: string; label: string; group: "chart" | "block" };
+const ALL_SECTIONS: SectionDef[] = [
+  { id: "ai_insight",       label: "AI Insight",              group: "block" },
+  { id: "revenue_cost",     label: "Revenue vs Costs",        group: "chart" },
+  { id: "sales_funnel",     label: "Sales Funnel",            group: "chart" },
+  { id: "profit_trend",     label: "Profit Trend",            group: "chart" },
+  { id: "costs_category",   label: "Costs by Category",       group: "chart" },
+  { id: "bank_trend",       label: "Bank Balance Trend",      group: "chart" },
+  { id: "revenue_customer", label: "Revenue by Customer",     group: "chart" },
+  { id: "growth",           label: "Growth Analysis",         group: "block" },
+  { id: "monthly_table",    label: "Monthly Performance",     group: "block" },
+  { id: "cashflow_recon",   label: "Cashflow Reconciliation", group: "block" },
+  { id: "alerts",           label: "Alerts",                  group: "block" },
+];
+const DEFAULT_SECTION_ORDER = ALL_SECTIONS.map(s => s.id);
 
 type TableKey = "fact_leads" | "fact_invoices" | "fact_costs";
 type AggType = "SUM" | "AVG" | "COUNT" | "COUNTDISTINCT" | "MIN" | "MAX";
@@ -181,7 +201,7 @@ function ChartCard({ title, children, className }: { title: string; children: Re
 type CompareMetrics = {
   revenue: number; opex: number; profit: number; net_profit: number;
   total_leads: number; won_leads: number; conversion_pct: number;
-  pipeline: number; pending: number; avg_deal: number;
+  pipeline: number; pipeline_weighted: number; pending: number; avg_deal: number;
 };
 
 function GrowthPanel({ metrics, compareMetrics, compareMode, setCompareMode, cur, prevLabel, lyLabel }: {
@@ -203,7 +223,7 @@ function GrowthPanel({ metrics, compareMetrics, compareMode, setCompareMode, cur
     { label: "Avg Deal",    cur: metrics.avg_deal,       prev: compareMetrics.avg_deal,       fmtFn: fc },
   ];
   return (
-    <div className="rounded-2xl overflow-hidden mb-5" style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}>
+    <div className="rounded-2xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}>
       <div className="flex items-center justify-between px-5 py-3.5 border-b" style={{ borderColor: "var(--border)" }}>
         <div>
           <h2 className="text-sm font-semibold">Growth Analysis</h2>
@@ -357,6 +377,71 @@ type InsightData = {
   overdueCount: number; overdueAmount: number; staleLeads: number; totalLeads: number; wonLeads: number; cur: string;
 };
 
+function RichInsight({ text, data }: { text: string; data: InsightData }) {
+  const fmtK = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(0)}K` : String(Math.round(n));
+  const chips = [
+    { label: "Revenue", value: `${data.cur} ${fmtK(data.revenue)}`, color: "var(--accent)" },
+    { label: "Profit", value: `${data.profit >= 0 ? "+" : ""}${data.cur} ${fmtK(data.profit)}`, color: data.profit >= 0 ? "var(--green-c, #22c55e)" : "var(--red-c)" },
+    { label: "Margin", value: `${data.margin.toFixed(1)}%`, color: data.margin >= 20 ? "var(--accent)" : data.margin >= 0 ? "var(--amber-c)" : "var(--red-c)" },
+    ...(data.overdueCount > 0 ? [{ label: `${data.overdueCount} Overdue`, value: `${data.cur} ${fmtK(data.overdueAmount)}`, color: "var(--red-c)" }] : []),
+    ...(data.staleLeads > 0 ? [{ label: "Stale Leads", value: String(data.staleLeads), color: "var(--amber-c)" }] : []),
+  ];
+
+  // Split at sentence boundaries; make first sentence the headline
+  const sentences = text.match(/[^.!?]+[.!?]+/g) ?? [text];
+  const headline = sentences[0]?.trim() ?? "";
+  const rest = sentences.slice(1).join(" ").trim();
+
+  // Highlight numbers/currency/percentages in a run of text
+  function highlightNumbers(str: string) {
+    const parts: (string | React.ReactElement)[] = [];
+    // 1. currency prefix + number (handles "R 45 000", "R45,000", "R1.2M", "$1,234.56")
+    // 2. percentage (handles "28.9%", "15%")
+    // 3. KMB abbreviation (handles "1.2M", "45K")
+    // 4. plain integers/decimals at word boundaries (handles "12 leads", "3 overdue")
+    const re = /[A-Z$€£]{1,3}\s*\d+(?:[, ]\d{3})*(?:\.\d+)?(?:[KMB])?|[\d]+(?:\.\d+)?%|\d+(?:\.\d+)?[KMB]|\b\d+(?:[,.]\d+)*\b/g;
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(str)) !== null) {
+      if (m.index > last) parts.push(str.slice(last, m.index));
+      const tok = m[0];
+      const isPct = tok.endsWith('%');
+      const color = isPct
+        ? (parseFloat(tok) >= 0 ? "var(--accent)" : "var(--red-c)")
+        : "var(--cyan-c, #22d3ee)";
+      parts.push(<span key={m.index} className="font-semibold font-mono" style={{ color }}>{tok}</span>);
+      last = m.index + tok.length;
+    }
+    if (last < str.length) parts.push(str.slice(last));
+    return parts;
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Stat chips */}
+      <div className="flex flex-wrap gap-1.5">
+        {chips.map(c => (
+          <span key={c.label} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold"
+            style={{ background: "var(--card2)", border: `1px solid ${c.color}`, color: c.color }}>
+            <span style={{ color: "var(--muted2)", fontWeight: 400 }}>{c.label}</span>
+            {c.value}
+          </span>
+        ))}
+      </div>
+      {/* Headline */}
+      <p className="text-sm font-semibold leading-snug" style={{ color: "var(--foreground)" }}>
+        {highlightNumbers(headline)}
+      </p>
+      {/* Rest of insight */}
+      {rest && (
+        <p className="text-xs leading-relaxed" style={{ color: "var(--muted2)" }}>
+          {highlightNumbers(rest)}
+        </p>
+      )}
+    </div>
+  );
+}
+
 type ChatMessage = { role: "user" | "ai"; content: string };
 
 function AiInsightCard({ data, orgId }: { data: InsightData; orgId?: string }) {
@@ -475,7 +560,7 @@ function AiInsightCard({ data, orgId }: { data: InsightData; orgId?: string }) {
         </div>
       )}
       {!loading && text && (
-        <p className="text-sm leading-relaxed" style={{ color: "var(--foreground)" }}>{text}</p>
+        <RichInsight text={text} data={data} />
       )}
       {!loading && error && (
         <p className="text-xs" style={{ color: "var(--red-c)" }}>{error}</p>
@@ -905,6 +990,41 @@ export function DashboardCharts({
   const [showKpiConfig, setShowKpiConfig] = useState(false);
   const [showKpiBuilder, setShowKpiBuilder] = useState(false);
   const [editingKpi, setEditingKpi] = useState<CustomKpi | null>(null);
+  const [showLayoutConfig, setShowLayoutConfig] = useState(false);
+  const [layoutHidden, setLayoutHidden] = useState<Set<string>>(() => {
+    try { const s = localStorage.getItem(LS_LAYOUT_HIDDEN); return s ? new Set(JSON.parse(s) as string[]) : new Set(); } catch { return new Set(); }
+  });
+  const [layoutOrder, setLayoutOrder] = useState<string[]>(() => {
+    try { const s = localStorage.getItem(LS_LAYOUT_ORDER); return s ? (JSON.parse(s) as string[]) : DEFAULT_SECTION_ORDER; } catch { return DEFAULT_SECTION_ORDER; }
+  });
+  const [layoutDragId, setLayoutDragId] = useState<string | null>(null);
+
+  function toggleSection(id: string) {
+    setLayoutHidden(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      try { localStorage.setItem(LS_LAYOUT_HIDDEN, JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  }
+
+  function handleLayoutDrop(targetId: string) {
+    if (!layoutDragId || layoutDragId === targetId) return;
+    setLayoutOrder(prev => {
+      const next = [...prev];
+      const from = next.indexOf(layoutDragId);
+      const to = next.indexOf(targetId);
+      if (from < 0 || to < 0) return prev;
+      next.splice(from, 1);
+      next.splice(to, 0, layoutDragId);
+      try { localStorage.setItem(LS_LAYOUT_ORDER, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+    setLayoutDragId(null);
+  }
+
+  function isVisible(id: string) { return !layoutHidden.has(id); }
+  const [calcMode, setCalcMode] = useState<"opex" | "full">(() => readLS(LS_CALC_MODE, "opex" as "opex" | "full"));
   const [nowMs] = useState(() => Date.now());
 
   // Reactive theme detection so recharts colours update when user toggles theme
@@ -1050,8 +1170,10 @@ export function DashboardCharts({
     const net_margin_pct = revenue > 0 ? net_profit / revenue * 100 : 0;
     const wonLeads = fLeads.filter(l => l.status_id === wonStatusId);
     const openLeads = fLeads.filter(l => l.status_id !== wonStatusId && l.status_id !== lostStatusId && l.status_id !== 5);
-    // pipelineValue = ALL filtered leads' weighted opportunity (matches index.html)
-    const pipeline = fLeads.reduce((s, l) => s + Number(l.opportunity_weighted || 0), 0);
+    // pipeline = total raw opportunity value for active (open) leads only
+    const pipeline = openLeads.reduce((s, l) => s + Number(l.opportunity_value || 0), 0);
+    // pipeline_weighted = probability-adjusted value for active leads
+    const pipeline_weighted = openLeads.reduce((s, l) => s + Number(l.opportunity_weighted || 0), 0);
     // avgDeal uses total_revenue across all filtered leads ÷ won count (matches index.html)
     const totalRevenue = fLeads.reduce((s, l) => s + Number(l.total_revenue || 0), 0);
     const avg_deal = wonLeads.length > 0 ? totalRevenue / wonLeads.length : 0;
@@ -1066,7 +1188,7 @@ export function DashboardCharts({
     const bank_balance_filtered = Object.values(latestByAcct).reduce((s, b) => s + b, 0);
 
     return {
-      revenue, opex, all_costs, profit, net_profit, margin_pct, net_margin_pct, pipeline, avg_deal, pending,
+      revenue, opex, all_costs, profit, net_profit, margin_pct, net_margin_pct, pipeline, pipeline_weighted, avg_deal, pending,
       total_leads: fLeads.length, won_leads: wonLeads.length, open_leads: openLeads.length,
       conversion_pct, total_customers: customers.length, total_invoices: fInvoices.length,
       bank_balance: bankBalance,
@@ -1209,16 +1331,18 @@ export function DashboardCharts({
     const opex = prevCosts.filter(c => c.include_in_pnl !== false).reduce((s, c) => s + Number(c.amount || 0), 0);
     const all_costs = prevCosts.reduce((s, c) => s + Number(c.amount || 0), 0);
     const wonLeads = prevLeads.filter(l => l.status_id === wonStatusId);
+    const openLeads = prevLeads.filter(l => l.status_id !== wonStatusId && l.status_id !== lostStatusId && l.status_id !== 5);
     const totalRev = prevLeads.reduce((s, l) => s + Number(l.total_revenue || 0), 0);
     return {
       revenue, opex, profit: revenue - opex, net_profit: revenue - all_costs,
       total_leads: prevLeads.length, won_leads: wonLeads.length,
       conversion_pct: prevLeads.length > 0 ? wonLeads.length / prevLeads.length * 100 : 0,
-      pipeline: prevLeads.reduce((s, l) => s + Number(l.opportunity_weighted || 0), 0),
+      pipeline: openLeads.reduce((s, l) => s + Number(l.opportunity_value || 0), 0),
+      pipeline_weighted: openLeads.reduce((s, l) => s + Number(l.opportunity_weighted || 0), 0),
       pending: prevInv.filter(i => isPending(i.status)).reduce((s, i) => s + Number(i.amount || 0), 0),
       avg_deal: wonLeads.length > 0 ? totalRev / wonLeads.length : 0,
     };
-  }, [rawLeads, rawInvoices, rawCosts, prevPeriodDates, wonStatusId]);
+  }, [rawLeads, rawInvoices, rawCosts, prevPeriodDates, wonStatusId, lostStatusId]);
 
   const lyPeriodDates = useMemo(() => {
     const shiftYear = (d: string) => d ? `${String(parseInt(d.slice(0, 4)) - 1)}${d.slice(4)}` : "";
@@ -1240,16 +1364,18 @@ export function DashboardCharts({
     const opex = lyCosts.filter(c => c.include_in_pnl !== false).reduce((s, c) => s + Number(c.amount || 0), 0);
     const all_costs = lyCosts.reduce((s, c) => s + Number(c.amount || 0), 0);
     const wonLeads = lyLeads.filter(l => l.status_id === wonStatusId);
+    const openLeads = lyLeads.filter(l => l.status_id !== wonStatusId && l.status_id !== lostStatusId && l.status_id !== 5);
     const totalRev = lyLeads.reduce((s, l) => s + Number(l.total_revenue || 0), 0);
     return {
       revenue, opex, profit: revenue - opex, net_profit: revenue - all_costs,
       total_leads: lyLeads.length, won_leads: wonLeads.length,
       conversion_pct: lyLeads.length > 0 ? wonLeads.length / lyLeads.length * 100 : 0,
-      pipeline: lyLeads.reduce((s, l) => s + Number(l.opportunity_weighted || 0), 0),
+      pipeline: openLeads.reduce((s, l) => s + Number(l.opportunity_value || 0), 0),
+      pipeline_weighted: openLeads.reduce((s, l) => s + Number(l.opportunity_weighted || 0), 0),
       pending: lyInv.filter(i => isPending(i.status)).reduce((s, i) => s + Number(i.amount || 0), 0),
       avg_deal: wonLeads.length > 0 ? totalRev / wonLeads.length : 0,
     };
-  }, [rawLeads, rawInvoices, rawCosts, lyPeriodDates, wonStatusId]);
+  }, [rawLeads, rawInvoices, rawCosts, lyPeriodDates, wonStatusId, lostStatusId]);
 
   const dueThisWeek = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -1277,7 +1403,7 @@ export function DashboardCharts({
     { key: "opex", label: "OPEX (P&L)", value: `${cur} ${fmt(metrics.opex)}`, sub: "include_in_pnl costs", color: "var(--red-c)" },
     { key: "profit", label: "Gross Profit", value: `${cur} ${fmt(metrics.profit)}`, sub: `Gross Margin: ${metrics.margin_pct.toFixed(1)}%`, color: profitColor },
     { key: "net_profit", label: "Net Profit", value: `${cur} ${fmt(metrics.net_profit)}`, sub: `Net Margin: ${metrics.net_margin_pct.toFixed(1)}%`, color: metrics.net_profit >= 0 ? "var(--accent)" : "var(--red-c)" },
-    { key: "pipeline", label: "Pipeline", value: `${cur} ${fmt(metrics.pipeline)}`, sub: "", color: "var(--purple-c)" },
+    { key: "pipeline", label: "Pipeline", value: `${cur} ${fmt(metrics.pipeline)}`, sub: `Wtd: ${cur} ${fmt(metrics.pipeline_weighted)} · ${metrics.open_leads} open`, color: "var(--purple-c)" },
     { key: "avg_deal", label: "Avg Deal", value: `${cur} ${fmt(metrics.avg_deal)}`, sub: `${metrics.won_leads} deals`, color: "var(--amber-c)" },
     { key: "total_customers", label: "Customers", value: String(metrics.total_customers), sub: `${metrics.total_invoices} inv`, color: "var(--cyan-c)" },
     // Extended KPIs (hidden by default in configure panel — users can toggle)
@@ -1340,7 +1466,7 @@ export function DashboardCharts({
   }, [kpiOrder, hiddenKpis, customKpis, tableMap, cur, metrics, prevMetrics, lyMetrics, compareMode, bankBalance, bankLastDate, goalPct, scrollToSection]);
 
 
-  const calcCashflow = metrics.revenue - metrics.opex;
+  const calcCashflow = calcMode === "full" ? metrics.net_profit : (metrics.revenue - metrics.opex);
   const cfVariance = bankBalance - calcCashflow;
 
   // ── Spark data (last 6 months of monthly series) ─────────────────────────
@@ -1388,7 +1514,9 @@ export function DashboardCharts({
           <button onClick={() => setShowKpiBuilder(true)} className="px-3 py-1.5 rounded-xl text-xs font-semibold"
             style={{ background: "rgba(232,67,147,.1)", color: "var(--pink)", border: "1px solid var(--pink)" }}>+ Metric</button>
           <button onClick={() => setShowKpiConfig(true)} className="px-3 py-1.5 rounded-xl text-xs font-semibold"
-            style={{ background: "var(--card2)", color: "var(--muted2)", border: "1px solid var(--border)" }}>Configure</button>
+            style={{ background: "var(--card2)", color: "var(--muted2)", border: "1px solid var(--border)" }}>KPIs</button>
+          <button onClick={() => setShowLayoutConfig(true)} className="px-3 py-1.5 rounded-xl text-xs font-semibold"
+            style={{ background: "var(--card2)", color: "var(--muted2)", border: "1px solid var(--border)" }}>Layout</button>
         </div>
       </div>
 
@@ -1409,7 +1537,7 @@ export function DashboardCharts({
           delta={pctDelta(metrics.profit, compareMetrics.profit)} sparkData={profitSparkData}
           sub={`${metrics.margin_pct.toFixed(1)}% margin`} />
         <HeroKpiCard label="Pipeline" value={`${cur} ${fmt(metrics.pipeline)}`} color="var(--purple-c)"
-          delta={pctDelta(metrics.pipeline, compareMetrics.pipeline)} sub={`${metrics.open_leads} open leads`} />
+          delta={pctDelta(metrics.pipeline, compareMetrics.pipeline)} sub={`Wtd: ${cur} ${fmt(metrics.pipeline_weighted)} · ${metrics.open_leads} open`} />
         <HeroKpiCard label="Bank Balance" value={metrics.bank_balance > 0 ? `${cur} ${fmt(metrics.bank_balance)}` : "—"}
           color="var(--cyan-c)" sparkData={bankSparkData}
           sub={filters.accountIds.length > 0 ? `Filtered: ${cur} ${fmt(metrics.bank_balance_filtered)}` : (bankLastDate ? new Date(bankLastDate).toLocaleDateString("en-ZA") : "")} />
@@ -1448,148 +1576,277 @@ export function DashboardCharts({
         </div>
       )}
 
-      {/* Charts 2-col grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
-        <ChartCard title="Revenue vs Costs (12 months)">
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={monthlyData} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
-              <XAxis dataKey="month" tick={TICK_STYLE} axisLine={false} tickLine={false} />
-              <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
-              <Bar dataKey="Revenue" fill="#10b981" radius={[3,3,0,0]} />
-              <Bar dataKey="Costs" fill="rgba(239,68,68,.5)" radius={[3,3,0,0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-        <ChartCard title="Sales Funnel">
-          {funnel.map(({ name, value }, i) => (
-            <div key={name} className="flex items-center gap-3 mb-2.5">
-              <span className="text-xs text-right w-20 shrink-0" style={{ color: "var(--muted2)" }}>{name}</span>
-              <div className="flex-1 h-6 rounded overflow-hidden" style={{ background: "var(--card3)" }}>
-                <div className="h-full rounded flex items-center px-2 text-xs font-semibold text-white"
-                  style={{ width: `${Math.max(value / funnelMax * 100, 4)}%`, background: COLORS[i % COLORS.length] }}>{value}</div>
-              </div>
-              <span className="text-xs w-8 text-right font-mono shrink-0" style={{ color: "var(--muted2)" }}>
-                {funnelMax > 0 ? Math.round(value / funnel[0].value * 100) : 0}%
-              </span>
-            </div>
-          ))}
-        </ChartCard>
-        <ChartCard title="Profit Trend">
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={monthlyData} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
-              <XAxis dataKey="month" tick={TICK_STYLE} axisLine={false} tickLine={false} />
-              <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
-              <Area dataKey="Profit" stroke="#8b5cf6" fill="rgba(139,92,246,.12)" strokeWidth={2} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </ChartCard>
-        <ChartCard title="Costs by Category">
-          <ResponsiveContainer width="100%" height={200}>
-            <PieChart>
-              <Pie data={costsByCategory} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" nameKey="name">
-                {costsByCategory.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-              </Pie>
-              <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
-              <Legend iconSize={8} wrapperStyle={LEGEND_STYLE} />
-            </PieChart>
-          </ResponsiveContainer>
-        </ChartCard>
-        {cashflowTrend.length > 1 && (
-          <ChartCard title="Bank Balance Trend">
-            <ResponsiveContainer width="100%" height={200}>
-              <AreaChart data={cashflowTrend} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
-                <XAxis dataKey="date" tick={TICK_STYLE} axisLine={false} tickLine={false} />
-                <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
-                <Area dataKey="balance" stroke="#06b6d4" fill="rgba(6,182,212,.1)" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </ChartCard>
-        )}
-        {revenueByCustomer.length > 0 && (
-          <ChartCard title="Revenue by Customer (Top 8)">
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={revenueByCustomer} layout="vertical" margin={{ left: 0 }}>
-                <XAxis type="number" tick={TICK_STYLE} axisLine={false} tickLine={false} />
-                <YAxis type="category" dataKey="name" tick={TICK_STYLE} axisLine={false} tickLine={false} width={90} />
-                <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
-                <Bar dataKey="value" fill="rgba(16,185,129,.7)" radius={3} />
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
-        )}
-      </div>
+      {/* Ordered sections — controlled by layoutOrder and layoutHidden */}
+      {(() => {
+        type RGroup = { kind: "chart"; items: { id: string; content: React.ReactNode }[] } | { kind: "block"; id: string; content: React.ReactNode };
 
-      {/* Growth Analysis */}
-      <GrowthPanel
-        metrics={{ revenue: metrics.revenue, opex: metrics.opex, profit: metrics.profit, net_profit: metrics.net_profit,
-          total_leads: metrics.total_leads, won_leads: metrics.won_leads, conversion_pct: metrics.conversion_pct,
-          pipeline: metrics.pipeline, pending: metrics.pending, avg_deal: metrics.avg_deal }}
-        compareMetrics={compareMetrics}
-        compareMode={compareMode} setCompareMode={setCompareMode}
-        cur={cur} prevLabel={`vs ${prevLabel}`} lyLabel={`vs ${lyLabel}`}
-      />
-
-      {/* Monthly performance table */}
-      <ChartCard title="Monthly Performance" className="mb-5">
-        <div className="overflow-x-auto -mx-1">
-          <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--card2)" }}>
-                {["Month","Revenue","Costs","Profit","Margin","MoM %"].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-left font-semibold uppercase tracking-wider whitespace-nowrap text-[10px]" style={{ color: "var(--muted2)" }}>{h}</th>
+        const contentFor = (id: string): React.ReactNode => {
+          switch (id) {
+            case "ai_insight": return (
+              <AiInsightCard
+                data={{ revenue: metrics.revenue, opex: metrics.opex, profit: metrics.profit,
+                  margin: metrics.margin_pct, pending: metrics.pending, overdueCount: overdueInvoices.length,
+                  overdueAmount: overdueInvoices.reduce((s, i) => s + i.amount, 0), staleLeads: staleLeads.length,
+                  totalLeads: metrics.total_leads, wonLeads: metrics.won_leads, cur }}
+                orgId={orgId}
+              />
+            );
+            case "revenue_cost": return (
+              <ChartCard title="Revenue vs Costs (12 months)">
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={monthlyData} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
+                    <XAxis dataKey="month" tick={TICK_STYLE} axisLine={false} tickLine={false} />
+                    <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
+                    <Bar dataKey="Revenue" fill="#10b981" radius={[3,3,0,0]} />
+                    <Bar dataKey="Costs" fill="rgba(239,68,68,.5)" radius={[3,3,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartCard>
+            );
+            case "sales_funnel": return (
+              <ChartCard title="Sales Funnel">
+                {funnel.map(({ name, value }, i) => (
+                  <div key={name} className="flex items-center gap-3 mb-2.5">
+                    <span className="text-xs text-right w-20 shrink-0" style={{ color: "var(--muted2)" }}>{name}</span>
+                    <div className="flex-1 h-6 rounded overflow-hidden" style={{ background: "var(--card3)" }}>
+                      <div className="h-full rounded flex items-center px-2 text-xs font-semibold text-white"
+                        style={{ width: `${Math.max(value / funnelMax * 100, 4)}%`, background: COLORS[i % COLORS.length] }}>{value}</div>
+                    </div>
+                    <span className="text-xs w-8 text-right font-mono shrink-0" style={{ color: "var(--muted2)" }}>
+                      {funnelMax > 0 ? Math.round(value / funnel[0].value * 100) : 0}%
+                    </span>
+                  </div>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {monthlyTable.map(row => {
-                const margin = row.Revenue > 0 ? row.Profit / row.Revenue * 100 : 0;
+              </ChartCard>
+            );
+            case "profit_trend": return (
+              <ChartCard title="Profit Trend">
+                <ResponsiveContainer width="100%" height={200}>
+                  <AreaChart data={monthlyData} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
+                    <XAxis dataKey="month" tick={TICK_STYLE} axisLine={false} tickLine={false} />
+                    <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
+                    <Area dataKey="Profit" stroke="#8b5cf6" fill="rgba(139,92,246,.12)" strokeWidth={2} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </ChartCard>
+            );
+            case "costs_category": return (
+              <ChartCard title="Costs by Category">
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie data={costsByCategory} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" nameKey="name">
+                      {costsByCategory.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
+                    <Legend iconSize={8} wrapperStyle={LEGEND_STYLE} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </ChartCard>
+            );
+            case "bank_trend": return cashflowTrend.length > 1 ? (
+              <ChartCard title="Bank Balance Trend">
+                <ResponsiveContainer width="100%" height={200}>
+                  <AreaChart data={cashflowTrend} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
+                    <XAxis dataKey="date" tick={TICK_STYLE} axisLine={false} tickLine={false} />
+                    <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
+                    <Area dataKey="balance" stroke="#06b6d4" fill="rgba(6,182,212,.1)" strokeWidth={2} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </ChartCard>
+            ) : null;
+            case "revenue_customer": return revenueByCustomer.length > 0 ? (
+              <ChartCard title="Revenue by Customer (Top 8)">
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={revenueByCustomer} layout="vertical" margin={{ left: 0 }}>
+                    <XAxis type="number" tick={TICK_STYLE} axisLine={false} tickLine={false} />
+                    <YAxis type="category" dataKey="name" tick={TICK_STYLE} axisLine={false} tickLine={false} width={90} />
+                    <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
+                    <Bar dataKey="value" fill="rgba(16,185,129,.7)" radius={3} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartCard>
+            ) : null;
+            case "growth": return (
+              <GrowthPanel
+                metrics={{ revenue: metrics.revenue, opex: metrics.opex, profit: metrics.profit, net_profit: metrics.net_profit,
+                  total_leads: metrics.total_leads, won_leads: metrics.won_leads, conversion_pct: metrics.conversion_pct,
+                  pipeline: metrics.pipeline, pipeline_weighted: metrics.pipeline_weighted, pending: metrics.pending, avg_deal: metrics.avg_deal }}
+                compareMetrics={compareMetrics}
+                compareMode={compareMode} setCompareMode={setCompareMode}
+                cur={cur} prevLabel={`vs ${prevLabel}`} lyLabel={`vs ${lyLabel}`}
+              />
+            );
+            case "monthly_table": return (
+              <ChartCard title="Monthly Performance">
+                <div className="overflow-x-auto -mx-1">
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--card2)" }}>
+                        {["Month","Revenue","Costs","Profit","Margin","MoM %"].map(h => (
+                          <th key={h} className="px-4 py-2.5 text-left font-semibold uppercase tracking-wider whitespace-nowrap text-[10px]" style={{ color: "var(--muted2)" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {monthlyTable.map(row => {
+                        const margin = row.Revenue > 0 ? row.Profit / row.Revenue * 100 : 0;
+                        return (
+                          <tr key={row.fullMonth} className="border-b hover:bg-[var(--card2)] transition-colors" style={{ borderColor: "var(--border)" }}>
+                            <td className="px-4 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--muted)" }}>{row.month}</td>
+                            <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: "var(--accent)" }}>{cur} {fmt(row.Revenue)}</td>
+                            <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: "var(--red-c)" }}>{cur} {fmt(row.Costs)}</td>
+                            <td className="px-4 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: row.Profit >= 0 ? "var(--accent)" : "var(--red-c)" }}>{cur} {fmt(row.Profit)}</td>
+                            <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: margin >= 0 ? "var(--accent)" : "var(--red-c)" }}>{fmtDec(margin)}%</td>
+                            <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: row.mom === null ? "var(--muted2)" : row.mom >= 0 ? "var(--accent)" : "var(--red-c)" }}>
+                              {row.mom === null ? "—" : `${row.mom >= 0 ? "+" : ""}${row.mom.toFixed(1)}%`}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </ChartCard>
+            );
+            case "alerts": return (
+              <AlertsPanel overdueInvoices={overdueInvoices} staleLeads={staleLeads} cur={cur} />
+            );
+            case "cashflow_recon": return bankBalance > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {[
+                  { label: calcMode === "full" ? "Calculated (Rev − All Costs)" : "Calculated (Rev − OPEX)", value: `${cur} ${fmt(calcCashflow)}`, sub: calcMode === "full" ? "All costs deducted" : "P&L inclusions only", color: "var(--pink)", toggle: true },
+                  { label: "Actual Bank Balance", value: `${cur} ${fmt(bankBalance)}`, sub: bankLastDate ? new Date(bankLastDate).toLocaleDateString("en-ZA") : "", color: "var(--cyan-c)" },
+                  { label: "Variance", value: `${cfVariance >= 0 ? "+" : ""}${cur} ${fmt(Math.abs(cfVariance))}`, sub: cfVariance === 0 ? "Balanced" : cfVariance > 0 ? "More in bank" : "Less in bank", color: cfVariance === 0 ? "var(--accent)" : Math.abs(cfVariance) < metrics.revenue * 0.05 ? "var(--amber-c)" : "var(--red-c)" },
+                ].map(card => (
+                  <div key={card.label} className="rounded-2xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${card.color}` }}>
+                    <div className="flex items-center justify-between mb-1 gap-2">
+                      <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--muted2)" }}>{card.label}</p>
+                      {"toggle" in card && card.toggle && (
+                        <button
+                          onClick={() => {
+                            const next = calcMode === "opex" ? "full" : "opex";
+                            setCalcMode(next);
+                            try { localStorage.setItem(LS_CALC_MODE, JSON.stringify(next)); } catch { /* ignore */ }
+                          }}
+                          className="text-[9px] font-semibold rounded-full px-2 py-0.5 shrink-0"
+                          style={{ background: "var(--card2)", color: "var(--muted2)", border: "1px solid var(--border)" }}
+                          title={calcMode === "opex" ? "Switch to all costs" : "Switch to P&L costs only"}
+                        >
+                          {calcMode === "opex" ? "P&L only" : "All costs"}
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-lg font-bold font-mono" style={{ color: card.color }}>{card.value}</p>
+                    {card.sub && <p className="text-[10px] mt-1" style={{ color: "var(--muted2)" }}>{card.sub}</p>}
+                  </div>
+                ))}
+              </div>
+            ) : null;
+            default: return null;
+          }
+        };
+
+        const groups: RGroup[] = [];
+        for (const id of layoutOrder) {
+          if (!isVisible(id)) continue;
+          const content = contentFor(id);
+          if (content === null || content === undefined) continue;
+          const def = ALL_SECTIONS.find(s => s.id === id);
+          if (!def) continue;
+          if (def.group === "chart") {
+            const last = groups[groups.length - 1];
+            if (last && last.kind === "chart") {
+              last.items.push({ id, content });
+            } else {
+              groups.push({ kind: "chart", items: [{ id, content }] });
+            }
+          } else {
+            groups.push({ kind: "block", id, content });
+          }
+        }
+
+        return groups.map((g, gi) => {
+          if (g.kind === "block") {
+            return <div key={gi} id={`section-${g.id}`} className="mb-5">{g.content}</div>;
+          }
+          return (
+            <div key={gi} id={`section-${g.items[0]?.id}`} className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+              {g.items.map(({ id, content }) => <Fragment key={id}>{content}</Fragment>)}
+            </div>
+          );
+        });
+      })()}
+
+      {/* Layout Config Modal */}
+      {showLayoutConfig && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          style={{ background: "rgba(0,0,0,.7)", backdropFilter: "blur(4px)" }}
+          onClick={e => { if (e.target === e.currentTarget) setShowLayoutConfig(false); }}>
+          <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-xl shadow-2xl"
+            style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
+              <h2 className="font-semibold text-sm">Configure Layout</h2>
+              <button onClick={() => setShowLayoutConfig(false)} style={{ color: "var(--muted2)" }}>✕</button>
+            </div>
+            <div className="p-4 space-y-1.5 max-h-[65vh] overflow-y-auto">
+              <p className="text-[10px] mb-2" style={{ color: "var(--muted2)" }}>Drag to reorder • click to show/hide</p>
+              {layoutOrder.map(id => {
+                const def = ALL_SECTIONS.find(s => s.id === id);
+                if (!def) return null;
+                const hidden = layoutHidden.has(id);
                 return (
-                  <tr key={row.fullMonth} className="border-b hover:bg-[var(--card2)] transition-colors" style={{ borderColor: "var(--border)" }}>
-                    <td className="px-4 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--muted)" }}>{row.month}</td>
-                    <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: "var(--accent)" }}>{cur} {fmt(row.Revenue)}</td>
-                    <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: "var(--red-c)" }}>{cur} {fmt(row.Costs)}</td>
-                    <td className="px-4 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: row.Profit >= 0 ? "var(--accent)" : "var(--red-c)" }}>{cur} {fmt(row.Profit)}</td>
-                    <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: margin >= 0 ? "var(--accent)" : "var(--red-c)" }}>{fmtDec(margin)}%</td>
-                    <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: row.mom === null ? "var(--muted2)" : row.mom >= 0 ? "var(--accent)" : "var(--red-c)" }}>
-                      {row.mom === null ? "—" : `${row.mom >= 0 ? "+" : ""}${row.mom.toFixed(1)}%`}
-                    </td>
-                  </tr>
+                  <div
+                    key={id}
+                    draggable
+                    onDragStart={() => setLayoutDragId(id)}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={() => handleLayoutDrop(id)}
+                    onDragEnd={() => setLayoutDragId(null)}
+                    className="flex items-center justify-between px-3 py-2.5 rounded-lg cursor-grab select-none"
+                    style={{
+                      background: hidden ? "var(--card)" : "rgba(16,185,129,.08)",
+                      border: `1px solid ${hidden ? "var(--border)" : "var(--accent)"}`,
+                      opacity: layoutDragId === id ? 0.4 : 1,
+                    }}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-base leading-none" style={{ color: "var(--muted2)" }}>⠿</span>
+                      <span className="text-sm" style={{ color: hidden ? "var(--muted2)" : "var(--foreground)" }}>{def.label}</span>
+                      <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded"
+                        style={{ background: "var(--card3)", color: "var(--muted2)" }}>{def.group}</span>
+                    </div>
+                    <button onClick={() => toggleSection(id)}
+                      className="text-xs font-bold shrink-0"
+                      style={{ color: hidden ? "var(--muted2)" : "var(--accent)" }}>
+                      {hidden ? "Hidden" : "Visible ✓"}
+                    </button>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
-      </ChartCard>
-
-      {/* AI Insight + Alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
-        <AiInsightCard data={{ revenue: metrics.revenue, opex: metrics.opex, profit: metrics.profit,
-          margin: metrics.margin_pct, pending: metrics.pending, overdueCount: overdueInvoices.length,
-          overdueAmount: overdueInvoices.reduce((s, i) => s + i.amount, 0), staleLeads: staleLeads.length,
-          totalLeads: metrics.total_leads, wonLeads: metrics.won_leads, cur }} orgId={orgId} />
-        <AlertsPanel overdueInvoices={overdueInvoices} staleLeads={staleLeads} cur={cur} />
-      </div>
-
-      {/* Cashflow reconciliation */}
-      {bankBalance > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
-          {[
-            { label: "Calculated (Rev − OPEX)", value: `${cur} ${fmt(calcCashflow)}`, sub: "From filtered data", color: "var(--pink)" },
-            { label: "Actual Bank Balance", value: `${cur} ${fmt(bankBalance)}`, sub: bankLastDate ? new Date(bankLastDate).toLocaleDateString("en-ZA") : "", color: "var(--cyan-c)" },
-            { label: "Variance", value: `${cfVariance >= 0 ? "+" : ""}${cur} ${fmt(Math.abs(cfVariance))}`, sub: cfVariance === 0 ? "Balanced" : cfVariance > 0 ? "More in bank" : "Less in bank", color: cfVariance === 0 ? "var(--accent)" : Math.abs(cfVariance) < metrics.revenue * 0.05 ? "var(--amber-c)" : "var(--red-c)" },
-          ].map(card => (
-            <div key={card.label} className="rounded-2xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${card.color}` }}>
-              <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "var(--muted2)" }}>{card.label}</p>
-              <p className="text-lg font-bold font-mono" style={{ color: card.color }}>{card.value}</p>
-              {card.sub && <p className="text-[10px] mt-1" style={{ color: "var(--muted2)" }}>{card.sub}</p>}
             </div>
-          ))}
+            <div className="px-5 pb-4 pt-2 flex gap-2 border-t" style={{ borderColor: "var(--border)" }}>
+              <button
+                onClick={() => {
+                  setLayoutHidden(new Set());
+                  setLayoutOrder(DEFAULT_SECTION_ORDER);
+                  try { localStorage.removeItem(LS_LAYOUT_HIDDEN); localStorage.removeItem(LS_LAYOUT_ORDER); } catch { /* ignore */ }
+                }}
+                className="flex-1 py-2 rounded text-xs font-semibold"
+                style={{ background: "var(--card3)", color: "var(--muted)", border: "1px solid var(--border)" }}>
+                Reset
+              </button>
+              <button onClick={() => setShowLayoutConfig(false)}
+                className="flex-1 py-2 rounded text-xs font-semibold"
+                style={{ background: "var(--accent)", color: "#fff" }}>
+                Done
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

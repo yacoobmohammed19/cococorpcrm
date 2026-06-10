@@ -1,9 +1,10 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { CustomerSchema } from "@/lib/schemas/customers";
 import { createServerClient } from "@/lib/supabase/server";
 import { getCurrentOrgId } from "@/lib/supabase/org";
+import { dimCacheTag } from "@/lib/supabase/cache";
 
 export async function createCustomer(formData: FormData) {
   const orgId = await getCurrentOrgId();
@@ -31,10 +32,12 @@ export async function createCustomer(formData: FormData) {
   const { error } = await supabase.from("dim_customers").insert(payload);
   if (error) throw new Error(error.message);
 
+  revalidateTag(dimCacheTag(orgId), "default");
   revalidatePath("/customers");
 }
 
 export async function deleteCustomer(id: number) {
+  const orgId = await getCurrentOrgId();
   const supabase = await createServerClient();
   const { error } = await supabase
     .from("dim_customers")
@@ -42,10 +45,12 @@ export async function deleteCustomer(id: number) {
     .eq("id", id);
 
   if (error) throw new Error(error.message);
+  revalidateTag(dimCacheTag(orgId), "default");
   revalidatePath("/customers");
 }
 
 export async function updateCustomer(id: number, formData: FormData) {
+  const orgId = await getCurrentOrgId();
   const supabase = await createServerClient();
   const email = String(formData.get("email") || "").trim();
   const { error } = await supabase.from("dim_customers").update({
@@ -62,22 +67,26 @@ export async function updateCustomer(id: number, formData: FormData) {
     updated_at: new Date().toISOString(),
   }).eq("id", id);
   if (error) throw new Error(error.message);
+  revalidateTag(dimCacheTag(orgId), "default");
   revalidatePath("/customers");
   revalidatePath(`/customers/${id}`);
 }
 
 export async function bulkDeleteCustomers(ids: number[]) {
   if (ids.length === 0) return;
+  const orgId = await getCurrentOrgId();
   const supabase = await createServerClient();
   const { error } = await supabase
     .from("dim_customers")
     .update({ deleted_at: new Date().toISOString() })
     .in("id", ids);
   if (error) throw new Error(error.message);
+  revalidateTag(dimCacheTag(orgId), "default");
   revalidatePath("/customers");
 }
 
 export async function restoreCustomer(id: number) {
+  const orgId = await getCurrentOrgId();
   const supabase = await createServerClient();
   const { error } = await supabase
     .from("dim_customers")
@@ -85,5 +94,6 @@ export async function restoreCustomer(id: number) {
     .eq("id", id);
 
   if (error) throw new Error(error.message);
+  revalidateTag(dimCacheTag(orgId), "default");
   revalidatePath("/customers");
 }

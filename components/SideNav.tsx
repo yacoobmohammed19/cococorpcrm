@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LucideIcon, LayoutDashboard, Target, Users, FileText, Package, Receipt, CalendarDays, TrendingDown, Megaphone, BookOpen, BarChart2, Settings, Sparkles, ShieldCheck, FlaskConical } from "lucide-react";
+import { LucideIcon, LayoutDashboard, Target, Users, FileText, Package, Receipt, CalendarDays, TrendingDown, Megaphone, BookOpen, BarChart2, Settings, Sparkles, ShieldCheck, FlaskConical, TableProperties } from "lucide-react";
 
 type NavItem = { href: string; label: string; Icon: LucideIcon; group: string };
 
@@ -17,8 +17,9 @@ const sideNav: NavItem[] = [
   { href: "/billing",     label: "Billing",     Icon: CalendarDays,    group: "Finance"    },
   { href: "/costs",       label: "Costs",       Icon: TrendingDown,    group: "Finance"    },
   { href: "/marketing",   label: "Marketing",   Icon: Megaphone,       group: "Marketing"  },
-  { href: "/accounting",  label: "Accounting",  Icon: BookOpen,        group: "Analytics"  },
-  { href: "/performance", label: "Snapshots",   Icon: BarChart2,       group: "Analytics"  },
+  { href: "/accounting",  label: "Accounting",  Icon: BookOpen,           group: "Analytics"  },
+  { href: "/performance", label: "Snapshots",   Icon: BarChart2,          group: "Analytics"  },
+  { href: "/reports",     label: "Reports",     Icon: TableProperties,    group: "Analytics"  },
   { href: "/settings",             label: "Settings",    Icon: Settings,    group: "Config" },
   { href: "/settings/management", label: "Management",  Icon: ShieldCheck, group: "Config" },
   { href: "/chat",                 label: "Coco AI",     Icon: Sparkles,    group: "Config" },
