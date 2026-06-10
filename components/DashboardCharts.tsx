@@ -36,12 +36,12 @@ type Props = {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const COLORS = ["#10b981", "#e84393", "#8b5cf6", "#f59e0b", "#06b6d4", "#ef4444", "#84cc16", "#f97316"];
-const LS_SECTION_ORDER = "crm_dash_section_order";
 const LS_CUSTOM_KPIS = "crm_dash_custom_kpis";
 const LS_KPI_HIDDEN = "crm_dash_kpi_hidden";
 const LS_KPI_ORDER = "crm_dash_kpi_order";
 const LS_REVENUE_TARGET = "crm_dash_revenue_target";
 const DEFAULT_KPI_ORDER = ["total_leads","won_leads","conversion_pct","revenue","opex","profit","net_profit","pipeline","avg_deal","total_customers","pending","bank_balance"];
+const HERO_KPI_KEYS = new Set(["revenue","profit","pipeline","bank_balance","conversion_pct"]);
 
 type TableKey = "fact_leads" | "fact_invoices" | "fact_costs";
 type AggType = "SUM" | "AVG" | "COUNT" | "COUNTDISTINCT" | "MIN" | "MAX";
@@ -51,8 +51,6 @@ type CustomKpi = { id: string; name: string; table: TableKey; agg: AggType; colu
 const TABLE_LABELS: Record<TableKey, string> = { fact_leads: "Leads", fact_invoices: "Invoices", fact_costs: "Costs" };
 const AGG_LABELS: Record<AggType, string> = { SUM: "Sum (total)", AVG: "Average", COUNT: "Count (rows)", COUNTDISTINCT: "Distinct Count", MIN: "Minimum", MAX: "Maximum" };
 const KPI_COLOR_MAP: Record<string, string> = { green: "var(--accent)", cyan: "var(--cyan-c)", blue: "var(--cyan-c)", purple: "var(--purple-c)", amber: "var(--amber-c)", red: "var(--red-c)", pink: "var(--pink)" };
-
-const DEFAULT_SECTIONS = ["summary", "revenue", "pipeline", "costs", "cashflow", "alerts"];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -100,44 +98,53 @@ function pctDelta(cur: number, prev: number): number | null {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function KpiCard({ label, value, sub, color, onClick, delta, goalPct }: {
+function Sparkline({ data, color }: { data: number[]; color: string }) {
+  if (data.length < 2) return null;
+  const max = Math.max(...data); const min = Math.min(...data);
+  const range = max - min || 1;
+  const w = 64, h = 24;
+  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * (h - 4) - 2}`).join(" ");
+  return (
+    <svg width={w} height={h} style={{ overflow: "visible", flexShrink: 0 }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" opacity={0.7} />
+    </svg>
+  );
+}
+
+function DeltaBadge({ delta }: { delta: number }) {
+  const up = delta >= 0;
+  return (
+    <span className="inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 leading-none"
+      style={{ background: up ? "rgba(16,185,129,.15)" : "rgba(239,68,68,.12)", color: up ? "var(--accent)" : "var(--red-c)" }}>
+      {up ? "↑" : "↓"}{Math.abs(delta).toFixed(0)}%
+    </span>
+  );
+}
+
+function HeroKpiCard({ label, value, sub, color, delta, sparkData, onClick, goalPct }: {
   label: string; value: string; sub?: string; color: string;
-  onClick?: () => void; delta?: number | null; goalPct?: number | null;
+  delta?: number | null; sparkData?: number[]; onClick?: () => void; goalPct?: number | null;
 }) {
   return (
-    <div
-      className={`rounded-xl p-4 transition-all flex flex-col ${onClick ? "cursor-pointer hover:scale-[1.02] hover:shadow-md" : ""}`}
-      style={{
-        background: "var(--card)",
-        border: "1px solid var(--border)",
-        borderTop: `3px solid ${color}`,
-        boxShadow: "var(--shadow-sm)",
-      }}
-      onClick={onClick}
-    >
-      <div className="flex items-start justify-between mb-2">
-        <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--muted2)" }}>{label}</div>
-        {delta != null && (
-          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full ml-1 shrink-0 leading-none"
-            title="vs previous period"
-            style={{
-              background: delta >= 0 ? "rgba(16,185,129,.15)" : "rgba(239,68,68,.12)",
-              color: delta >= 0 ? "var(--accent)" : "var(--red-c)",
-            }}>
-            {delta >= 0 ? "↑" : "↓"}{Math.abs(delta).toFixed(0)}%
-          </span>
-        )}
+    <div onClick={onClick} className={`rounded-2xl p-5 flex flex-col gap-1.5 ${onClick ? "cursor-pointer" : ""}`}
+      style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}>
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--muted2)" }}>{label}</span>
+        {delta != null && <DeltaBadge delta={delta} />}
       </div>
-      <div className="text-xl font-bold font-mono truncate leading-none" style={{ color }}>{value}</div>
-      {sub && <div className="text-[11px] mt-1.5" style={{ color: "var(--muted2)" }}>{sub}</div>}
+      <div className="text-[1.55rem] font-bold font-mono leading-none truncate" style={{ color }}>{value}</div>
+      <div className="flex items-end justify-between gap-2 mt-0.5">
+        <span className="text-[11px] leading-tight" style={{ color: "var(--muted2)" }}>{sub ?? ""}</span>
+        {sparkData && sparkData.length >= 2 && <Sparkline data={sparkData} color={color} />}
+      </div>
       {goalPct != null && (
-        <div className="mt-2.5">
+        <div className="mt-1">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-[9px] uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Monthly Target</span>
+            <span className="text-[9px] uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Target</span>
             <span className="text-[9px] font-bold" style={{ color: goalPct >= 100 ? "var(--accent)" : "var(--muted2)" }}>{goalPct.toFixed(0)}%</span>
           </div>
-          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--card3)" }}>
-            <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(100, goalPct)}%`, background: color }} />
+          <div className="h-1 rounded-full overflow-hidden" style={{ background: "var(--card3)" }}>
+            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, goalPct)}%`, background: color }} />
           </div>
         </div>
       )}
@@ -145,41 +152,167 @@ function KpiCard({ label, value, sub, color, onClick, delta, goalPct }: {
   );
 }
 
-function ChartBox({ title, children }: { title: string; children: React.ReactNode }) {
+function SmallKpiCard({ label, value, sub, color, delta }: {
+  label: string; value: string; sub?: string; color: string; delta?: number | null;
+}) {
   return (
-    <div className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}>
-      <h3 className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: "var(--muted2)" }}>{title}</h3>
+    <div className="rounded-xl p-3 flex flex-col gap-1"
+      style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${color}`, boxShadow: "var(--shadow-sm)" }}>
+      <div className="flex items-center justify-between gap-1">
+        <span className="text-[9px] font-bold uppercase tracking-widest truncate" style={{ color: "var(--muted2)" }}>{label}</span>
+        {delta != null && <DeltaBadge delta={delta} />}
+      </div>
+      <div className="text-sm font-bold font-mono leading-none" style={{ color }}>{value}</div>
+      {sub && <div className="text-[10px]" style={{ color: "var(--muted2)" }}>{sub}</div>}
+    </div>
+  );
+}
+
+function ChartCard({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`rounded-2xl p-5 ${className ?? ""}`}
+      style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}>
+      <h3 className="text-[10px] font-bold uppercase tracking-widest mb-4" style={{ color: "var(--muted2)" }}>{title}</h3>
       {children}
     </div>
   );
 }
 
-function Section({ id, title, children, order, totalSections, onMove, defaultOpen = true, action }: {
-  id: string; title: string; children: React.ReactNode; order: number; totalSections: number;
-  onMove: (id: string, dir: -1 | 1) => void; defaultOpen?: boolean; action?: React.ReactNode;
+type CompareMetrics = {
+  revenue: number; opex: number; profit: number; net_profit: number;
+  total_leads: number; won_leads: number; conversion_pct: number;
+  pipeline: number; pending: number; avg_deal: number;
+};
+
+function GrowthPanel({ metrics, compareMetrics, compareMode, setCompareMode, cur, prevLabel, lyLabel }: {
+  metrics: CompareMetrics; compareMetrics: CompareMetrics;
+  compareMode: "prev" | "yoy"; setCompareMode: (m: "prev" | "yoy") => void;
+  cur: string; prevLabel: string; lyLabel: string;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const fc = (v: number) => `${cur} ${fmt(v)}`;
+  const rows = [
+    { label: "Revenue",     cur: metrics.revenue,        prev: compareMetrics.revenue,        fmtFn: fc },
+    { label: "OPEX",        cur: metrics.opex,           prev: compareMetrics.opex,           fmtFn: fc },
+    { label: "Gross Profit",cur: metrics.profit,         prev: compareMetrics.profit,         fmtFn: fc },
+    { label: "Net Profit",  cur: metrics.net_profit,     prev: compareMetrics.net_profit,     fmtFn: fc },
+    { label: "Pipeline",    cur: metrics.pipeline,       prev: compareMetrics.pipeline,       fmtFn: fc },
+    { label: "Pending",     cur: metrics.pending,        prev: compareMetrics.pending,        fmtFn: fc },
+    { label: "Total Leads", cur: metrics.total_leads,    prev: compareMetrics.total_leads,    fmtFn: (v: number) => String(Math.round(v)) },
+    { label: "Won Leads",   cur: metrics.won_leads,      prev: compareMetrics.won_leads,      fmtFn: (v: number) => String(Math.round(v)) },
+    { label: "Conversion",  cur: metrics.conversion_pct, prev: compareMetrics.conversion_pct, fmtFn: (v: number) => `${v.toFixed(1)}%` },
+    { label: "Avg Deal",    cur: metrics.avg_deal,       prev: compareMetrics.avg_deal,       fmtFn: fc },
+  ];
   return (
-    <div id={`section-${id}`} className="mb-3">
-      <div className="flex items-center rounded-xl text-sm font-semibold"
-        style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}>
-        <button onClick={() => setOpen(!open)}
-          className="flex-1 flex justify-between items-center px-4 py-3 text-left"
-          style={{ color: "var(--muted)" }}>
-          <span>{title}</span>
-          <span style={{ color: "var(--muted2)", fontSize: 10, transform: open ? "rotate(0)" : "rotate(-90deg)", display: "inline-block", transition: "transform .2s" }}>▼</span>
-        </button>
-        <div className="flex items-center gap-1 pr-2 shrink-0">
-          {action}
-          <button onClick={() => onMove(id, -1)} disabled={order === 0}
-            className="w-6 h-6 rounded text-xs flex items-center justify-center disabled:opacity-30"
-            style={{ color: "var(--muted2)", background: "var(--card3)" }}>▲</button>
-          <button onClick={() => onMove(id, 1)} disabled={order === totalSections - 1}
-            className="w-6 h-6 rounded text-xs flex items-center justify-center disabled:opacity-30"
-            style={{ color: "var(--muted2)", background: "var(--card3)" }}>▼</button>
+    <div className="rounded-2xl overflow-hidden mb-5" style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}>
+      <div className="flex items-center justify-between px-5 py-3.5 border-b" style={{ borderColor: "var(--border)" }}>
+        <div>
+          <h2 className="text-sm font-semibold">Growth Analysis</h2>
+          <p className="text-[10px] mt-0.5" style={{ color: "var(--muted2)" }}>Current period vs comparison</p>
+        </div>
+        <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: "var(--border)" }}>
+          {([["prev", prevLabel], ["yoy", lyLabel]] as const).map(([mode, lbl]) => (
+            <button key={mode} onClick={() => setCompareMode(mode)}
+              className="px-3 py-1.5 text-xs font-semibold transition-colors"
+              style={{ background: compareMode === mode ? "var(--accent)" : "var(--card2)", color: compareMode === mode ? "#fff" : "var(--muted2)" }}>
+              {lbl}
+            </button>
+          ))}
         </div>
       </div>
-      {open && <div className="pt-3">{children}</div>}
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr style={{ background: "var(--card2)", borderBottom: "1px solid var(--border)" }}>
+              {["Metric", "Current", "Prior", "Change", "Trend"].map(h => (
+                <th key={h} className="px-4 py-2.5 text-left font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap" style={{ color: "var(--muted2)" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(row => {
+              const delta = pctDelta(row.cur, row.prev);
+              const pos = delta === null ? null : delta >= 0;
+              const barPct = Math.max(row.cur, row.prev) > 0 ? Math.min(100, (row.cur / Math.max(row.cur, row.prev)) * 100) : 0;
+              return (
+                <tr key={row.label} className="border-b hover:bg-[var(--card2)] transition-colors" style={{ borderColor: "var(--border)" }}>
+                  <td className="px-4 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--muted)" }}>{row.label}</td>
+                  <td className="px-4 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: "var(--foreground)" }}>{row.fmtFn(row.cur)}</td>
+                  <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: "var(--muted2)" }}>{row.fmtFn(row.prev)}</td>
+                  <td className="px-4 py-2.5 whitespace-nowrap">
+                    {delta === null ? <span style={{ color: "var(--muted2)" }}>—</span> : (
+                      <span className="font-bold font-mono" style={{ color: pos ? "var(--accent)" : "var(--red-c)" }}>
+                        {pos ? "↑" : "↓"}{Math.abs(delta).toFixed(1)}%
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 w-32">
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--card3)" }}>
+                      <div className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${barPct}%`, background: pos === null ? "var(--muted2)" : pos ? "var(--accent)" : "var(--red-c)" }} />
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function AlertsPanel({ overdueInvoices, staleLeads, cur }: {
+  overdueInvoices: { id: number; amount: number; customerName: string; days: number }[];
+  staleLeads: { id: number; name: string; days: number | null }[];
+  cur: string;
+}) {
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}>
+      <div className="px-5 py-3.5 border-b" style={{ borderColor: "var(--border)" }}>
+        <h3 className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--muted2)" }}>Alerts & Actions</h3>
+      </div>
+      <div className="p-4 space-y-3">
+        {overdueInvoices.length > 0 ? (
+          <div className="rounded-xl p-3" style={{ background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.25)" }}>
+            <p className="text-xs font-bold mb-2" style={{ color: "var(--red-c)" }}>
+              Overdue ({overdueInvoices.length}) — {cur} {fmt(overdueInvoices.reduce((s, i) => s + i.amount, 0))}
+            </p>
+            {overdueInvoices.slice(0, 5).map(inv => (
+              <div key={inv.id} className="flex justify-between text-xs py-0.5" style={{ color: "var(--muted)" }}>
+                <span className="truncate">{inv.customerName}</span>
+                <span className="shrink-0 ml-2 font-semibold" style={{ color: "var(--red-c)" }}>{inv.days}d</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl p-3 flex items-center gap-2.5" style={{ background: "rgba(16,185,129,.06)", border: "1px solid rgba(16,185,129,.25)" }}>
+            <span>✅</span>
+            <div>
+              <p className="text-xs font-bold" style={{ color: "var(--accent)" }}>No Overdue Invoices</p>
+              <p className="text-[10px]" style={{ color: "var(--muted2)" }}>All invoices within terms</p>
+            </div>
+          </div>
+        )}
+        {staleLeads.length > 0 ? (
+          <div className="rounded-xl p-3" style={{ background: "rgba(245,158,11,.06)", border: "1px solid rgba(245,158,11,.25)" }}>
+            <p className="text-xs font-bold mb-2" style={{ color: "var(--amber-c)" }}>Follow-Up Needed ({staleLeads.length})</p>
+            {staleLeads.slice(0, 5).map(l => (
+              <div key={l.id} className="flex justify-between text-xs py-0.5" style={{ color: "var(--muted)" }}>
+                <span className="truncate">{l.name}</span>
+                <span className="shrink-0 ml-2" style={{ color: "var(--amber-c)" }}>{l.days !== null ? `${l.days}d ago` : "Never"}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl p-3 flex items-center gap-2.5" style={{ background: "rgba(16,185,129,.06)", border: "1px solid rgba(16,185,129,.25)" }}>
+            <span>🎯</span>
+            <div>
+              <p className="text-xs font-bold" style={{ color: "var(--accent)" }}>All Leads Active</p>
+              <p className="text-[10px]" style={{ color: "var(--muted2)" }}>No leads need follow-up</p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -395,121 +528,154 @@ function AiInsightCard({ data, orgId }: { data: InsightData; orgId?: string }) {
   );
 }
 
-// ── Filter Bar ────────────────────────────────────────────────────────────────
+// ── Filters ───────────────────────────────────────────────────────────────────
 
 type Filters = {
   dateFrom: string; dateTo: string;
-  statusIds: number[];
-  customerIds: number[];
-  costCategoryIds: number[];
-  accountIds: number[];
-  invoiceStatuses: string[];
-  paymentTypeIds: number[];
+  statusIds: number[]; customerIds: number[]; costCategoryIds: number[];
+  accountIds: number[]; invoiceStatuses: string[]; paymentTypeIds: number[];
 };
 const EMPTY_FILTERS: Filters = {
-  dateFrom: "", dateTo: "", statusIds: [],
-  customerIds: [], costCategoryIds: [], accountIds: [],
-  invoiceStatuses: [], paymentTypeIds: [],
+  dateFrom: "", dateTo: "", statusIds: [], customerIds: [],
+  costCategoryIds: [], accountIds: [], invoiceStatuses: [], paymentTypeIds: [],
 };
 
-function FilterBar({ filters, setFilters, statuses, customers, costCategories, accounts, paymentTypes, fiscalYearStart }: {
+function CompactFilterBar({ filters, setFilters, statuses, customers, costCategories, accounts, paymentTypes, fiscalYearStart }: {
   filters: Filters; setFilters: (f: Filters) => void;
   statuses: Dim[]; customers: Dim[]; costCategories: Dim[]; accounts: Dim[]; paymentTypes: Dim[];
   fiscalYearStart?: number;
 }) {
+  const [panelOpen, setPanelOpen] = useState(false);
   const set = (partial: Partial<Filters>) => setFilters({ ...filters, ...partial });
-  const clear = () => setFilters(EMPTY_FILTERS);
+  const clearDim = () => set({ statusIds: [], customerIds: [], costCategoryIds: [], accountIds: [], invoiceStatuses: [], paymentTypeIds: [] });
 
-  const activeCount = [
-    filters.dateFrom || filters.dateTo,
-    filters.statusIds.length > 0,
-    filters.customerIds.length > 0,
-    filters.costCategoryIds.length > 0,
-    filters.accountIds.length > 0,
-    filters.invoiceStatuses.length > 0,
-    filters.paymentTypeIds.length > 0,
-  ].filter(Boolean).length;
+  const dimCount = [filters.statusIds.length, filters.customerIds.length, filters.costCategoryIds.length,
+    filters.accountIds.length, filters.invoiceStatuses.length, filters.paymentTypeIds.length].filter(n => n > 0).length;
 
   const now = new Date();
   const fyMonth = (fiscalYearStart ?? 3) - 1;
+  const off = (days: number) => { const d = new Date(); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); };
   const getFyStart = () => {
     const y = now.getMonth() >= fyMonth ? now.getFullYear() : now.getFullYear() - 1;
     return new Date(y, fyMonth, 1).toISOString().slice(0, 10);
   };
-  const presets: { key: string; label: string; from: string; to: string }[] = [
-    { key: "30d", label: "30d", from: (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); })(), to: "" },
-    { key: "90d", label: "90d", from: (() => { const d = new Date(); d.setDate(d.getDate() - 90); return d.toISOString().slice(0, 10); })(), to: "" },
-    { key: "12M", label: "12M", from: (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().slice(0, 10); })(), to: "" },
+  const presets = [
+    { key: "30d", label: "30D", from: off(-30), to: "" },
+    { key: "90d", label: "90D", from: off(-90), to: "" },
+    { key: "12M", label: "12M", from: off(-365), to: "" },
     { key: "YTD", label: "YTD", from: `${now.getFullYear()}-01-01`, to: "" },
     { key: "FY",  label: "FY",  from: getFyStart(), to: "" },
     { key: "All", label: "All", from: "", to: "" },
   ];
 
+  const inputCls = "px-2 py-1.5 rounded-lg text-xs border outline-none focus:ring-1 focus:ring-[var(--accent)]";
+  const inputStyle = (active: boolean) => ({ background: "var(--card2)", borderColor: active ? "var(--accent)" : "var(--border)", color: "var(--foreground)" });
+
   return (
-    <div className="mb-4 space-y-2">
-      {/* Row 1 — date presets + custom date range */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Period</span>
-        <div className="flex rounded overflow-hidden border" style={{ borderColor: "var(--border)" }}>
+    <>
+      <div className="sticky top-0 z-20 -mx-4 sm:-mx-6 px-4 sm:px-6 py-2.5 mb-5 flex flex-wrap items-center gap-2"
+        style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
+        {/* Period presets */}
+        <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: "var(--border)" }}>
           {presets.map(p => {
-            const active = p.key === "All"
-              ? !filters.dateFrom && !filters.dateTo
-              : filters.dateFrom === p.from && filters.dateTo === p.to;
+            const active = p.key === "All" ? !filters.dateFrom && !filters.dateTo : filters.dateFrom === p.from && filters.dateTo === p.to;
             return (
               <button key={p.key} onClick={() => set({ dateFrom: p.from, dateTo: p.to })}
-                className="px-2.5 py-1.5 text-xs font-semibold transition-colors"
+                className="px-2.5 py-1.5 text-[11px] font-bold transition-colors"
                 style={{ background: active ? "var(--accent)" : "var(--card2)", color: active ? "#fff" : "var(--muted2)" }}>
                 {p.label}
               </button>
             );
           })}
         </div>
+        {/* Custom date range */}
         <input type="date" value={filters.dateFrom} onChange={e => set({ dateFrom: e.target.value })}
-          className="px-2 py-1.5 rounded text-xs border outline-none"
-          style={{ background: "var(--card2)", borderColor: filters.dateFrom ? "var(--accent)" : "var(--border)", color: "var(--foreground)" }} />
-        <span className="text-xs" style={{ color: "var(--muted2)" }}>→</span>
+          className={inputCls} style={inputStyle(!!filters.dateFrom)} />
+        <span className="text-xs" style={{ color: "var(--muted2)" }}>—</span>
         <input type="date" value={filters.dateTo} onChange={e => set({ dateTo: e.target.value })}
-          className="px-2 py-1.5 rounded text-xs border outline-none"
-          style={{ background: "var(--card2)", borderColor: filters.dateTo ? "var(--accent)" : "var(--border)", color: "var(--foreground)" }} />
-        {activeCount > 0 && (
-          <button onClick={clear} className="px-2 py-1.5 rounded text-xs font-semibold"
-            style={{ color: "var(--muted2)", border: "1px solid var(--border)" }}>
-            ✕ Clear{activeCount > 1 ? ` (${activeCount})` : ""}
-          </button>
+          className={inputCls} style={inputStyle(!!filters.dateTo)} />
+        {/* Dimension filters button */}
+        <button onClick={() => setPanelOpen(true)}
+          className="ml-1 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold transition-all"
+          style={{ background: dimCount > 0 ? "rgba(232,67,147,.12)" : "var(--card2)", color: dimCount > 0 ? "var(--pink)" : "var(--muted2)", border: `1px solid ${dimCount > 0 ? "var(--pink)" : "var(--border)"}` }}>
+          Filters
+          {dimCount > 0 && (
+            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold"
+              style={{ background: "var(--pink)", color: "#fff" }}>{dimCount}</span>
+          )}
+        </button>
+        {(filters.dateFrom || filters.dateTo || dimCount > 0) && (
+          <button onClick={() => setFilters(EMPTY_FILTERS)} className="px-2.5 py-1.5 rounded-xl text-[11px] font-semibold"
+            style={{ color: "var(--muted2)", border: "1px solid var(--border)" }}>✕ Clear</button>
         )}
       </div>
 
-      {/* Row 2 — dimension multiselects, always visible */}
-      <div className="flex flex-wrap items-center gap-2">
-        {customers.length > 0 && (
-          <MultiSelect label="Customer" options={customers.map(c => ({ label: c.name, value: String(c.id) }))}
-            value={filters.customerIds.map(String)} onChange={vals => set({ customerIds: vals.map(Number) })} minWidth={180} />
-        )}
-        <MultiSelect label="Invoice Status"
-          options={[
-            { label: "Completed", value: "Completed", color: "var(--accent)" },
-            { label: "Pending", value: "Pending", color: "var(--amber-c)" },
-            { label: "Written Off", value: "Written Off", color: "var(--red-c)" },
-          ]}
-          value={filters.invoiceStatuses} onChange={vals => set({ invoiceStatuses: vals })} />
-        {statuses.length > 0 && (
-          <MultiSelect label="Lead Status" options={statuses.map(s => ({ label: s.name, value: String(s.id) }))}
-            value={filters.statusIds.map(String)} onChange={vals => set({ statusIds: vals.map(Number) })} />
-        )}
-        {paymentTypes.length > 0 && (
-          <MultiSelect label="Pay Type" options={paymentTypes.map(p => ({ label: p.name, value: String(p.id) }))}
-            value={filters.paymentTypeIds.map(String)} onChange={vals => set({ paymentTypeIds: vals.map(Number) })} />
-        )}
-        {costCategories.length > 0 && (
-          <MultiSelect label="Cost Category" options={costCategories.map(c => ({ label: c.name, value: String(c.id) }))}
-            value={filters.costCategoryIds.map(String)} onChange={vals => set({ costCategoryIds: vals.map(Number) })} />
-        )}
-        {accounts.length > 0 && (
-          <MultiSelect label="Account" options={accounts.map(a => ({ label: a.name, value: String(a.id) }))}
-            value={filters.accountIds.map(String)} onChange={vals => set({ accountIds: vals.map(Number) })} />
-        )}
-      </div>
-    </div>
+      {/* Slide-out dimension filter panel */}
+      {panelOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setPanelOpen(false)}
+            style={{ background: "rgba(0,0,0,.45)" }} />
+          <div className="fixed top-0 right-0 bottom-0 z-50 w-80 flex flex-col overflow-hidden"
+            style={{ background: "var(--card)", borderLeft: "1px solid var(--border)", boxShadow: "-4px 0 24px rgba(0,0,0,.15)" }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: "var(--border)" }}>
+              <span className="font-semibold text-sm">Filters</span>
+              <button onClick={() => setPanelOpen(false)} style={{ color: "var(--muted2)" }}>✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-5">
+              {customers.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--muted2)" }}>Customer</p>
+                  <MultiSelect label="All customers" options={customers.map(c => ({ label: c.name, value: String(c.id) }))}
+                    value={filters.customerIds.map(String)} onChange={vals => set({ customerIds: vals.map(Number) })} />
+                </div>
+              )}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--muted2)" }}>Invoice Status</p>
+                <MultiSelect label="All statuses"
+                  options={[{ label: "Completed", value: "Completed" }, { label: "Pending", value: "Pending" }, { label: "Written Off", value: "Written Off" }]}
+                  value={filters.invoiceStatuses} onChange={vals => set({ invoiceStatuses: vals })} />
+              </div>
+              {statuses.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--muted2)" }}>Lead Status</p>
+                  <MultiSelect label="All statuses" options={statuses.map(s => ({ label: s.name, value: String(s.id) }))}
+                    value={filters.statusIds.map(String)} onChange={vals => set({ statusIds: vals.map(Number) })} />
+                </div>
+              )}
+              {paymentTypes.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--muted2)" }}>Payment Type</p>
+                  <MultiSelect label="All types" options={paymentTypes.map(p => ({ label: p.name, value: String(p.id) }))}
+                    value={filters.paymentTypeIds.map(String)} onChange={vals => set({ paymentTypeIds: vals.map(Number) })} />
+                </div>
+              )}
+              {costCategories.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--muted2)" }}>Cost Category</p>
+                  <MultiSelect label="All categories" options={costCategories.map(c => ({ label: c.name, value: String(c.id) }))}
+                    value={filters.costCategoryIds.map(String)} onChange={vals => set({ costCategoryIds: vals.map(Number) })} />
+                </div>
+              )}
+              {accounts.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--muted2)" }}>Account</p>
+                  <MultiSelect label="All accounts" options={accounts.map(a => ({ label: a.name, value: String(a.id) }))}
+                    value={filters.accountIds.map(String)} onChange={vals => set({ accountIds: vals.map(Number) })} />
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-4 border-t flex gap-2 shrink-0" style={{ borderColor: "var(--border)" }}>
+              <button onClick={() => { clearDim(); setPanelOpen(false); }}
+                className="flex-1 py-2 rounded-xl text-xs font-semibold"
+                style={{ background: "var(--card3)", color: "var(--muted)", border: "1px solid var(--border)" }}>Clear</button>
+              <button onClick={() => setPanelOpen(false)}
+                className="flex-1 py-2 rounded-xl text-xs font-semibold"
+                style={{ background: "var(--accent)", color: "#fff" }}>Apply</button>
+            </div>
+          </div>
+        </>
+      )}
+    </>
   );
 }
 
@@ -705,7 +871,7 @@ export function DashboardCharts({
 
   // ── Persisted state — DB is source of truth for customKpis ───────────────
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
-  const [sectionOrder, setSectionOrder] = useState<string[]>(() => readLS(LS_SECTION_ORDER, DEFAULT_SECTIONS));
+  const [compareMode, setCompareMode] = useState<"prev" | "yoy">("prev");
   const [customKpis, setCustomKpis] = useState<CustomKpi[]>(() => {
     const fromDb = savedDashboardSettings?.customKpis;
     if (Array.isArray(fromDb) && fromDb.length > 0) return fromDb as CustomKpi[];
@@ -832,18 +998,6 @@ export function DashboardCharts({
     setDragOverKpiKey(null);
   }, []);
 
-  const moveSection = useCallback((id: string, dir: -1 | 1) => {
-    setSectionOrder(prev => {
-      const i = prev.indexOf(id);
-      if (i < 0) return prev;
-      const next = [...prev];
-      const j = i + dir;
-      if (j < 0 || j >= next.length) return prev;
-      [next[i], next[j]] = [next[j], next[i]];
-      try { localStorage.setItem(LS_SECTION_ORDER, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  }, []);
 
   // ── Dimension lookups ────────────────────────────────────────────────────
   const customerMap = useMemo(() => Object.fromEntries(customers.map(c => [c.id, c.name])), [customers]);
@@ -915,7 +1069,8 @@ export function DashboardCharts({
       revenue, opex, all_costs, profit, net_profit, margin_pct, net_margin_pct, pipeline, avg_deal, pending,
       total_leads: fLeads.length, won_leads: wonLeads.length, open_leads: openLeads.length,
       conversion_pct, total_customers: customers.length, total_invoices: fInvoices.length,
-      bank_balance: filters.accountIds.length > 0 ? bank_balance_filtered : bankBalance,
+      bank_balance: bankBalance,
+      bank_balance_filtered,
       completedInv, pendingInv, openLeads, wonLeads,
     };
   }, [fLeads, fInvoices, fCosts, fCashflow, wonStatusId, lostStatusId, customers, bankBalance, filters]);
@@ -986,14 +1141,6 @@ export function DashboardCharts({
       .sort((a, b) => b.value - a.value).slice(0, 8);
   }, [metrics.completedInv, customerMap]);
 
-  const revenueByPayType = useMemo(() => {
-    const map: Record<string, number> = {};
-    metrics.completedInv.forEach(inv => {
-      const name = inv.payment_type_id ? (payTypeMap[inv.payment_type_id] || `Type ${inv.payment_type_id}`) : "Unspecified";
-      map[name] = (map[name] || 0) + Number(inv.amount || 0);
-    });
-    return Object.entries(map).map(([name, value]) => ({ name, value }));
-  }, [metrics.completedInv, payTypeMap]);
 
   const cashflowTrend = useMemo(() => {
     const byDate: Record<string, number> = {};
@@ -1005,17 +1152,6 @@ export function DashboardCharts({
       .slice(-30).map(([date, balance]) => ({ date: date.slice(5), balance }));
   }, [fCashflow]);
 
-  const pipelineByStatus = useMemo(() => {
-    const map: Record<string, { count: number; weighted: number; value: number }> = {};
-    metrics.openLeads.forEach(l => {
-      const name = statusMap[l.status_id] || "Unknown";
-      if (!map[name]) map[name] = { count: 0, weighted: 0, value: 0 };
-      map[name].count++;
-      map[name].weighted += Number(l.opportunity_weighted || 0);
-      map[name].value += Number(l.opportunity_value || 0);
-    });
-    return Object.entries(map).map(([name, d]) => ({ name, ...d }));
-  }, [metrics.openLeads, statusMap]);
 
   const funnel = useMemo(() => [
     { name: "Contacted", value: fLeads.filter(l => l.contacted).length },
@@ -1070,11 +1206,12 @@ export function DashboardCharts({
     const prevCosts = rawCosts.filter(c => dateInRange(c.transaction_date, prevPeriodDates.from, prevPeriodDates.to));
     const completedInv = prevInv.filter(i => isCompleted(i.status));
     const revenue = completedInv.reduce((s, i) => s + Number(i.amount || 0), 0);
-    const opex = prevCosts.reduce((s, c) => s + Number(c.amount || 0), 0);
+    const opex = prevCosts.filter(c => c.include_in_pnl !== false).reduce((s, c) => s + Number(c.amount || 0), 0);
+    const all_costs = prevCosts.reduce((s, c) => s + Number(c.amount || 0), 0);
     const wonLeads = prevLeads.filter(l => l.status_id === wonStatusId);
     const totalRev = prevLeads.reduce((s, l) => s + Number(l.total_revenue || 0), 0);
     return {
-      revenue, opex, profit: revenue - opex,
+      revenue, opex, profit: revenue - opex, net_profit: revenue - all_costs,
       total_leads: prevLeads.length, won_leads: wonLeads.length,
       conversion_pct: prevLeads.length > 0 ? wonLeads.length / prevLeads.length * 100 : 0,
       pipeline: prevLeads.reduce((s, l) => s + Number(l.opportunity_weighted || 0), 0),
@@ -1082,6 +1219,37 @@ export function DashboardCharts({
       avg_deal: wonLeads.length > 0 ? totalRev / wonLeads.length : 0,
     };
   }, [rawLeads, rawInvoices, rawCosts, prevPeriodDates, wonStatusId]);
+
+  const lyPeriodDates = useMemo(() => {
+    const shiftYear = (d: string) => d ? `${String(parseInt(d.slice(0, 4)) - 1)}${d.slice(4)}` : "";
+    if (!filters.dateFrom && !filters.dateTo) {
+      const now = new Date();
+      const firstLY = new Date(now.getFullYear() - 1, now.getMonth(), 1);
+      const lastLY = new Date(now.getFullYear() - 1, now.getMonth() + 1, 0);
+      return { from: firstLY.toISOString().slice(0, 10), to: lastLY.toISOString().slice(0, 10) };
+    }
+    return { from: shiftYear(filters.dateFrom), to: shiftYear(filters.dateTo) };
+  }, [filters.dateFrom, filters.dateTo]);
+
+  const lyMetrics = useMemo(() => {
+    const lyLeads = rawLeads.filter(l => dateInRange(l.lead_date, lyPeriodDates.from, lyPeriodDates.to));
+    const lyInv = rawInvoices.filter(i => dateInRange(i.transaction_date, lyPeriodDates.from, lyPeriodDates.to));
+    const lyCosts = rawCosts.filter(c => dateInRange(c.transaction_date, lyPeriodDates.from, lyPeriodDates.to));
+    const completedInv = lyInv.filter(i => isCompleted(i.status));
+    const revenue = completedInv.reduce((s, i) => s + Number(i.amount || 0), 0);
+    const opex = lyCosts.filter(c => c.include_in_pnl !== false).reduce((s, c) => s + Number(c.amount || 0), 0);
+    const all_costs = lyCosts.reduce((s, c) => s + Number(c.amount || 0), 0);
+    const wonLeads = lyLeads.filter(l => l.status_id === wonStatusId);
+    const totalRev = lyLeads.reduce((s, l) => s + Number(l.total_revenue || 0), 0);
+    return {
+      revenue, opex, profit: revenue - opex, net_profit: revenue - all_costs,
+      total_leads: lyLeads.length, won_leads: wonLeads.length,
+      conversion_pct: lyLeads.length > 0 ? wonLeads.length / lyLeads.length * 100 : 0,
+      pipeline: lyLeads.reduce((s, l) => s + Number(l.opportunity_weighted || 0), 0),
+      pending: lyInv.filter(i => isPending(i.status)).reduce((s, i) => s + Number(i.amount || 0), 0),
+      avg_deal: wonLeads.length > 0 ? totalRev / wonLeads.length : 0,
+    };
+  }, [rawLeads, rawInvoices, rawCosts, lyPeriodDates, wonStatusId]);
 
   const dueThisWeek = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -1114,7 +1282,7 @@ export function DashboardCharts({
     { key: "total_customers", label: "Customers", value: String(metrics.total_customers), sub: `${metrics.total_invoices} inv`, color: "var(--cyan-c)" },
     // Extended KPIs (hidden by default in configure panel — users can toggle)
     { key: "pending", label: "Pending", value: `${cur} ${fmt(metrics.pending)}`, sub: "awaiting payment", color: "var(--amber-c)" },
-    { key: "bank_balance", label: "Bank Balance", value: metrics.bank_balance > 0 ? `${cur} ${fmt(metrics.bank_balance)}` : "—", sub: bankLastDate ? new Date(bankLastDate).toLocaleDateString("en-ZA") : "", color: metrics.bank_balance > 0 ? "var(--accent)" : "var(--muted2)" },
+    { key: "bank_balance", label: "Bank Balance", value: metrics.bank_balance > 0 ? `${cur} ${fmt(metrics.bank_balance)}` : "—", sub: filters.accountIds.length > 0 ? `Filtered: ${cur} ${fmt(metrics.bank_balance_filtered)}` : (bankLastDate ? new Date(bankLastDate).toLocaleDateString("en-ZA") : ""), color: metrics.bank_balance > 0 ? "var(--accent)" : "var(--muted2)" },
   ];
   type KpiRenderItem =
     | { type: "builtin"; key: string; label: string; value: string; sub?: string; color: string; delta?: number | null; onClick?: () => void; goalPct?: number | null }
@@ -1134,17 +1302,18 @@ export function DashboardCharts({
       pipeline: "pipeline", avg_deal: "pipeline", total_customers: "revenue",
       bank_balance: "cashflow",
     };
+    const cm = compareMode === "prev" ? prevMetrics : lyMetrics;
     const deltaMap: Record<string, number | null> = {
-      revenue: pctDelta(metrics.revenue, prevMetrics.revenue),
-      opex: pctDelta(metrics.opex, prevMetrics.opex),
-      profit: pctDelta(metrics.profit, prevMetrics.profit),
-      net_profit: pctDelta(metrics.net_profit, (prevMetrics as typeof metrics).net_profit ?? null),
-      total_leads: pctDelta(metrics.total_leads, prevMetrics.total_leads),
-      won_leads: pctDelta(metrics.won_leads, prevMetrics.won_leads),
-      conversion_pct: pctDelta(metrics.conversion_pct, prevMetrics.conversion_pct),
-      pipeline: pctDelta(metrics.pipeline, prevMetrics.pipeline),
-      avg_deal: pctDelta(metrics.avg_deal, prevMetrics.avg_deal),
-      pending: pctDelta(metrics.pending, prevMetrics.pending),
+      revenue: pctDelta(metrics.revenue, cm.revenue),
+      opex: pctDelta(metrics.opex, cm.opex),
+      profit: pctDelta(metrics.profit, cm.profit),
+      net_profit: pctDelta(metrics.net_profit, cm.net_profit),
+      total_leads: pctDelta(metrics.total_leads, cm.total_leads),
+      won_leads: pctDelta(metrics.won_leads, cm.won_leads),
+      conversion_pct: pctDelta(metrics.conversion_pct, cm.conversion_pct),
+      pipeline: pctDelta(metrics.pipeline, cm.pipeline),
+      avg_deal: pctDelta(metrics.avg_deal, cm.avg_deal),
+      pending: pctDelta(metrics.pending, cm.pending),
     };
 
     const items: KpiRenderItem[] = [];
@@ -1168,370 +1337,261 @@ export function DashboardCharts({
     }
     return items;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kpiOrder, hiddenKpis, customKpis, tableMap, cur, metrics, prevMetrics, bankBalance, bankLastDate, goalPct, scrollToSection]);
+  }, [kpiOrder, hiddenKpis, customKpis, tableMap, cur, metrics, prevMetrics, lyMetrics, compareMode, bankBalance, bankLastDate, goalPct, scrollToSection]);
 
-  // ── Section render helpers ───────────────────────────────────────────────
-  const sProps = (id: string, i: number) => ({
-    id, order: i, totalSections: sectionOrder.length, onMove: moveSection,
-  });
 
   const calcCashflow = metrics.revenue - metrics.opex;
   const cfVariance = bankBalance - calcCashflow;
 
+  // ── Spark data (last 6 months of monthly series) ─────────────────────────
+  const revenueSparkData = useMemo(() => monthlyData.slice(-6).map(d => d.Revenue), [monthlyData]);
+  const profitSparkData = useMemo(() => monthlyData.slice(-6).map(d => d.Profit), [monthlyData]);
+  const bankSparkData = useMemo(() => cashflowTrend.slice(-12).map(d => d.balance), [cashflowTrend]);
+
+  // ── Comparison period labels ─────────────────────────────────────────────
+  const prevLabel = useMemo(() => {
+    const { from } = prevPeriodDates;
+    if (!from) return "Prev Month";
+    return new Date(from).toLocaleDateString("en-ZA", { month: "short", year: "2-digit" });
+  }, [prevPeriodDates]);
+  const lyLabel = useMemo(() => {
+    const { from } = lyPeriodDates;
+    return from ? `${new Date(from).getFullYear()}` : "Last Year";
+  }, [lyPeriodDates]);
+
+  // ── Compare metrics for hero deltas ─────────────────────────────────────
+  const compareMetrics = compareMode === "prev" ? prevMetrics : lyMetrics;
+
+  // ── Secondary KPI strip (all non-hero ordered items) ────────────────────
+  const secondaryKpis = orderedKpiItems.filter(item => !HERO_KPI_KEYS.has(item.key));
+
   // ── Render ───────────────────────────────────────────────────────────────
   return (
-    <div>
+    <div className="pb-10">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
-        <span className="text-xs px-2 py-1 rounded" style={{ background: "var(--card2)", color: "var(--muted2)", border: "1px solid var(--border)" }}>
-          {orgName}
-        </span>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h1 className="text-xl font-bold">Dashboard</h1>
+          <p className="text-xs mt-0.5" style={{ color: "var(--muted2)" }}>{orgName}</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex rounded-xl overflow-hidden border text-xs" style={{ borderColor: "var(--border)" }}>
+            <button onClick={() => setCompareMode("prev")} className="px-3 py-1.5 font-semibold transition-colors"
+              style={{ background: compareMode === "prev" ? "var(--card2)" : "transparent", color: compareMode === "prev" ? "var(--foreground)" : "var(--muted2)" }}>
+              vs {prevLabel}
+            </button>
+            <button onClick={() => setCompareMode("yoy")} className="px-3 py-1.5 font-semibold transition-colors"
+              style={{ background: compareMode === "yoy" ? "var(--card2)" : "transparent", color: compareMode === "yoy" ? "var(--foreground)" : "var(--muted2)" }}>
+              vs {lyLabel}
+            </button>
+          </div>
+          <button onClick={() => setShowKpiBuilder(true)} className="px-3 py-1.5 rounded-xl text-xs font-semibold"
+            style={{ background: "rgba(232,67,147,.1)", color: "var(--pink)", border: "1px solid var(--pink)" }}>+ Metric</button>
+          <button onClick={() => setShowKpiConfig(true)} className="px-3 py-1.5 rounded-xl text-xs font-semibold"
+            style={{ background: "var(--card2)", color: "var(--muted2)", border: "1px solid var(--border)" }}>Configure</button>
+        </div>
       </div>
 
-      {/* Today's Focus */}
-      <TodayFocus
-        overdueCount={overdueInvoices.length}
-        overdueTotal={overdueInvoices.reduce((s, i) => s + i.amount, 0)}
-        staleCount={staleLeads.length}
-        dueThisWeek={dueThisWeek}
-        cur={cur}
-        onScrollTo={scrollToSection}
+      {/* Alert strip */}
+      <TodayFocus overdueCount={overdueInvoices.length} overdueTotal={overdueInvoices.reduce((s, i) => s + i.amount, 0)}
+        staleCount={staleLeads.length} dueThisWeek={dueThisWeek} cur={cur} onScrollTo={scrollToSection} />
+
+      {/* Compact global filter bar */}
+      <CompactFilterBar filters={filters} setFilters={setFilters} statuses={statuses} customers={customers}
+        costCategories={costCategories} accounts={accounts} paymentTypes={paymentTypes} fiscalYearStart={fiscalYearStart} />
+
+      {/* Hero KPI cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+        <HeroKpiCard label="Revenue" value={`${cur} ${fmt(metrics.revenue)}`} color="var(--accent)"
+          delta={pctDelta(metrics.revenue, compareMetrics.revenue)} sparkData={revenueSparkData}
+          sub={`${cur} ${fmt(metrics.pending)} pending`} goalPct={goalPct} />
+        <HeroKpiCard label="Gross Profit" value={`${cur} ${fmt(metrics.profit)}`} color={profitColor}
+          delta={pctDelta(metrics.profit, compareMetrics.profit)} sparkData={profitSparkData}
+          sub={`${metrics.margin_pct.toFixed(1)}% margin`} />
+        <HeroKpiCard label="Pipeline" value={`${cur} ${fmt(metrics.pipeline)}`} color="var(--purple-c)"
+          delta={pctDelta(metrics.pipeline, compareMetrics.pipeline)} sub={`${metrics.open_leads} open leads`} />
+        <HeroKpiCard label="Bank Balance" value={metrics.bank_balance > 0 ? `${cur} ${fmt(metrics.bank_balance)}` : "—"}
+          color="var(--cyan-c)" sparkData={bankSparkData}
+          sub={filters.accountIds.length > 0 ? `Filtered: ${cur} ${fmt(metrics.bank_balance_filtered)}` : (bankLastDate ? new Date(bankLastDate).toLocaleDateString("en-ZA") : "")} />
+        <HeroKpiCard label="Conversion" value={`${metrics.conversion_pct.toFixed(1)}%`} color={convColor}
+          delta={pctDelta(metrics.conversion_pct, compareMetrics.conversion_pct)} sub={`${metrics.won_leads}/${metrics.total_leads} leads`} />
+      </div>
+
+      {/* Secondary KPI strip */}
+      {secondaryKpis.length > 0 && (
+        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2 mb-5">
+          {secondaryKpis.map(item => (
+            <div key={item.key} draggable onDragStart={() => handleKpiDragStart(item.key)}
+              onDragEnter={() => handleKpiDragEnter(item.key)} onDragOver={e => e.preventDefault()}
+              onDrop={handleKpiDrop} onDragEnd={handleKpiDragEnd}
+              style={{ opacity: draggingKpiKey === item.key ? 0.4 : 1, outline: dragOverKpiKey === item.key && draggingKpiKey !== item.key ? "2px dashed var(--accent)" : "none", outlineOffset: 2, borderRadius: 12, cursor: "grab" }}>
+              {item.type === "builtin" ? (
+                <SmallKpiCard label={item.label} value={item.value} sub={item.sub} color={item.color} delta={item.delta} />
+              ) : (
+                <div className="rounded-xl p-3 flex flex-col gap-1 relative group"
+                  style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${item.kpiColor}`, boxShadow: "var(--shadow-sm)" }}>
+                  <span className="text-[9px] font-bold uppercase tracking-widest truncate" style={{ color: "var(--muted2)" }}>{item.kpi.name}</span>
+                  <span className="text-sm font-bold font-mono leading-none" style={{ color: item.kpiColor }}>{item.formatted}</span>
+                  {item.kpi.desc && <span className="text-[10px]" style={{ color: "var(--muted2)" }}>{item.kpi.desc}</span>}
+                  <div className="absolute top-1.5 right-1.5 hidden group-hover:flex gap-0.5">
+                    <button onClick={() => { setEditingKpi(item.kpi); setShowKpiBuilder(true); }}
+                      className="w-5 h-5 flex items-center justify-center rounded text-[9px]"
+                      style={{ background: "var(--card3)", color: "var(--muted2)", border: "1px solid var(--border)" }}>✏</button>
+                    <button onClick={() => saveCustomKpis(customKpis.filter(k => k.id !== item.kpi.id))}
+                      className="w-5 h-5 flex items-center justify-center rounded text-[9px]"
+                      style={{ background: "var(--danger-bg)", color: "var(--red-c)" }}>✕</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Charts 2-col grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+        <ChartCard title="Revenue vs Costs (12 months)">
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={monthlyData} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
+              <XAxis dataKey="month" tick={TICK_STYLE} axisLine={false} tickLine={false} />
+              <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
+              <Bar dataKey="Revenue" fill="#10b981" radius={[3,3,0,0]} />
+              <Bar dataKey="Costs" fill="rgba(239,68,68,.5)" radius={[3,3,0,0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+        <ChartCard title="Sales Funnel">
+          {funnel.map(({ name, value }, i) => (
+            <div key={name} className="flex items-center gap-3 mb-2.5">
+              <span className="text-xs text-right w-20 shrink-0" style={{ color: "var(--muted2)" }}>{name}</span>
+              <div className="flex-1 h-6 rounded overflow-hidden" style={{ background: "var(--card3)" }}>
+                <div className="h-full rounded flex items-center px-2 text-xs font-semibold text-white"
+                  style={{ width: `${Math.max(value / funnelMax * 100, 4)}%`, background: COLORS[i % COLORS.length] }}>{value}</div>
+              </div>
+              <span className="text-xs w-8 text-right font-mono shrink-0" style={{ color: "var(--muted2)" }}>
+                {funnelMax > 0 ? Math.round(value / funnel[0].value * 100) : 0}%
+              </span>
+            </div>
+          ))}
+        </ChartCard>
+        <ChartCard title="Profit Trend">
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={monthlyData} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
+              <XAxis dataKey="month" tick={TICK_STYLE} axisLine={false} tickLine={false} />
+              <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
+              <Area dataKey="Profit" stroke="#8b5cf6" fill="rgba(139,92,246,.12)" strokeWidth={2} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </ChartCard>
+        <ChartCard title="Costs by Category">
+          <ResponsiveContainer width="100%" height={200}>
+            <PieChart>
+              <Pie data={costsByCategory} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" nameKey="name">
+                {costsByCategory.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Pie>
+              <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
+              <Legend iconSize={8} wrapperStyle={LEGEND_STYLE} />
+            </PieChart>
+          </ResponsiveContainer>
+        </ChartCard>
+        {cashflowTrend.length > 1 && (
+          <ChartCard title="Bank Balance Trend">
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={cashflowTrend} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
+                <XAxis dataKey="date" tick={TICK_STYLE} axisLine={false} tickLine={false} />
+                <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
+                <Area dataKey="balance" stroke="#06b6d4" fill="rgba(6,182,212,.1)" strokeWidth={2} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        )}
+        {revenueByCustomer.length > 0 && (
+          <ChartCard title="Revenue by Customer (Top 8)">
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={revenueByCustomer} layout="vertical" margin={{ left: 0 }}>
+                <XAxis type="number" tick={TICK_STYLE} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="name" tick={TICK_STYLE} axisLine={false} tickLine={false} width={90} />
+                <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
+                <Bar dataKey="value" fill="rgba(16,185,129,.7)" radius={3} />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        )}
+      </div>
+
+      {/* Growth Analysis */}
+      <GrowthPanel
+        metrics={{ revenue: metrics.revenue, opex: metrics.opex, profit: metrics.profit, net_profit: metrics.net_profit,
+          total_leads: metrics.total_leads, won_leads: metrics.won_leads, conversion_pct: metrics.conversion_pct,
+          pipeline: metrics.pipeline, pending: metrics.pending, avg_deal: metrics.avg_deal }}
+        compareMetrics={compareMetrics}
+        compareMode={compareMode} setCompareMode={setCompareMode}
+        cur={cur} prevLabel={`vs ${prevLabel}`} lyLabel={`vs ${lyLabel}`}
       />
 
-      {/* Filters */}
-      <FilterBar filters={filters} setFilters={setFilters}
-        statuses={statuses} customers={customers} costCategories={costCategories} accounts={accounts} paymentTypes={paymentTypes}
-        fiscalYearStart={fiscalYearStart} />
-
-      {/* Sections in order */}
-      {sectionOrder.map((sectionId, idx) => {
-        if (sectionId === "summary") return (
-          <Section key="summary" title="📊 Executive Summary" {...sProps("summary", idx)}
-            action={
-              <button onClick={() => setShowKpiConfig(true)}
-                className="px-2 py-1 rounded text-xs font-semibold mr-1"
-                style={{ background: "var(--card3)", color: "var(--muted2)", border: "1px solid var(--border)" }}>
-                ⚙ Configure
-              </button>
-            }>
-            {orderedKpiItems.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3 mb-3">
-                {orderedKpiItems.map(item => (
-                  <div
-                    key={item.key}
-                    draggable
-                    onDragStart={() => handleKpiDragStart(item.key)}
-                    onDragEnter={() => handleKpiDragEnter(item.key)}
-                    onDragOver={e => e.preventDefault()}
-                    onDrop={handleKpiDrop}
-                    onDragEnd={handleKpiDragEnd}
-                    style={{
-                      opacity: draggingKpiKey === item.key ? 0.4 : 1,
-                      outline: dragOverKpiKey === item.key && draggingKpiKey !== item.key ? "2px dashed var(--accent)" : "none",
-                      outlineOffset: 2,
-                      borderRadius: 12,
-                      cursor: "grab",
-                      transition: "opacity 0.15s",
-                    }}
-                  >
-                    {item.type === "builtin" ? (
-                      <KpiCard label={item.label} value={item.value} sub={item.sub} color={item.color}
-                        delta={item.delta} onClick={item.onClick} goalPct={item.goalPct} />
-                    ) : (
-                      <div className="rounded-xl flex flex-col overflow-hidden h-full"
-                        style={{ background: "var(--card)", border: "1px solid var(--border)", borderTop: `3px solid ${item.kpiColor}`, boxShadow: "var(--shadow-sm)" }}>
-                        <div className="p-4 flex-1">
-                          <div className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: "var(--muted2)" }}>{item.kpi.name}</div>
-                          <div className="text-xl font-bold font-mono truncate leading-none" style={{ color: item.kpiColor }}>{item.formatted}</div>
-                          {(item.kpi.desc || item.kpi.agg) && <div className="text-[11px] mt-1.5" style={{ color: "var(--muted2)" }}>{item.kpi.desc || item.kpi.agg}</div>}
-                        </div>
-                        <div className="flex justify-end gap-1 px-2.5 py-1.5 border-t" style={{ borderColor: "var(--border)" }}>
-                          <button
-                            onClick={() => { setEditingKpi(item.kpi); setShowKpiBuilder(true); }}
-                            className="w-6 h-6 flex items-center justify-center rounded text-xs hover:opacity-80"
-                            style={{ background: "var(--card3)", color: "var(--muted2)", border: "1px solid var(--border)" }}
-                            title="Edit metric">✏</button>
-                          <button
-                            onClick={() => saveCustomKpis(customKpis.filter(k => k.id !== item.kpi.id))}
-                            className="w-6 h-6 flex items-center justify-center rounded text-xs hover:opacity-80"
-                            style={{ background: "var(--danger-bg)", color: "var(--red-c)" }}
-                            title="Remove metric">✕</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+      {/* Monthly performance table */}
+      <ChartCard title="Monthly Performance" className="mb-5">
+        <div className="overflow-x-auto -mx-1">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--card2)" }}>
+                {["Month","Revenue","Costs","Profit","Margin","MoM %"].map(h => (
+                  <th key={h} className="px-4 py-2.5 text-left font-semibold uppercase tracking-wider whitespace-nowrap text-[10px]" style={{ color: "var(--muted2)" }}>{h}</th>
                 ))}
-              </div>
-            )}
-            <button onClick={() => setShowKpiBuilder(true)}
-              className="px-3 py-1.5 rounded text-xs font-semibold"
-              style={{ background: "rgba(232,67,147,.1)", color: "var(--pink)", border: "1px solid var(--pink)" }}>
-              + Add Metric
-            </button>
-            <div className="mt-3">
-              <AiInsightCard data={{
-                revenue: metrics.revenue, opex: metrics.opex, profit: metrics.profit,
-                margin: metrics.margin_pct, pending: metrics.pending,
-                overdueCount: overdueInvoices.length,
-                overdueAmount: overdueInvoices.reduce((s, i) => s + i.amount, 0),
-                staleLeads: staleLeads.length,
-                totalLeads: metrics.total_leads, wonLeads: metrics.won_leads,
-                cur,
-              }} orgId={orgId} />
-            </div>
-          </Section>
-        );
+              </tr>
+            </thead>
+            <tbody>
+              {monthlyTable.map(row => {
+                const margin = row.Revenue > 0 ? row.Profit / row.Revenue * 100 : 0;
+                return (
+                  <tr key={row.fullMonth} className="border-b hover:bg-[var(--card2)] transition-colors" style={{ borderColor: "var(--border)" }}>
+                    <td className="px-4 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--muted)" }}>{row.month}</td>
+                    <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: "var(--accent)" }}>{cur} {fmt(row.Revenue)}</td>
+                    <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: "var(--red-c)" }}>{cur} {fmt(row.Costs)}</td>
+                    <td className="px-4 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: row.Profit >= 0 ? "var(--accent)" : "var(--red-c)" }}>{cur} {fmt(row.Profit)}</td>
+                    <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: margin >= 0 ? "var(--accent)" : "var(--red-c)" }}>{fmtDec(margin)}%</td>
+                    <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: row.mom === null ? "var(--muted2)" : row.mom >= 0 ? "var(--accent)" : "var(--red-c)" }}>
+                      {row.mom === null ? "—" : `${row.mom >= 0 ? "+" : ""}${row.mom.toFixed(1)}%`}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </ChartCard>
 
-        if (sectionId === "revenue") return (
-          <Section key="revenue" title="📈 Revenue & Costs" {...sProps("revenue", idx)}>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-              <ChartBox title="Monthly Revenue vs Costs (12 months)">
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={monthlyData} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
-                    <XAxis dataKey="month" tick={TICK_STYLE} axisLine={false} tickLine={false} />
-                    <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
-                    <Bar dataKey="Revenue" fill="#10b981" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="Costs" fill="rgba(239,68,68,.5)" radius={[3, 3, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartBox>
-              <ChartBox title="Monthly Profit">
-                <ResponsiveContainer width="100%" height={200}>
-                  <AreaChart data={monthlyData} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
-                    <XAxis dataKey="month" tick={TICK_STYLE} axisLine={false} tickLine={false} />
-                    <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
-                    <Area dataKey="Profit" stroke="#8b5cf6" fill="rgba(139,92,246,.15)" strokeWidth={2} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </ChartBox>
-              <ChartBox title="Revenue by Customer (Top 8)">
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={revenueByCustomer} layout="vertical" margin={{ left: 0 }}>
-                    <XAxis type="number" tick={TICK_STYLE} axisLine={false} tickLine={false} />
-                    <YAxis type="category" dataKey="name" tick={TICK_STYLE} axisLine={false} tickLine={false} width={90} />
-                    <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
-                    <Bar dataKey="value" fill="rgba(16,185,129,.7)" radius={3} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartBox>
-              <ChartBox title="Revenue by Payment Type">
-                <ResponsiveContainer width="100%" height={200}>
-                  <PieChart>
-                    <Pie data={revenueByPayType} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" nameKey="name">
-                      {revenueByPayType.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
-                    <Legend iconSize={8} wrapperStyle={LEGEND_STYLE} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </ChartBox>
-            </div>
-            {/* Monthly table */}
-            <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
-              <div className="px-4 py-2.5 border-b" style={{ borderColor: "var(--border)", background: "var(--card)" }}>
-                <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Monthly Performance</h3>
-              </div>
-              <div className="overflow-x-auto" style={{ background: "var(--card2)" }}>
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--card)" }}>
-                      {["Month", "Revenue", "Costs", "Profit", "Margin", "MoM %"].map(h => (
-                        <th key={h} className="px-4 py-2.5 text-left font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: "var(--muted2)" }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {monthlyTable.map(row => {
-                      const margin = row.Revenue > 0 ? row.Profit / row.Revenue * 100 : 0;
-                      return (
-                        <tr key={row.fullMonth} className="border-b hover:bg-[var(--card3)]" style={{ borderColor: "var(--border)" }}>
-                          <td className="px-4 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--muted)" }}>{row.month}</td>
-                          <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: "var(--accent)" }}>{cur} {fmt(row.Revenue)}</td>
-                          <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: "var(--red-c)" }}>{cur} {fmt(row.Costs)}</td>
-                          <td className="px-4 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: row.Profit >= 0 ? "var(--accent)" : "var(--red-c)" }}>{cur} {fmt(row.Profit)}</td>
-                          <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: margin >= 0 ? "var(--accent)" : "var(--red-c)" }}>{fmtDec(margin)}%</td>
-                          <td className="px-4 py-2.5 font-mono whitespace-nowrap" style={{ color: row.mom === null ? "var(--muted2)" : row.mom >= 0 ? "var(--accent)" : "var(--red-c)" }}>
-                            {row.mom === null ? "—" : `${row.mom >= 0 ? "+" : ""}${row.mom.toFixed(1)}%`}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </Section>
-        );
+      {/* AI Insight + Alerts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+        <AiInsightCard data={{ revenue: metrics.revenue, opex: metrics.opex, profit: metrics.profit,
+          margin: metrics.margin_pct, pending: metrics.pending, overdueCount: overdueInvoices.length,
+          overdueAmount: overdueInvoices.reduce((s, i) => s + i.amount, 0), staleLeads: staleLeads.length,
+          totalLeads: metrics.total_leads, wonLeads: metrics.won_leads, cur }} orgId={orgId} />
+        <AlertsPanel overdueInvoices={overdueInvoices} staleLeads={staleLeads} cur={cur} />
+      </div>
 
-        if (sectionId === "pipeline") return (
-          <Section key="pipeline" title="🔻 Sales Funnel & Pipeline" {...sProps("pipeline", idx)}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <ChartBox title="Sales Funnel">
-                {funnel.map(({ name, value }, i) => (
-                  <div key={name} className="flex items-center gap-3 mb-2">
-                    <span className="text-xs text-right w-20 shrink-0" style={{ color: "var(--muted2)" }}>{name}</span>
-                    <div className="flex-1 h-6 rounded overflow-hidden" style={{ background: "var(--card3)" }}>
-                      <div className="h-full rounded flex items-center px-2 text-xs font-semibold text-white transition-all"
-                        style={{ width: `${Math.max(value / funnelMax * 100, 4)}%`, background: COLORS[i % COLORS.length] }}>
-                        {value}
-                      </div>
-                    </div>
-                    <span className="text-xs w-8 text-right font-mono shrink-0" style={{ color: "var(--muted2)" }}>
-                      {funnelMax > 0 ? Math.round(value / funnel[0].value * 100) : 0}%
-                    </span>
-                  </div>
-                ))}
-              </ChartBox>
-              <ChartBox title="Leads by Status">
-                <ResponsiveContainer width="100%" height={200}>
-                  <PieChart>
-                    <Pie data={leadsByStatus} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" nameKey="name">
-                      {leadsByStatus.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip contentStyle={TT_STYLE} />
-                    <Legend iconSize={8} wrapperStyle={LEGEND_STYLE} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </ChartBox>
+      {/* Cashflow reconciliation */}
+      {bankBalance > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+          {[
+            { label: "Calculated (Rev − OPEX)", value: `${cur} ${fmt(calcCashflow)}`, sub: "From filtered data", color: "var(--pink)" },
+            { label: "Actual Bank Balance", value: `${cur} ${fmt(bankBalance)}`, sub: bankLastDate ? new Date(bankLastDate).toLocaleDateString("en-ZA") : "", color: "var(--cyan-c)" },
+            { label: "Variance", value: `${cfVariance >= 0 ? "+" : ""}${cur} ${fmt(Math.abs(cfVariance))}`, sub: cfVariance === 0 ? "Balanced" : cfVariance > 0 ? "More in bank" : "Less in bank", color: cfVariance === 0 ? "var(--accent)" : Math.abs(cfVariance) < metrics.revenue * 0.05 ? "var(--amber-c)" : "var(--red-c)" },
+          ].map(card => (
+            <div key={card.label} className="rounded-2xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${card.color}` }}>
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "var(--muted2)" }}>{card.label}</p>
+              <p className="text-lg font-bold font-mono" style={{ color: card.color }}>{card.value}</p>
+              {card.sub && <p className="text-[10px] mt-1" style={{ color: "var(--muted2)" }}>{card.sub}</p>}
             </div>
-            {/* Pipeline by status */}
-            {pipelineByStatus.length > 0 && (
-              <ChartBox title="Pipeline Weighted Value by Status">
-                <ResponsiveContainer width="100%" height={180}>
-                  <BarChart data={pipelineByStatus} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
-                    <XAxis dataKey="name" tick={TICK_STYLE} axisLine={false} tickLine={false} />
-                    <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
-                    <Bar dataKey="weighted" name="Weighted" fill="#8b5cf6" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="value" name="Total Value" fill="rgba(139,92,246,.3)" radius={[3, 3, 0, 0]} />
-                    <Legend iconSize={8} wrapperStyle={LEGEND_STYLE} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartBox>
-            )}
-          </Section>
-        );
-
-        if (sectionId === "costs") return (
-          <Section key="costs" title="💸 Cost Breakdown" {...sProps("costs", idx)}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <ChartBox title="Costs by Category">
-                <ResponsiveContainer width="100%" height={220}>
-                  <PieChart>
-                    <Pie data={costsByCategory} cx="50%" cy="50%" innerRadius={55} outerRadius={85} dataKey="value" nameKey="name">
-                      {costsByCategory.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
-                    <Legend iconSize={8} wrapperStyle={LEGEND_STYLE} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </ChartBox>
-              <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
-                <div className="px-4 py-2.5 border-b" style={{ borderColor: "var(--border)", background: "var(--card)" }}>
-                  <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Category Breakdown</span>
-                </div>
-                <div className="overflow-y-auto max-h-56" style={{ background: "var(--card2)" }}>
-                  {costsByCategory.length === 0 && <p className="p-4 text-xs" style={{ color: "var(--muted2)" }}>No costs in period</p>}
-                  {costsByCategory.map((c, i) => (
-                    <div key={c.name} className="flex items-center gap-3 px-4 py-2.5 border-b" style={{ borderColor: "var(--border)" }}>
-                      <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
-                      <span className="flex-1 text-xs truncate" style={{ color: "var(--muted)" }}>{c.name}</span>
-                      <span className="text-xs font-mono font-semibold" style={{ color: "var(--red-c)" }}>{cur} {fmt(c.value)}</span>
-                      <span className="text-xs font-mono w-10 text-right" style={{ color: "var(--muted2)" }}>
-                        {metrics.opex > 0 ? fmtDec(c.value / metrics.opex * 100) : "0.00"}%
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </Section>
-        );
-
-        if (sectionId === "cashflow") return (
-          <Section key="cashflow" title="🏦 Cashflow & Bank" {...sProps("cashflow", idx)}>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-              <KpiCard label="Calculated (Rev − OPEX)" value={`${cur} ${fmt(calcCashflow)}`} sub="From filtered data" color="var(--pink)" />
-              <KpiCard label="Actual Bank Balance" value={bankBalance > 0 ? `${cur} ${fmt(bankBalance)}` : "— not recorded —"}
-                sub={bankLastDate ? new Date(bankLastDate).toLocaleDateString("en-ZA") : ""}
-                color={bankBalance > 0 ? "var(--accent)" : "var(--amber-c)"} />
-              {bankBalance > 0 && (
-                <KpiCard label="Variance" value={`${cfVariance >= 0 ? "+" : ""}${cur} ${fmt(Math.abs(cfVariance))}`}
-                  sub={cfVariance === 0 ? "Balanced" : cfVariance > 0 ? "More in bank" : "Less in bank"}
-                  color={cfVariance === 0 ? "var(--accent)" : Math.abs(cfVariance) < metrics.revenue * 0.05 ? "var(--amber-c)" : "var(--red-c)"} />
-              )}
-            </div>
-            {cashflowTrend.length > 1 && (
-              <ChartBox title="Bank Balance Trend (last 30 snapshots)">
-                <ResponsiveContainer width="100%" height={180}>
-                  <AreaChart data={cashflowTrend} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
-                    <XAxis dataKey="date" tick={TICK_STYLE} axisLine={false} tickLine={false} />
-                    <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
-                    <Area dataKey="balance" stroke="#06b6d4" fill="rgba(6,182,212,.12)" strokeWidth={2} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </ChartBox>
-            )}
-          </Section>
-        );
-
-        if (sectionId === "alerts") return (
-          <Section key="alerts" title="⚠️ Alerts & Intelligence" {...sProps("alerts", idx)}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {overdueInvoices.length > 0 ? (
-                <div className="rounded-lg p-4" style={{ background: "rgba(239,68,68,.06)", border: "1px solid var(--red-c)", borderLeft: "4px solid var(--red-c)" }}>
-                  <p className="text-xs font-bold mb-2" style={{ color: "var(--red-c)" }}>
-                    🚨 Overdue Invoices ({overdueInvoices.length}) — {cur} {fmt(overdueInvoices.reduce((s, i) => s + i.amount, 0))}
-                  </p>
-                  {overdueInvoices.map(inv => (
-                    <div key={inv.id} className="flex justify-between items-center py-1.5 border-b text-xs" style={{ borderColor: "rgba(255,255,255,.05)", color: "var(--muted)" }}>
-                      <span>{inv.customerName} — {cur} {fmt(inv.amount)}</span>
-                      <span className="font-semibold" style={{ color: "var(--red-c)" }}>{inv.days}d overdue</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-lg p-4 flex items-center gap-3" style={{ background: "rgba(16,185,129,.06)", border: "1px solid var(--accent)" }}>
-                  <span className="text-2xl">✅</span>
-                  <div>
-                    <p className="text-xs font-bold" style={{ color: "var(--accent)" }}>No Overdue Invoices</p>
-                    <p className="text-xs" style={{ color: "var(--muted2)" }}>All invoices are within payment terms</p>
-                  </div>
-                </div>
-              )}
-              {staleLeads.length > 0 ? (
-                <div className="rounded-lg p-4" style={{ background: "rgba(245,158,11,.06)", border: "1px solid var(--amber-c)", borderLeft: "4px solid var(--amber-c)" }}>
-                  <p className="text-xs font-bold mb-2" style={{ color: "var(--amber-c)" }}>📞 Follow-Up Needed ({staleLeads.length})</p>
-                  {staleLeads.map(l => (
-                    <div key={l.id} className="flex justify-between items-center py-1.5 border-b text-xs" style={{ borderColor: "rgba(255,255,255,.05)", color: "var(--muted)" }}>
-                      <span>{l.name}</span>
-                      <span style={{ color: "var(--amber-c)" }}>{l.days !== null ? `${l.days}d ago` : "Never"}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-lg p-4 flex items-center gap-3" style={{ background: "rgba(16,185,129,.06)", border: "1px solid var(--accent)" }}>
-                  <span className="text-2xl">🎯</span>
-                  <div>
-                    <p className="text-xs font-bold" style={{ color: "var(--accent)" }}>All Leads Active</p>
-                    <p className="text-xs" style={{ color: "var(--muted2)" }}>No leads need follow-up right now</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </Section>
-        );
-
-        return null;
-      })}
+          ))}
+        </div>
+      )}
 
       {/* KPI Config Modal */}
       {showKpiConfig && (
