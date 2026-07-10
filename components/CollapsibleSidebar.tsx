@@ -50,27 +50,29 @@ export function CollapsibleSidebar({ userEmail, userName, role, signout }: Props
           padding: collapsed ? "0 0.75rem" : "0 1rem",
         }}
       >
-        {/* Icon mark */}
+        {/* Icon mark — ring with pink dot */}
         <div
-          className="flex items-center justify-center shrink-0 rounded-lg text-sm font-black"
+          className="flex items-center justify-center shrink-0 rounded-full"
           style={{
-            width: "28px", height: "28px",
-            background: "linear-gradient(135deg, #10B981 0%, #059669 100%)",
-            color: "#fff",
-            boxShadow: "0 0 12px rgba(16,185,129,0.4)",
-            letterSpacing: "-0.05em",
+            width: "30px", height: "30px",
+            border: "2px solid var(--blue-c)",
           }}
         >
-          C
+          <span
+            className="block rounded-full"
+            style={{ width: "12px", height: "12px", background: "var(--accent)" }}
+          />
         </div>
         {!collapsed && (
           <div>
-            <h1 className="text-sm font-black tracking-wider leading-none">
-              <span style={{ color: "var(--sidebar-indicator)" }}>COCO</span>
-              <span style={{ color: "var(--sidebar-fg-active)" }}>CORP</span>
+            <h1
+              className="text-xl leading-none"
+              style={{ color: "var(--sidebar-fg-active)", letterSpacing: "0.03em" }}
+            >
+              COCOCORP
             </h1>
-            <p className="text-[9px] mt-0.5 font-medium tracking-widest uppercase" style={{ color: "var(--sidebar-label)" }}>
-              CRM Platform
+            <p className="text-[9px] mt-0.5 font-semibold tracking-widest uppercase" style={{ color: "var(--sidebar-label)" }}>
+              CRM
             </p>
           </div>
         )}
@@ -95,7 +97,7 @@ export function CollapsibleSidebar({ userEmail, userName, role, signout }: Props
             <div className="flex items-center gap-2.5 min-w-0">
               <div
                 className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold"
-                style={{ background: "linear-gradient(135deg, #10B981 0%, #059669 100%)", color: "#fff", boxShadow: "0 0 8px rgba(16,185,129,0.35)" }}
+                style={{ background: "linear-gradient(135deg, #EC4899 0%, #DB2777 100%)", color: "#fff", boxShadow: "0 0 8px rgba(236,72,153,0.35)" }}
               >
                 {initial}
               </div>
@@ -111,8 +113,10 @@ export function CollapsibleSidebar({ userEmail, userName, role, signout }: Props
 
             <form action={signout}>
               <button
-                className="w-full text-xs rounded-md px-2 py-1.5 border text-left transition-colors hover:bg-white/[0.06]"
+                className="w-full text-xs rounded-md px-2 py-1.5 border text-left transition-colors"
                 style={{ borderColor: "var(--sidebar-border)", color: "var(--sidebar-fg)" }}
+                onMouseEnter={e => { e.currentTarget.style.background = "var(--sidebar-hover)"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
               >
                 Sign out
               </button>
@@ -125,8 +129,10 @@ export function CollapsibleSidebar({ userEmail, userName, role, signout }: Props
           <button
             onClick={toggle}
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="w-full flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs transition-colors hover:bg-white/[0.06]"
+            className="w-full flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs transition-colors"
             style={{ color: "var(--sidebar-fg)" }}
+            onMouseEnter={e => { e.currentTarget.style.background = "var(--sidebar-hover)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
           >
             {collapsed ? <ChevronRight size={14} /> : (
               <>

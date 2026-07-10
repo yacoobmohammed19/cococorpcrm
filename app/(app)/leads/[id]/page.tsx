@@ -39,7 +39,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           <h1 className="text-2xl font-semibold">{lead.name}</h1>
           {status && (
             <span className="text-xs px-2 py-0.5 rounded-full mt-1 inline-block font-semibold"
-              style={{ background: "rgba(16,185,129,.12)", color: "var(--accent)" }}>
+              style={{ background: "rgba(236,72,153,.12)", color: "var(--accent)" }}>
               {status.name}
             </span>
           )}

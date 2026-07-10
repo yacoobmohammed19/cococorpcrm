@@ -192,7 +192,7 @@ export function QuotesClient({ quotes, customers, products, currency }: {
                         {q.status === "Accepted" && (
                           <button onClick={() => handleConvert(q.id, q.quote_number)} disabled={busy}
                             className="px-2 py-1 rounded text-xs font-semibold"
-                            style={{ background: "rgba(16,185,129,.15)", color: "var(--accent)", border: "1px solid var(--accent)" }}>
+                            style={{ background: "rgba(236,72,153,.15)", color: "var(--accent)", border: "1px solid var(--accent)" }}>
                             → Invoice
                           </button>
                         )}

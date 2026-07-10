@@ -20,8 +20,9 @@ type Invoice = {
 type Customer = { id: number; name: string };
 type PaymentType = { id: number; name: string };
 type Product = { id: number; name: string; unit_price: number; sku: string | null; is_active: boolean };
+type InvoiceStatus = { id: number; name: string; color: string };
 
-type Props = { invoices: Invoice[]; customers: Customer[]; paymentTypes: PaymentType[]; products?: Product[]; currency: string };
+type Props = { invoices: Invoice[]; customers: Customer[]; paymentTypes: PaymentType[]; products?: Product[]; currency: string; invoiceStatuses: InvoiceStatus[] };
 
 function fmt(n: number) { return Number(n).toLocaleString("en-ZA", { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
 function fdate(d: string | null) { if (!d) return "—"; try { return new Date(d).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", year: "2-digit" }); } catch { return "—"; } }
@@ -34,13 +35,17 @@ function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
   a.click(); URL.revokeObjectURL(a.href);
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  Completed: "var(--accent)", Pending: "var(--amber-c)", "Written Off": "var(--red-c)"
+const FALLBACK_STATUS_COLORS: Record<string, string> = {
+  Completed: "#ec4899", Pending: "#f59e0b", "Written Off": "#ef4444", Hold: "#6366f1",
 };
 
 type Line = { description: string; quantity: number; unit_price: number; product_id?: number };
 
-export function InvoicesClient({ invoices, customers, paymentTypes, products = [], currency }: Props) {
+export function InvoicesClient({ invoices, customers, paymentTypes, products = [], currency, invoiceStatuses }: Props) {
+  const statusColorMap = Object.fromEntries(
+    invoiceStatuses.map(s => [s.name, s.color])
+  );
+  function statusColor(name: string) { return statusColorMap[name] ?? FALLBACK_STATUS_COLORS[name] ?? "#6b7280"; }
   const cur = currency === "ZAR" ? "R" : "$";
   const toast = useToast();
   const { confirm, dialogProps } = useConfirm();
@@ -80,11 +85,9 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
     return true;
   });
 
-  const totals = {
-    completed: invoices.filter(i => i.status === "Completed").reduce((s, i) => s + i.amount, 0),
-    pending: invoices.filter(i => i.status === "Pending").reduce((s, i) => s + i.amount, 0),
-    writtenOff: invoices.filter(i => i.status === "Written Off").reduce((s, i) => s + i.amount, 0),
-  };
+  const completed = invoices.filter(i => i.status === "Completed").reduce((s, i) => s + i.amount, 0);
+  const pending = invoices.filter(i => i.status === "Pending").reduce((s, i) => s + i.amount, 0);
+  const writtenOff = invoices.filter(i => i.status === "Written Off").reduce((s, i) => s + i.amount, 0);
 
   function addLine() { setLines(l => [...l, { description: "", quantity: 1, unit_price: 0 }]); }
   function removeLine(i: number) { setLines(l => l.filter((_, idx) => idx !== i)); }
@@ -223,7 +226,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Invoices</h1>
           <p className="text-sm mt-0.5" style={{ color: "var(--muted2)" }}>
-            {invoices.length} invoices · {cur} {fmt(totals.completed)} collected
+            {invoices.length} invoices · {cur} {fmt(completed)} collected
           </p>
         </div>
         <div className="flex gap-2">
@@ -247,9 +250,9 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
       {/* ── KPI Row ── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
         {[
-          { label: "Collected", value: totals.completed, color: "var(--accent)", bg: "var(--success-bg)" },
-          { label: "Pending", value: totals.pending, color: "var(--amber-c)", bg: "var(--warning-bg)" },
-          { label: "Written Off", value: totals.writtenOff, color: "var(--red-c)", bg: "var(--danger-bg)" },
+          { label: "Collected", value: completed, color: statusColor("Completed") },
+          { label: "Pending", value: pending, color: statusColor("Pending") },
+          { label: "Written Off", value: writtenOff, color: statusColor("Written Off") },
         ].map(({ label, value, color }) => (
           <div key={label} className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}>
             <div className="text-[11px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--muted2)" }}>{label}</div>
@@ -275,11 +278,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
           />
           <MultiSelect
             label="Status"
-            options={[
-              { label: "Completed", value: "Completed", color: STATUS_COLORS.Completed },
-              { label: "Pending", value: "Pending", color: STATUS_COLORS.Pending },
-              { label: "Written Off", value: "Written Off", color: STATUS_COLORS["Written Off"] },
-            ]}
+            options={invoiceStatuses.map(s => ({ label: s.name, value: s.name, color: s.color }))}
             value={statusFilter}
             onChange={setStatusFilter}
           />
@@ -305,7 +304,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
       <div className="sm:hidden space-y-3">
         {filtered.map(inv => {
           const cust = customers.find(c => c.id === inv.customer_id);
-          const col = STATUS_COLORS[inv.status] || "var(--muted2)";
+          const col = statusColor(inv.status);
           const isOverdue = inv.due_date && inv.status === "Pending" && new Date(inv.due_date) < new Date();
           return (
             <div key={inv.id} className="rounded-2xl p-4" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
@@ -313,10 +312,8 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
                 <span className="font-bold text-base" style={{ color: "var(--accent)" }}>{inv.invoice_number || `#${inv.id}`}</span>
                 <select value={inv.status} onChange={e => handleStatusChange(inv.id, e.target.value, inv.status)}
                   className="px-3 py-1 rounded-full text-xs font-semibold border-0 outline-none cursor-pointer"
-                  style={{ background: col + "22", color: col }}>
-                  <option value="Pending">Pending</option>
-                  <option value="Completed">Completed</option>
-                  <option value="Written Off">Written Off</option>
+                  style={{ background: col + "33", color: col }}>
+                  {invoiceStatuses.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                 </select>
               </div>
               <div className="flex items-end justify-between mb-3">
@@ -368,9 +365,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
             className="px-2 py-1.5 rounded-lg text-xs border-0 outline-none"
             style={{ background: "rgba(255,255,255,0.12)", color: "inherit" }}>
             <option value="">Status…</option>
-            <option value="Completed">Completed</option>
-            <option value="Pending">Pending</option>
-            <option value="Written Off">Written Off</option>
+            {invoiceStatuses.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
           </select>
           <select value={bulkPayType} onChange={e => setBulkPayType(e.target.value)}
             className="px-2 py-1.5 rounded-lg text-xs border-0 outline-none"
@@ -414,7 +409,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
             <tbody>
               {filtered.map(inv => {
                 const cust = customers.find(c => c.id === inv.customer_id);
-                const col = STATUS_COLORS[inv.status] || "var(--muted2)";
+                const col = statusColor(inv.status);
                 const selected = selectedIds.has(inv.id);
                 return (
                   <tr key={inv.id}
@@ -435,10 +430,8 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
                     <td className="px-3 py-2">
                       <select value={inv.status} onChange={e => handleStatusChange(inv.id, e.target.value, inv.status)}
                         className="px-2 py-0.5 rounded text-xs font-semibold border-0 outline-none cursor-pointer"
-                        style={{ background: col + "22", color: col }}>
-                        <option value="Pending">Pending</option>
-                        <option value="Completed">Completed</option>
-                        <option value="Written Off">Written Off</option>
+                        style={{ background: col + "33", color: col }}>
+                        {invoiceStatuses.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                       </select>
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">
@@ -500,9 +493,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Status</label>
                     <select name="status" defaultValue={editInvoice.status} className={inputCss} style={inputStyle}>
-                      <option value="Pending">Pending</option>
-                      <option value="Completed">Completed</option>
-                      <option value="Written Off">Written Off</option>
+                      {invoiceStatuses.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                     </select>
                   </div>
                   <div>
@@ -589,8 +580,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Status</label>
                     <select name="status" defaultValue="Pending" className={inputCss} style={inputStyle}>
-                      <option value="Pending">Pending</option>
-                      <option value="Completed">Completed</option>
+                      {invoiceStatuses.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                     </select>
                   </div>
                   <div>
@@ -605,7 +595,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
                       <label className="block text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Description</label>
                       <button type="button" onClick={generateDesc} disabled={descBusy}
                         className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded transition-opacity hover:opacity-80"
-                        style={{ background: "rgba(16,185,129,.12)", color: "var(--accent)", border: "1px solid var(--accent)", opacity: descBusy ? 0.5 : 1 }}>
+                        style={{ background: "rgba(236,72,153,.12)", color: "var(--accent)", border: "1px solid var(--accent)", opacity: descBusy ? 0.5 : 1 }}>
                         {descBusy ? "…" : "✨ Generate"}
                       </button>
                     </div>

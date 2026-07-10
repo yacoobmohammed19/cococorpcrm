@@ -223,7 +223,7 @@ export function InvoicePrintClient({ invoice, org, lines }: Props) {
 
         /* ── FIELDS ── */
         .inv-field:hover { border-bottom-color: #ccc !important; background: #fafafa !important; }
-        .inv-field:focus { border-bottom-color: #10b981 !important; background: #fff8e6 !important; outline: none !important; }
+        .inv-field:focus { border-bottom-color: #ec4899 !important; background: #fff8e6 !important; outline: none !important; }
         .inv-field::placeholder { color: #bbb; font-style: italic; }
 
         /* ── TOOLBAR ── */
@@ -255,7 +255,7 @@ export function InvoicePrintClient({ invoice, org, lines }: Props) {
             + Line
           </button>
           <button onClick={() => window.print()}
-            style={{ padding: "7px 14px", borderRadius: 6, border: "none", background: "#10b981", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+            style={{ padding: "7px 14px", borderRadius: 6, border: "none", background: "#ec4899", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
             🖨️ Print / PDF
           </button>
           <button onClick={() => window.history.back()}
@@ -269,7 +269,7 @@ export function InvoicePrintClient({ invoice, org, lines }: Props) {
       <div className="inv-doc">
 
         {/* Edit hint — screen only */}
-        <div className="inv-no-print" style={{ fontSize: 11, color: "#10b981", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 4, padding: "6px 10px", marginBottom: 24, textAlign: "center", fontWeight: 500 }}>
+        <div className="inv-no-print" style={{ fontSize: 11, color: "#ec4899", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 4, padding: "6px 10px", marginBottom: 24, textAlign: "center", fontWeight: 500 }}>
           ✏️ Click any field to edit before printing
         </div>
 
@@ -282,7 +282,7 @@ export function InvoicePrintClient({ invoice, org, lines }: Props) {
           }
         </div>
 
-        <h1 style={{ fontSize: 28, fontWeight: 700, color: "#111", marginBottom: 28, letterSpacing: -0.5 }}>Invoice</h1>
+        <h1 style={{ fontFamily: "var(--font-geist-sans), Arial, sans-serif", fontSize: 28, fontWeight: 700, color: "#111", marginBottom: 28, letterSpacing: -0.5 }}>Invoice</h1>
 
         {/* Two-column info grid — stacks on mobile */}
         <div className="inv-info-grid">
@@ -394,9 +394,9 @@ export function InvoicePrintClient({ invoice, org, lines }: Props) {
                 <span style={{ fontWeight: 600 }}>{cur} {fmt(vat)}</span>
               </div>
             )}
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 0 6px", borderTop: "2px solid #10b981", marginTop: 4 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 0 6px", borderTop: "2px solid #ec4899", marginTop: 4 }}>
               <span style={{ fontWeight: 700, color: "#111", fontSize: 15 }}>Total{vatEnabled ? " (incl. VAT)" : ""}</span>
-              <span style={{ color: "#10b981", fontSize: 17, fontWeight: 700 }}>{cur} {fmt(total)}</span>
+              <span style={{ color: "#ec4899", fontSize: 17, fontWeight: 700 }}>{cur} {fmt(total)}</span>
             </div>
           </div>
         </div>

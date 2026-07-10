@@ -8,6 +8,8 @@ import { updateInvoiceStatus } from "@/server-actions/invoices";
 
 type Line = { description: string; quantity: number; unit_price: number; line_total: number };
 
+type InvoiceStatus = { id: number; name: string; color: string };
+
 type Props = {
   invoice: {
     id: number; invoice_number: string | null; amount: number; status: string;
@@ -16,10 +18,11 @@ type Props = {
   };
   lines: Line[];
   currency: string;
+  invoiceStatuses: InvoiceStatus[];
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  Completed: "var(--accent)", Pending: "var(--amber-c)", "Written Off": "var(--red-c)",
+const FALLBACK_COLORS: Record<string, string> = {
+  Completed: "#ec4899", Pending: "#f59e0b", "Written Off": "#ef4444", Hold: "#6366f1",
 };
 
 function fmt(n: number) {
@@ -30,12 +33,13 @@ function fdate(d: string | null) {
   return new Date(d).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", year: "2-digit" });
 }
 
-export function InvoiceDetailClient({ invoice, lines, currency }: Props) {
+export function InvoiceDetailClient({ invoice, lines, currency, invoiceStatuses }: Props) {
   const cur = currency === "ZAR" ? "R" : "$";
   const toast = useToast();
   const [status, setStatus] = useState(invoice.status);
   const [busy, setBusy] = useState(false);
-  const statusColor = STATUS_COLORS[status] || "var(--muted2)";
+  const statusColorMap = Object.fromEntries(invoiceStatuses.map(s => [s.name, s.color]));
+  const statusColor = statusColorMap[status] ?? FALLBACK_COLORS[status] ?? "#6b7280";
   const isOverdue = invoice.due_date && status === "Pending" && new Date(invoice.due_date) < new Date();
 
   const subtotal = lines.length > 0
@@ -115,9 +119,7 @@ export function InvoiceDetailClient({ invoice, lines, currency }: Props) {
             <select value={status} onChange={e => handleStatusChange(e.target.value)} disabled={busy}
               className="flex-1 px-3 py-1.5 text-sm rounded-lg border outline-none"
               style={{ background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" }}>
-              <option value="Pending">Pending</option>
-              <option value="Completed">Completed</option>
-              <option value="Written Off">Written Off</option>
+              {invoiceStatuses.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
             </select>
           </div>
           {busy && <p className="text-xs mt-1" style={{ color: "var(--muted2)" }}>Saving…</p>}

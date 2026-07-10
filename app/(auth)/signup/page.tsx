@@ -13,7 +13,7 @@ export default async function SignupPage({
       <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
         <h1 className="text-xl font-semibold">Create account</h1>
         {invite && (
-          <p className="mt-2 text-sm rounded-md px-3 py-2" style={{ background: "rgba(16,185,129,0.1)", color: "var(--accent)" }}>
+          <p className="mt-2 text-sm rounded-md px-3 py-2" style={{ background: "rgba(236,72,153,0.1)", color: "var(--accent)" }}>
             You&apos;ve been invited to join a team. Create an account to accept.
           </p>
         )}

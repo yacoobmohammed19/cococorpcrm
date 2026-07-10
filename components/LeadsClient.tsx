@@ -112,7 +112,7 @@ function SwipeView({ leads, statuses, cur, onStatusChange }: {
           {/* Swipe labels */}
           {offset > 20 && (
             <div className="absolute top-5 left-5 px-3 py-1.5 rounded-lg border-2 text-xs font-bold uppercase tracking-wider"
-              style={{ borderColor: "var(--accent)", color: "var(--accent)", opacity: swipeRatio, background: "rgba(16,185,129,.12)" }}>
+              style={{ borderColor: "var(--accent)", color: "var(--accent)", opacity: swipeRatio, background: "rgba(236,72,153,.12)" }}>
               Promote → {nextSt?.name}
             </div>
           )}
@@ -154,7 +154,7 @@ function SwipeView({ leads, statuses, cur, onStatusChange }: {
             {(["contacted", "responded", "developed", "completed"] as const).map(f => (
               <div key={f} className="flex flex-col items-center gap-1">
                 <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
-                  style={{ background: lead[f] ? "rgba(16,185,129,.2)" : "var(--card)", color: lead[f] ? "var(--accent)" : "var(--muted2)", border: `1px solid ${lead[f] ? "var(--accent)" : "var(--border)"}` }}>
+                  style={{ background: lead[f] ? "rgba(236,72,153,.2)" : "var(--card)", color: lead[f] ? "var(--accent)" : "var(--muted2)", border: `1px solid ${lead[f] ? "var(--accent)" : "var(--border)"}` }}>
                   {lead[f] ? "✓" : "○"}
                 </div>
                 <span className="text-xs capitalize" style={{ color: "var(--muted2)" }}>{f.slice(0, 4)}</span>
@@ -191,7 +191,7 @@ function SwipeView({ leads, statuses, cur, onStatusChange }: {
           <button onClick={() => canPromote && act("promote")} disabled={!canPromote}
             className="w-14 h-14 rounded-full flex items-center justify-center text-xl shadow-lg transition-all active:scale-90"
             style={{
-              background: canPromote ? "rgba(16,185,129,.15)" : "var(--card)",
+              background: canPromote ? "rgba(236,72,153,.15)" : "var(--card)",
               border: `2px solid ${canPromote ? "var(--accent)" : "var(--border)"}`,
               color: canPromote ? "var(--accent)" : "var(--muted2)",
             }}>→</button>
@@ -506,7 +506,7 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
                     <button onClick={() => openModal(l)} className="flex items-center gap-1.5 flex-1 justify-center py-2 rounded-lg text-xs font-semibold" style={{ background: "var(--card2)", border: "1px solid var(--border)", color: "var(--muted)" }}>
                       <Pencil size={12} /> Edit
                     </button>
-                    <button onClick={() => handleConvert(l.id)} className="flex items-center gap-1.5 flex-1 justify-center py-2 rounded-lg text-xs font-semibold" style={{ background: "var(--success-bg)", border: "1px solid rgba(16,185,129,.3)", color: "var(--accent)" }}>
+                    <button onClick={() => handleConvert(l.id)} className="flex items-center gap-1.5 flex-1 justify-center py-2 rounded-lg text-xs font-semibold" style={{ background: "var(--success-bg)", border: "1px solid rgba(236,72,153,.3)", color: "var(--accent)" }}>
                       <UserCheck size={12} /> Convert
                     </button>
                     <button onClick={() => handleDelete(l.id)} className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: "var(--danger-bg)", color: "var(--red-c)" }}>
@@ -697,7 +697,7 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
                 <div key={status.id} data-kcol={status.id}
                   className="shrink-0 rounded-lg w-64"
                   style={{ background: "var(--card)", border: "1px solid var(--border)", minHeight: isColCollapsed ? 0 : 200, opacity: isClosed ? 0.75 : 1 }}
-                  onDragOver={e => { e.preventDefault(); (e.currentTarget as HTMLElement).style.background = "rgba(16,185,129,.08)"; (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)"; }}
+                  onDragOver={e => { e.preventDefault(); (e.currentTarget as HTMLElement).style.background = "rgba(236,72,153,.08)"; (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)"; }}
                   onDragLeave={e => { (e.currentTarget as HTMLElement).style.background = "var(--card)"; (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; }}
                   onDrop={async e => { (e.currentTarget as HTMLElement).style.background = "var(--card)"; (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; await handleStatusDrop(e, status.id); }}>
 
@@ -768,7 +768,7 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
                               {(["contacted", "responded", "developed", "completed"] as const).map(f => (
                                 <div key={f} className="flex-1 text-center">
                                   <div className="w-5 h-5 mx-auto rounded-full flex items-center justify-center text-[9px] font-bold"
-                                    style={{ background: l[f] ? "rgba(16,185,129,.2)" : "var(--card)", color: l[f] ? "var(--accent)" : "var(--muted2)", border: `1px solid ${l[f] ? "var(--accent)" : "var(--border)"}` }}>
+                                    style={{ background: l[f] ? "rgba(236,72,153,.2)" : "var(--card)", color: l[f] ? "var(--accent)" : "var(--muted2)", border: `1px solid ${l[f] ? "var(--accent)" : "var(--border)"}` }}>
                                     {l[f] ? "✓" : "○"}
                                   </div>
                                   <p className="text-[9px] mt-0.5 capitalize" style={{ color: "var(--muted2)" }}>{f.slice(0, 4)}</p>

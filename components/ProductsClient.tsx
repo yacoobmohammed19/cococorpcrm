@@ -138,7 +138,7 @@ export function ProductsClient({ products, currency }: { products: Product[]; cu
                   </td>
                   <td className="px-3 py-2.5">
                     <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
-                      style={{ background: p.is_active ? "rgba(16,185,129,.12)" : "rgba(100,100,100,.12)", color: p.is_active ? "var(--accent)" : "var(--muted2)" }}>
+                      style={{ background: p.is_active ? "rgba(236,72,153,.12)" : "rgba(100,100,100,.12)", color: p.is_active ? "var(--accent)" : "var(--muted2)" }}>
                       {p.is_active ? "Active" : "Inactive"}
                     </span>
                   </td>

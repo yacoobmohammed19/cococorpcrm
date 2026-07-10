@@ -59,7 +59,7 @@ function applyDensity(key: string) {
 }
 
 export function SettingsAppearance() {
-  const [accentColor, setAccentColor] = useState("#10B981");
+  const [accentColor, setAccentColor] = useState("#EC4899");
   const [radiusKey, setRadiusKey] = useState("rounded");
   const [densityKey, setDensityKey] = useState("comfortable");
   const [glowEnabled, setGlowEnabled] = useState(true);
@@ -249,7 +249,7 @@ export function SettingsAppearance() {
       <div className="flex justify-end">
         <button
           onClick={() => {
-            handleAccent("#10B981", "#059669");
+            handleAccent("#EC4899", "#DB2777");
             handleRadius(RADIUS_PRESETS[1]);
             handleDensity("comfortable");
             handleGlow(true);

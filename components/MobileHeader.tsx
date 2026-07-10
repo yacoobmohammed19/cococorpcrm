@@ -142,7 +142,7 @@ export function MobileHeader({ role, profileMenu }: Props) {
                       style={{
                         background: isActive ? "var(--sidebar-active)" : "transparent",
                         color: isActive ? "var(--sidebar-fg-active)" : "var(--sidebar-fg)",
-                        boxShadow: isActive ? "inset 0 0 0 1px rgba(16,185,129,.2)" : undefined,
+                        boxShadow: isActive ? "inset 0 0 0 1px rgba(236,72,153,.2)" : undefined,
                       }}
                     >
                       {isActive && (
@@ -155,7 +155,7 @@ export function MobileHeader({ role, profileMenu }: Props) {
                         size={16}
                         style={{
                           color: isActive ? "var(--sidebar-indicator)" : "var(--sidebar-fg)",
-                          filter: isActive ? "drop-shadow(0 0 4px rgba(16,185,129,.5))" : undefined,
+                          filter: isActive ? "drop-shadow(0 0 4px rgba(236,72,153,.5))" : undefined,
                         }}
                       />
                       {item.label}

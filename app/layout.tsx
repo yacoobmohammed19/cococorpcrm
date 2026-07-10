@@ -1,15 +1,25 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, Bebas_Neue, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
+// Body / UI type — Inter (kept on the --font-geist-sans var the app already references)
+const geistSans = Inter({
   variable: "--font-geist-sans",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
+// Monospace — used for figures/tables
+const geistMono = JetBrains_Mono({
+  variable: "--font-geist-mono",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+// Display — Bebas Neue for page titles
+const displayFont = Bebas_Neue({
+  variable: "--font-display",
   subsets: ["latin"],
+  weight: "400",
 });
 
 export const metadata: Metadata = {
@@ -47,7 +57,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${displayFont.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head>

@@ -19,7 +19,7 @@ type PendingAction = {
 // ── Chart rendering ───────────────────────────────────────────────────────────
 
 type ChartSpec = { type: "bar" | "line" | "pie"; title?: string; xKey: string; yKey: string; data: Record<string, unknown>[] };
-const CHART_COLORS = ["#10b981","#e84393","#8b5cf6","#f59e0b","#06b6d4","#ef4444","#84cc16","#f97316"];
+const CHART_COLORS = ["#ec4899","#e84393","#8b5cf6","#f59e0b","#06b6d4","#ef4444","#84cc16","#f97316"];
 const TT_STYLE = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 };
 const TICK_STYLE = { fontSize: 10, fill: "var(--muted2)" };
 

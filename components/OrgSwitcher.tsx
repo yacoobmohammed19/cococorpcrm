@@ -29,7 +29,7 @@ export function UserProfileMenu({ orgs, activeOrgId, userEmail, userName, setAct
         {/* Avatar */}
         <div
           className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black shrink-0"
-          style={{ background: "linear-gradient(135deg,#10B981,#059669)", color: "#fff" }}
+          style={{ background: "linear-gradient(135deg,#EC4899,#DB2777)", color: "#fff" }}
         >
           {initial}
         </div>
@@ -55,7 +55,7 @@ export function UserProfileMenu({ orgs, activeOrgId, userEmail, userName, setAct
               <div className="flex items-center gap-3">
                 <div
                   className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-black shrink-0"
-                  style={{ background: "linear-gradient(135deg,#10B981,#059669)", color: "#fff", boxShadow: "0 0 10px rgba(16,185,129,0.3)" }}
+                  style={{ background: "linear-gradient(135deg,#EC4899,#DB2777)", color: "#fff", boxShadow: "0 0 10px rgba(236,72,153,0.3)" }}
                 >
                   {initial}
                 </div>
@@ -76,9 +76,9 @@ export function UserProfileMenu({ orgs, activeOrgId, userEmail, userName, setAct
                   const isActive = o.org_id === activeOrgId;
                   return isActive ? (
                     <div key={o.org_id} className="flex items-center gap-2.5 px-3 py-2 text-xs"
-                      style={{ color: "var(--accent)", background: "rgba(16,185,129,0.06)" }}>
+                      style={{ color: "var(--accent)", background: "rgba(236,72,153,0.06)" }}>
                       <div className="w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0"
-                        style={{ background: "rgba(16,185,129,0.2)", color: "var(--accent)" }}>
+                        style={{ background: "rgba(236,72,153,0.2)", color: "var(--accent)" }}>
                         {o.name.slice(0, 1).toUpperCase()}
                       </div>
                       <span className="flex-1 font-semibold truncate">{o.name}</span>

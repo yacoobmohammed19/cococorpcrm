@@ -51,7 +51,7 @@ function ftime(d: string) {
   return new Date(d).toLocaleString("en-ZA", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
-const SWATCH_COLORS = ["#10b981","#3b82f6","#8b5cf6","#f59e0b","#ef4444","#06b6d4","#e84393","#84cc16","#f97316","#64748b"];
+const SWATCH_COLORS = ["#ec4899","#3b82f6","#8b5cf6","#f59e0b","#ef4444","#06b6d4","#e84393","#84cc16","#f97316","#64748b"];
 
 // ProjectCard is stable (defined outside the component) so React doesn't remount it on every render
 function ProjectCard({
@@ -364,7 +364,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                   width: 272,
                   background: "var(--card2)",
                   border: isDragTarget ? "2px solid var(--accent)" : "1px solid var(--border)",
-                  boxShadow: isDragTarget ? "0 0 0 3px rgba(16,185,129,.15)" : undefined,
+                  boxShadow: isDragTarget ? "0 0 0 3px rgba(236,72,153,.15)" : undefined,
                 }}
                 onDragOver={e => {
                   if (colDragId.current !== null) { handleColDragOver(e, status.id); return; }
@@ -501,7 +501,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                           {canEdit && !p.finalized_at && (
                             <button onClick={() => openFinalize(p)}
                               className="px-2 py-1 rounded text-[10px] font-semibold"
-                              style={{ background: "var(--success-bg)", color: "var(--accent)", border: "1px solid rgba(16,185,129,.25)" }}>
+                              style={{ background: "var(--success-bg)", color: "var(--accent)", border: "1px solid rgba(236,72,153,.25)" }}>
                               Finalize
                             </button>
                           )}
@@ -692,7 +692,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                   {projectModal.project && !projectModal.project.finalized_at && (
                     <button type="button" onClick={() => { setProjectModal({ open: false, project: null }); openFinalize(projectModal.project!); }}
                       className="px-4 py-2 text-sm rounded font-semibold"
-                      style={{ background: "var(--success-bg)", color: "var(--accent)", border: "1px solid rgba(16,185,129,.25)" }}>
+                      style={{ background: "var(--success-bg)", color: "var(--accent)", border: "1px solid rgba(236,72,153,.25)" }}>
                       Finalize →
                     </button>
                   )}

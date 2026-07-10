@@ -16,7 +16,7 @@ export function AiAssistant({ orgId }: { orgId?: string }) {
         style={{
           background: "linear-gradient(135deg, var(--accent), var(--purple-c))",
           color: "#fff",
-          boxShadow: "0 4px 20px rgba(16,185,129,.4)",
+          boxShadow: "0 4px 20px rgba(236,72,153,.4)",
         }}>
         {open ? (
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

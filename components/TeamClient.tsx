@@ -84,7 +84,7 @@ function CredentialsModal({ email, password, onClose }: { email: string; passwor
     >
       <div className="rounded-2xl p-6 w-full max-w-md space-y-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(16,185,129,0.15)" }}>
+          <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(236,72,153,0.15)" }}>
             <KeyRound size={18} style={{ color: "var(--accent)" }} />
           </div>
           <div>
@@ -433,7 +433,7 @@ export function TeamClient({ members, invites, currentUserId, currentRole, admin
                   <div className="flex items-center gap-3 min-w-0">
                     <div
                       className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold"
-                      style={{ background: "rgba(16,185,129,0.15)", color: "var(--accent)" }}
+                      style={{ background: "rgba(236,72,153,0.15)", color: "var(--accent)" }}
                     >
                       {m.email.slice(0, 1).toUpperCase()}
                     </div>

@@ -35,7 +35,7 @@ type Props = {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const COLORS = ["#10b981", "#e84393", "#8b5cf6", "#f59e0b", "#06b6d4", "#ef4444", "#84cc16", "#f97316"];
+const COLORS = ["#ec4899", "#e84393", "#8b5cf6", "#f59e0b", "#06b6d4", "#ef4444", "#84cc16", "#f97316"];
 const LS_CUSTOM_KPIS = "crm_dash_custom_kpis";
 const LS_KPI_HIDDEN = "crm_dash_kpi_hidden";
 const LS_KPI_ORDER = "crm_dash_kpi_order";
@@ -43,6 +43,7 @@ const LS_REVENUE_TARGET = "crm_dash_revenue_target";
 const LS_CALC_MODE = "crm_dash_calc_mode";
 const LS_LAYOUT_HIDDEN = "crm_dash_layout_hidden";
 const LS_LAYOUT_ORDER = "crm_dash_layout_order";
+const LS_DASH_TAB = "crm_dash_report_tab";
 const DEFAULT_KPI_ORDER = ["total_leads","won_leads","conversion_pct","revenue","opex","profit","net_profit","pipeline","avg_deal","total_customers","pending","bank_balance"];
 const HERO_KPI_KEYS = new Set(["revenue","profit","pipeline","bank_balance","conversion_pct"]);
 
@@ -62,6 +63,35 @@ const ALL_SECTIONS: SectionDef[] = [
   { id: "alerts",           label: "Alerts",                  group: "block" },
 ];
 const DEFAULT_SECTION_ORDER = ALL_SECTIONS.map(s => s.id);
+
+// ── Report tabs: organise the dashboard sections into focused views ──────────
+type DashTab = "overview" | "leads" | "revenue" | "cashflow";
+const DASH_TABS: { key: DashTab; label: string }[] = [
+  { key: "overview", label: "Overview" },
+  { key: "leads",    label: "Leads"    },
+  { key: "revenue",  label: "Revenue"  },
+  { key: "cashflow", label: "Cashflow" },
+];
+// Which tab(s) each section belongs to. A section may appear in several tabs.
+// Overview curates the highlights; the other tabs drill into a theme.
+const SECTION_TABS: Record<string, DashTab[]> = {
+  ai_insight:       ["overview"],
+  revenue_cost:     ["overview", "revenue"],
+  sales_funnel:     ["overview", "leads"],
+  profit_trend:     ["revenue"],
+  costs_category:   ["revenue"],
+  bank_trend:       ["overview", "cashflow"],
+  revenue_customer: ["leads", "revenue"],
+  growth:           ["overview", "revenue", "leads"],
+  monthly_table:    ["revenue"],
+  cashflow_recon:   ["cashflow"],
+  alerts:           ["overview", "leads", "cashflow"],
+};
+const ALL_DASH_TABS: DashTab[] = DASH_TABS.map(t => t.key);
+// Unknown/custom sections fall back to showing on every tab so nothing hides unexpectedly.
+function sectionInTab(id: string, tab: DashTab): boolean {
+  return (SECTION_TABS[id] ?? ALL_DASH_TABS).includes(tab);
+}
 
 type TableKey = "fact_leads" | "fact_invoices" | "fact_costs";
 type AggType = "SUM" | "AVG" | "COUNT" | "COUNTDISTINCT" | "MIN" | "MAX";
@@ -135,7 +165,7 @@ function DeltaBadge({ delta }: { delta: number }) {
   const up = delta >= 0;
   return (
     <span className="inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 leading-none"
-      style={{ background: up ? "rgba(16,185,129,.15)" : "rgba(239,68,68,.12)", color: up ? "var(--accent)" : "var(--red-c)" }}>
+      style={{ background: up ? "rgba(236,72,153,.15)" : "rgba(239,68,68,.12)", color: up ? "var(--accent)" : "var(--red-c)" }}>
       {up ? "↑" : "↓"}{Math.abs(delta).toFixed(0)}%
     </span>
   );
@@ -305,7 +335,7 @@ function AlertsPanel({ overdueInvoices, staleLeads, cur }: {
             ))}
           </div>
         ) : (
-          <div className="rounded-xl p-3 flex items-center gap-2.5" style={{ background: "rgba(16,185,129,.06)", border: "1px solid rgba(16,185,129,.25)" }}>
+          <div className="rounded-xl p-3 flex items-center gap-2.5" style={{ background: "rgba(236,72,153,.06)", border: "1px solid rgba(236,72,153,.25)" }}>
             <span>✅</span>
             <div>
               <p className="text-xs font-bold" style={{ color: "var(--accent)" }}>No Overdue Invoices</p>
@@ -324,7 +354,7 @@ function AlertsPanel({ overdueInvoices, staleLeads, cur }: {
             ))}
           </div>
         ) : (
-          <div className="rounded-xl p-3 flex items-center gap-2.5" style={{ background: "rgba(16,185,129,.06)", border: "1px solid rgba(16,185,129,.25)" }}>
+          <div className="rounded-xl p-3 flex items-center gap-2.5" style={{ background: "rgba(236,72,153,.06)", border: "1px solid rgba(236,72,153,.25)" }}>
             <span>🎯</span>
             <div>
               <p className="text-xs font-bold" style={{ color: "var(--accent)" }}>All Leads Active</p>
@@ -998,6 +1028,15 @@ export function DashboardCharts({
     try { const s = localStorage.getItem(LS_LAYOUT_ORDER); return s ? (JSON.parse(s) as string[]) : DEFAULT_SECTION_ORDER; } catch { return DEFAULT_SECTION_ORDER; }
   });
   const [layoutDragId, setLayoutDragId] = useState<string | null>(null);
+  const [dashTab, setDashTab] = useState<DashTab>(() => {
+    const t = readLS<DashTab>(LS_DASH_TAB, "overview");
+    return ALL_DASH_TABS.includes(t) ? t : "overview";
+  });
+
+  const changeTab = useCallback((tab: DashTab) => {
+    setDashTab(tab);
+    try { localStorage.setItem(LS_DASH_TAB, JSON.stringify(tab)); } catch { /* ignore */ }
+  }, []);
 
   function toggleSection(id: string) {
     setLayoutHidden(prev => {
@@ -1076,8 +1115,13 @@ export function DashboardCharts({
   };
 
   const scrollToSection = useCallback((sectionId: string) => {
-    const el = document.getElementById(`section-${sectionId}`);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    // If the target section lives on a different tab, switch to it before scrolling.
+    const tabs = SECTION_TABS[sectionId];
+    if (tabs && tabs.length) setDashTab(prev => (tabs.includes(prev) ? prev : tabs[0]));
+    setTimeout(() => {
+      const el = document.getElementById(`section-${sectionId}`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
   }, []);
 
   const handleKpiDragStart = useCallback((key: string) => {
@@ -1520,6 +1564,27 @@ export function DashboardCharts({
         </div>
       </div>
 
+      {/* Report tabs — organise sections into focused views */}
+      <div className="flex gap-0.5 mb-5 w-fit rounded-lg p-0.5" style={{ background: "var(--card2)" }}>
+        {DASH_TABS.map(t => {
+          const active = dashTab === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => changeTab(t.key)}
+              className="px-4 py-1.5 rounded-md text-xs font-semibold transition-colors"
+              style={{
+                background: active ? "var(--card)" : "transparent",
+                color: active ? "var(--foreground)" : "var(--muted2)",
+                boxShadow: active ? "var(--shadow-sm)" : undefined,
+              }}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Alert strip */}
       <TodayFocus overdueCount={overdueInvoices.length} overdueTotal={overdueInvoices.reduce((s, i) => s + i.amount, 0)}
         staleCount={staleLeads.length} dueThisWeek={dueThisWeek} cur={cur} onScrollTo={scrollToSection} />
@@ -1599,7 +1664,7 @@ export function DashboardCharts({
                     <XAxis dataKey="month" tick={TICK_STYLE} axisLine={false} tickLine={false} />
                     <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
                     <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
-                    <Bar dataKey="Revenue" fill="#10b981" radius={[3,3,0,0]} />
+                    <Bar dataKey="Revenue" fill="#ec4899" radius={[3,3,0,0]} />
                     <Bar dataKey="Costs" fill="rgba(239,68,68,.5)" radius={[3,3,0,0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -1667,7 +1732,7 @@ export function DashboardCharts({
                     <XAxis type="number" tick={TICK_STYLE} axisLine={false} tickLine={false} />
                     <YAxis type="category" dataKey="name" tick={TICK_STYLE} axisLine={false} tickLine={false} width={90} />
                     <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
-                    <Bar dataKey="value" fill="rgba(16,185,129,.7)" radius={3} />
+                    <Bar dataKey="value" fill="rgba(236,72,153,.7)" radius={3} />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartCard>
@@ -1755,6 +1820,7 @@ export function DashboardCharts({
         const groups: RGroup[] = [];
         for (const id of layoutOrder) {
           if (!isVisible(id)) continue;
+          if (!sectionInTab(id, dashTab)) continue;
           const content = contentFor(id);
           if (content === null || content === undefined) continue;
           const def = ALL_SECTIONS.find(s => s.id === id);
@@ -1771,12 +1837,26 @@ export function DashboardCharts({
           }
         }
 
+        if (groups.length === 0) {
+          return (
+            <div className="rounded-xl px-6 py-12 text-center" style={{ background: "var(--card2)", border: "1px dashed var(--border)" }}>
+              <p className="text-sm font-semibold" style={{ color: "var(--muted)" }}>Nothing to show on this tab</p>
+              <p className="text-xs mt-1" style={{ color: "var(--muted2)" }}>All sections for this view are hidden. Use the Layout button to bring them back.</p>
+            </div>
+          );
+        }
+
         return groups.map((g, gi) => {
           if (g.kind === "block") {
             return <div key={gi} id={`section-${g.id}`} className="mb-5">{g.content}</div>;
           }
+          // A lone chart fills the full width; pairs+ lay out two-up on desktop so
+          // a single-chart tab never leaves an empty half-column.
+          const chartGridCls = g.items.length === 1
+            ? "grid grid-cols-1 gap-4 mb-5"
+            : "grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5";
           return (
-            <div key={gi} id={`section-${g.items[0]?.id}`} className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+            <div key={gi} id={`section-${g.items[0]?.id}`} className={chartGridCls}>
               {g.items.map(({ id, content }) => <Fragment key={id}>{content}</Fragment>)}
             </div>
           );
@@ -1810,7 +1890,7 @@ export function DashboardCharts({
                     onDragEnd={() => setLayoutDragId(null)}
                     className="flex items-center justify-between px-3 py-2.5 rounded-lg cursor-grab select-none"
                     style={{
-                      background: hidden ? "var(--card)" : "rgba(16,185,129,.08)",
+                      background: hidden ? "var(--card)" : "rgba(236,72,153,.08)",
                       border: `1px solid ${hidden ? "var(--border)" : "var(--accent)"}`,
                       opacity: layoutDragId === id ? 0.4 : 1,
                     }}>
@@ -1894,7 +1974,7 @@ export function DashboardCharts({
                 return (
                   <button key={k.key} onClick={() => toggleKpiHidden(k.key)}
                     className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm transition-colors"
-                    style={{ background: hidden ? "var(--card)" : "rgba(16,185,129,.08)", border: `1px solid ${hidden ? "var(--border)" : "var(--accent)"}` }}>
+                    style={{ background: hidden ? "var(--card)" : "rgba(236,72,153,.08)", border: `1px solid ${hidden ? "var(--border)" : "var(--accent)"}` }}>
                     <span style={{ color: hidden ? "var(--muted2)" : "var(--foreground)" }}>{k.label}</span>
                     <span className="font-bold text-xs" style={{ color: hidden ? "var(--muted2)" : "var(--accent)" }}>
                       {hidden ? "Hidden" : "Visible ✓"}

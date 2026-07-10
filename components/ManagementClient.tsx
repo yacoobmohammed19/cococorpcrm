@@ -22,7 +22,7 @@ type Props = {
 };
 
 const ORG_COLORS = [
-  "#10B981", "#8B5CF6", "#F59E0B", "#3B82F6", "#EC4899", "#EF4444", "#06B6D4",
+  "#EC4899", "#8B5CF6", "#F59E0B", "#3B82F6", "#EC4899", "#EF4444", "#06B6D4",
 ];
 
 const inputCss = {
@@ -67,8 +67,8 @@ export function ManagementClient({ orgs }: Props) {
                 className="rounded-xl p-4 flex items-center gap-4"
                 style={{
                   background: "var(--card2)",
-                  border: `1px solid ${org.isActive ? "rgba(16,185,129,0.35)" : "var(--border)"}`,
-                  boxShadow: org.isActive ? "0 0 0 1px rgba(16,185,129,0.1)" : undefined,
+                  border: `1px solid ${org.isActive ? "rgba(236,72,153,0.35)" : "var(--border)"}`,
+                  boxShadow: org.isActive ? "0 0 0 1px rgba(236,72,153,0.1)" : undefined,
                 }}
               >
                 {/* Initials */}
@@ -86,7 +86,7 @@ export function ManagementClient({ orgs }: Props) {
                     {org.isActive && (
                       <span
                         className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full"
-                        style={{ background: "rgba(16,185,129,0.15)", color: "var(--accent)" }}
+                        style={{ background: "rgba(236,72,153,0.15)", color: "var(--accent)" }}
                       >
                         Active
                       </span>
@@ -150,7 +150,7 @@ export function ManagementClient({ orgs }: Props) {
         <div className="flex items-center gap-3">
           <div
             className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-            style={{ background: "rgba(16,185,129,0.1)" }}
+            style={{ background: "rgba(236,72,153,0.1)" }}
           >
             <Plus size={18} style={{ color: "var(--accent)" }} />
           </div>

@@ -103,7 +103,7 @@ function CostDrillDownModal({ title, ids, costs, cur, onClose, onEdit }: {
                     </span>
                   )}
                   {c.recouped === "Y" && (
-                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: "rgba(16,185,129,.15)", color: "var(--accent)" }}>Recouped</span>
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: "rgba(236,72,153,.15)", color: "var(--accent)" }}>Recouped</span>
                   )}
                 </div>
                 <p className="text-xs truncate" style={{ color: "var(--muted)" }}>{c.cost_details || "—"}{c.account_name ? ` · ${c.account_name}` : ""}</p>
@@ -417,7 +417,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                 <div className="flex flex-wrap gap-3 text-xs mb-3 mt-2" style={{ color: "var(--muted2)" }}>
                   <span>📅 {c.transaction_date}</span>
                   {c.account_name && <span>🏦 {c.account_name}</span>}
-                  {c.recouped === "Y" && <span className="px-2 py-0.5 rounded-full font-semibold" style={{ background: "rgba(16,185,129,.15)", color: "var(--accent)" }}>Recouped</span>}
+                  {c.recouped === "Y" && <span className="px-2 py-0.5 rounded-full font-semibold" style={{ background: "rgba(236,72,153,.15)", color: "var(--accent)" }}>Recouped</span>}
                   {c.receipt_image_url && <a href={c.receipt_image_url} target="_blank" rel="noreferrer" className="px-1.5 py-0.5 rounded text-xs" style={{ background: "var(--card3)", color: "var(--muted2)" }}>📎 Receipt</a>}
                 </div>
                 <div className="flex gap-2 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
@@ -465,7 +465,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                       <td className="px-3 py-2 font-mono font-semibold whitespace-nowrap" style={{ color: "var(--red-c)" }}>{cur} {fmt(c.amount)}</td>
                       <td className="px-3 py-2" style={{ color: "var(--muted)" }}>{c.account_name || "—"}</td>
                       <td className="px-3 py-2">
-                        {c.recouped === "Y" && <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: "rgba(16,185,129,.15)", color: "var(--accent)" }}>Recouped</span>}
+                        {c.recouped === "Y" && <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: "rgba(236,72,153,.15)", color: "var(--accent)" }}>Recouped</span>}
                       </td>
                       <td className="px-3 py-2">
                         {c.receipt_image_url && <a href={c.receipt_image_url} target="_blank" rel="noreferrer" className="text-xs underline" style={{ color: "var(--muted2)" }}>📎</a>}
@@ -589,7 +589,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                 onChange={e => { const f = e.target.files?.[0]; if (f) handleScanReceipt(f, "edit"); e.target.value = ""; }} />
               <button type="button" disabled={extracting} onClick={() => editFileRef.current?.click()}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold border-dashed border-2 transition-opacity"
-                style={{ borderColor: "var(--accent)", color: "var(--accent)", background: "rgba(16,185,129,.05)", opacity: extracting ? .6 : 1 }}>
+                style={{ borderColor: "var(--accent)", color: "var(--accent)", background: "rgba(236,72,153,.05)", opacity: extracting ? .6 : 1 }}>
                 <Camera size={15} />{extracting ? "Scanning receipt…" : "📎 Update with AI Receipt Scan"}
               </button>
               {(editImageUrl || editCost.receipt_image_url) && (
@@ -727,7 +727,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                 onChange={e => { const f = e.target.files?.[0]; if (f) handleScanReceipt(f, "new"); e.target.value = ""; }} />
               <button type="button" disabled={extracting} onClick={() => newFileRef.current?.click()}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold border-dashed border-2 transition-opacity"
-                style={{ borderColor: "var(--accent)", color: "var(--accent)", background: "rgba(16,185,129,.05)", opacity: extracting ? .6 : 1 }}>
+                style={{ borderColor: "var(--accent)", color: "var(--accent)", background: "rgba(236,72,153,.05)", opacity: extracting ? .6 : 1 }}>
                 <Camera size={15} />{extracting ? "Scanning receipt…" : "📎 Scan Receipt with AI"}
               </button>
               {newImageUrl && (

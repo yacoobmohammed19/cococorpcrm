@@ -73,7 +73,6 @@ export function SideNav({ collapsed = false, role }: { collapsed?: boolean; role
                     justifyContent: collapsed ? "center" : undefined,
                     background: isActive ? "var(--sidebar-active)" : "transparent",
                     color: isActive ? "var(--sidebar-fg-active)" : "var(--sidebar-fg)",
-                    boxShadow: isActive && !collapsed ? "inset 0 0 0 1px rgba(16,185,129,0.2)" : undefined,
                   }}
                   onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "var(--sidebar-hover)"; }}
                   onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
@@ -81,13 +80,13 @@ export function SideNav({ collapsed = false, role }: { collapsed?: boolean; role
                   {isActive && !collapsed && (
                     <span
                       className="absolute left-0 top-1/2 -translate-y-1/2 rounded-full"
-                      style={{ background: "var(--sidebar-indicator)", width: "3px", height: "18px", boxShadow: "0 0 8px var(--sidebar-indicator)" }}
+                      style={{ background: "var(--sidebar-indicator)", width: "3px", height: "18px" }}
                     />
                   )}
                   {isActive && collapsed && (
                     <span
                       className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full"
-                      style={{ background: "var(--sidebar-indicator)", boxShadow: "0 0 6px var(--sidebar-indicator)" }}
+                      style={{ background: "var(--sidebar-indicator)" }}
                     />
                   )}
                   <item.Icon
@@ -95,7 +94,6 @@ export function SideNav({ collapsed = false, role }: { collapsed?: boolean; role
                     className="shrink-0"
                     style={{
                       color: isActive ? "var(--sidebar-indicator)" : "var(--sidebar-fg)",
-                      filter: isActive ? "drop-shadow(0 0 4px rgba(16,185,129,0.5))" : undefined,
                     }}
                   />
                   {!collapsed && item.label}
@@ -147,8 +145,8 @@ export function BotNav({ role }: { role?: string | null }) {
                 style={{
                   background: isActive
                     ? "linear-gradient(135deg, var(--accent), var(--purple-c))"
-                    : "rgba(16,185,129,.12)",
-                  boxShadow: isActive ? "0 2px 12px rgba(16,185,129,.4)" : undefined,
+                    : "rgba(236,72,153,.12)",
+                  boxShadow: isActive ? "0 2px 12px rgba(236,72,153,.4)" : undefined,
                 }}
               >
                 <item.Icon

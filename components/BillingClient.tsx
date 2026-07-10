@@ -15,11 +15,14 @@ type Invoice = {
 };
 type Customer = { id: number; name: string };
 type Cost = { id: number; amount: number; transaction_date: string; include_in_pnl: boolean };
-type Props = { invoices: Invoice[]; customers: Customer[]; costs: Cost[]; currency: string; fiscalYearFrom: string };
+type InvoiceStatus = { id: number; name: string; color: string };
+type Props = { invoices: Invoice[]; customers: Customer[]; costs: Cost[]; currency: string; fiscalYearFrom: string; invoiceStatuses: InvoiceStatus[] };
 
 type DrillDown = { title: string; invoiceIds: number[] } | null;
 
-const STATUSES = ["Completed", "Pending", "Written Off"];
+const FALLBACK_STATUS_COLORS: Record<string, string> = {
+  Completed: "#ec4899", Pending: "#f59e0b", "Written Off": "#ef4444", Hold: "#6366f1",
+};
 
 function fmt(n: number) { return Number(n).toLocaleString("en-ZA", { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
 
@@ -44,28 +47,25 @@ function defaultRange(months = 12) {
   return { from: from.toISOString().slice(0, 7), to: now.toISOString().slice(0, 7) };
 }
 
-function statColor(s: string) {
-  if (s === "Completed") return "var(--accent)";
-  if (s === "Pending") return "var(--amber-c)";
-  if (s === "Written Off") return "var(--red-c)";
-  return "var(--muted2)";
-}
-function StatBadge({ s }: { s: string }) {
-  return <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: statColor(s) + "22", color: statColor(s) }}>{s}</span>;
+function StatBadge({ s, color }: { s: string; color: string }) {
+  return <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: color + "33", color }}>{s}</span>;
 }
 
 // ── Drill-down modal ──────────────────────────────────────────────────────────
 
-function DrillDownModal({ title, invoiceIds, invoices, customers, currency, onClose, onStatusChange }: {
+function DrillDownModal({ title, invoiceIds, invoices, customers, currency, invoiceStatuses, onClose, onStatusChange }: {
   title: string;
   invoiceIds: number[];
   invoices: Invoice[];
   customers: Customer[];
   currency: string;
+  invoiceStatuses: InvoiceStatus[];
   onClose: () => void;
   onStatusChange: (id: number, status: string) => void;
 }) {
   const cur = currency === "ZAR" ? "R" : "$";
+  const statusColorMap = Object.fromEntries(invoiceStatuses.map(s => [s.name, s.color]));
+  function statColor(s: string) { return statusColorMap[s] ?? FALLBACK_STATUS_COLORS[s] ?? "#6b7280"; }
   const [busy, setBusy] = useState<number | null>(null);
   const toast = useToast();
   const rows = invoices.filter(i => invoiceIds.includes(i.id));
@@ -136,7 +136,7 @@ function DrillDownModal({ title, invoiceIds, invoices, customers, currency, onCl
                       color: statColor(inv.status),
                       borderColor: statColor(inv.status) + "55",
                     }}>
-                    {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                    {invoiceStatuses.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                   </select>
                   {busy === inv.id && (
                     <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px]" style={{ color: "var(--muted2)" }}>…</span>
@@ -157,16 +157,16 @@ function DrillDownModal({ title, invoiceIds, invoices, customers, currency, onCl
         {/* Footer totals */}
         {rows.length > 0 && (
           <div className="px-5 py-3 border-t flex flex-wrap gap-4 text-xs shrink-0" style={{ borderColor: "var(--border)", background: "var(--card)" }}>
-            {[
-              ["Collected", rows.filter(i => i.status === "Completed").reduce((s, i) => s + i.amount, 0), "var(--accent)"],
-              ["Pending", rows.filter(i => i.status === "Pending").reduce((s, i) => s + i.amount, 0), "var(--amber-c)"],
-              ["Written Off", rows.filter(i => i.status === "Written Off").reduce((s, i) => s + i.amount, 0), "var(--red-c)"],
-            ].map(([l, v, c]) => (
-              <div key={l as string}>
-                <span style={{ color: "var(--muted2)" }}>{l}: </span>
-                <span className="font-mono font-semibold" style={{ color: c as string }}>{cur} {fmt(v as number)}</span>
-              </div>
-            ))}
+            {invoiceStatuses.map(s => {
+              const total = rows.filter(i => i.status === s.name).reduce((acc, i) => acc + i.amount, 0);
+              if (total === 0) return null;
+              return (
+                <div key={s.id}>
+                  <span style={{ color: "var(--muted2)" }}>{s.name}: </span>
+                  <span className="font-mono font-semibold" style={{ color: s.color }}>{cur} {fmt(total)}</span>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -176,7 +176,9 @@ function DrillDownModal({ title, invoiceIds, invoices, customers, currency, onCl
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export function BillingClient({ invoices: rawInvoices, customers, costs, currency, fiscalYearFrom }: Props) {
+export function BillingClient({ invoices: rawInvoices, customers, costs, currency, fiscalYearFrom, invoiceStatuses }: Props) {
+  const statusColorMap = Object.fromEntries(invoiceStatuses.map(s => [s.name, s.color]));
+  function getStatusColor(s: string) { return statusColorMap[s] ?? FALLBACK_STATUS_COLORS[s] ?? "#6b7280"; }
   const cur = currency === "ZAR" ? "R" : "$";
   const toast = useToast();
 
@@ -379,7 +381,7 @@ export function BillingClient({ invoices: rawInvoices, customers, costs, currenc
             className="px-3 py-1.5 text-xs rounded border outline-none"
             style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--muted)" }}>
             <option value="">All Statuses</option>
-            {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            {invoiceStatuses.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
           </select>
         )}
         {mainView === "matrix" && (
@@ -638,7 +640,7 @@ export function BillingClient({ invoices: rawInvoices, customers, costs, currenc
               <div key={inv.id} className="p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-bold text-sm" style={{ color: "var(--accent)" }}>{inv.invoice_number || `#${inv.id}`}</span>
-                  <StatBadge s={inv.status} />
+                  <StatBadge s={inv.status} color={getStatusColor(inv.status)} />
                 </div>
                 <div className="flex items-end justify-between mb-2">
                   <Link href={`/customers/${inv.customer_id}`} className="font-semibold text-sm hover:underline">{cust?.name ?? `#${inv.customer_id}`}</Link>
@@ -683,7 +685,7 @@ export function BillingClient({ invoices: rawInvoices, customers, costs, currenc
                     <td className="px-3 py-2 max-w-[160px] truncate" style={{ color: "var(--muted)" }}>{inv.description || "—"}</td>
                     <td className="px-3 py-2 font-mono whitespace-nowrap font-semibold">{cur} {fmt(inv.amount)}</td>
                     <td className="px-3 py-2 whitespace-nowrap" style={{ color: "var(--muted2)" }}>{inv.payment_type_name || "—"}</td>
-                    <td className="px-3 py-2"><StatBadge s={inv.status} /></td>
+                    <td className="px-3 py-2"><StatBadge s={inv.status} color={getStatusColor(inv.status)} /></td>
                     <td className="px-3 py-2 whitespace-nowrap">
                       <a href={`/invoices/${inv.id}/print`} target="_blank" rel="noopener noreferrer"
                         className="px-2 py-1 rounded text-xs font-semibold flex items-center justify-center"
@@ -707,6 +709,7 @@ export function BillingClient({ invoices: rawInvoices, customers, costs, currenc
           invoices={invoices}
           customers={customers}
           currency={currency}
+          invoiceStatuses={invoiceStatuses}
           onClose={() => setDrillDown(null)}
           onStatusChange={handleStatusChange}
         />

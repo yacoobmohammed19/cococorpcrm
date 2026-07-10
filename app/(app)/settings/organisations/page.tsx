@@ -60,7 +60,7 @@ export default async function OrganisationsPage() {
             >
               <div
                 className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-                style={{ background: org.isActive ? "rgba(16,185,129,0.15)" : "rgba(255,255,255,0.06)" }}
+                style={{ background: org.isActive ? "rgba(236,72,153,0.15)" : "rgba(255,255,255,0.06)" }}
               >
                 <Building2 size={16} style={{ color: org.isActive ? "var(--accent)" : "var(--muted2)" }} />
               </div>
@@ -70,7 +70,7 @@ export default async function OrganisationsPage() {
                   {org.isActive && (
                     <span
                       className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full"
-                      style={{ background: "rgba(16,185,129,0.15)", color: "var(--accent)" }}
+                      style={{ background: "rgba(236,72,153,0.15)", color: "var(--accent)" }}
                     >
                       Active
                     </span>
@@ -103,7 +103,7 @@ export default async function OrganisationsPage() {
         <div className="flex items-center gap-3">
           <div
             className="w-9 h-9 rounded-xl flex items-center justify-center"
-            style={{ background: "rgba(16,185,129,0.1)" }}
+            style={{ background: "rgba(236,72,153,0.1)" }}
           >
             <Plus size={18} style={{ color: "var(--accent)" }} />
           </div>

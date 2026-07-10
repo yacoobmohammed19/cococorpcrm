@@ -3,66 +3,70 @@
 /* Dark mode via .dark class on <html> */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* ── Light mode (default) ── */
+/* ── Light mode (default) — CocoCorp visual redesign ── */
 :root {
-  /* Page & surface hierarchy */
-  --background: #F4F6FB;
-  --foreground: #0F172A;
-  --card:       #FFFFFF;
-  --card2:      #F0F4FA;
-  --card3:      #E4EAF4;
+  /* Page & surface hierarchy — warm paper/mist neutrals */
+  --background: #F1EEEA;
+  --foreground: #1A1A1D;
+  --card:       #FBFAF8;
+  --card2:      #F1EEEA;
+  --card3:      #E6E1DB;
 
   /* Text hierarchy */
-  --muted:  #475569;
-  --muted2: #94A3B8;
+  --muted:  #6B6B72;
+  --muted2: #9A9AA1;
 
-  /* Borders */
-  --border:  #DDE3EF;
-  --border2: #C8D2E4;
+  /* Borders — warm line */
+  --border:  #E6E1DB;
+  --border2: #D9D3CB;
 
-  /* Primary action — dark slate */
-  --primary:       #0F172A;
-  --primary-hover: #1E293B;
+  /* Primary action — near-black ink */
+  --primary:       #1A1A1D;
+  --primary-hover: #2B2B30;
   --primary-fg:    #FFFFFF;
 
-  /* Brand accent — green */
-  --accent:       #10B981;
-  --accent-hover: #059669;
+  /* Brand accent — pink */
+  --accent:       #EC4899;
+  --accent-hover: #DB2777;
   --accent-fg:    #FFFFFF;
-  --accent-glow:  rgba(16, 185, 129, 0.18);
-  --accent-subtle: rgba(16, 185, 129, 0.08);
+  --accent-glow:  rgba(236, 72, 153, 0.18);
+  --accent-subtle: rgba(236, 72, 153, 0.08);
+
+  /* Secondary accent — blue */
+  --blue-c:   #2563EB;
 
   /* Status / semantic colours (shared across modes) */
-  --pink:     #E84393;
-  --red-c:    #EF4444;
-  --amber-c:  #F59E0B;
+  --pink:     #EC4899;
+  --red-c:    #D93A3A;
+  --amber-c:  #C2790A;
   --purple-c: #8B5CF6;
-  --cyan-c:   #06B6D4;
+  --cyan-c:   #2563EB;
+  --success:  #138A5E;
 
   /* Status pill backgrounds */
-  --danger-bg:  #FEF2F2;
-  --warning-bg: #FFFBEB;
-  --success-bg: #ECFDF5;
-  --info-bg:    #ECFEFF;
+  --danger-bg:  #FDECEC;
+  --warning-bg: #FBF3E6;
+  --success-bg: #E7F4EE;
+  --info-bg:    #EAF0FE;
   --purple-bg:  #F5F3FF;
-  --pink-bg:    #FDF2F8;
+  --pink-bg:    #FDEEF6;
 
-  /* Sidebar — always dark slate, independent of theme */
-  --sidebar-bg:        #0D1117;
-  --sidebar-border:    #1C2333;
-  --sidebar-fg:        #8B95A8;
-  --sidebar-fg-hover:  #C9D1DC;
-  --sidebar-fg-active: #FFFFFF;
-  --sidebar-label:     #4A5568;
-  --sidebar-hover:     rgba(255, 255, 255, 0.04);
-  --sidebar-active:    rgba(16, 185, 129, 0.12);
-  --sidebar-indicator: #10B981;
+  /* Sidebar — light warm rail */
+  --sidebar-bg:        #FBFAF8;
+  --sidebar-border:    #E6E1DB;
+  --sidebar-fg:        #6B6B72;
+  --sidebar-fg-hover:  #2B2B30;
+  --sidebar-fg-active: #1A1A1D;
+  --sidebar-label:     #9A9AA1;
+  --sidebar-hover:     rgba(26, 26, 29, 0.04);
+  --sidebar-active:    rgba(236, 72, 153, 0.10);
+  --sidebar-indicator: #EC4899;
 
   /* Elevation */
-  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06);
-  --shadow:    0 2px 8px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.05);
-  --shadow-md: 0 4px 16px rgba(15, 23, 42, 0.10), 0 2px 4px rgba(15, 23, 42, 0.06);
-  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12), 0 4px 8px rgba(15, 23, 42, 0.06);
+  --shadow-sm: 0 2px 8px rgba(17, 17, 19, 0.06);
+  --shadow:    0 2px 8px rgba(17, 17, 19, 0.08), 0 1px 2px rgba(17, 17, 19, 0.05);
+  --shadow-md: 0 10px 40px rgba(17, 17, 19, 0.08), 0 2px 4px rgba(17, 17, 19, 0.06);
+  --shadow-lg: 0 24px 64px rgba(17, 17, 19, 0.14), 0 4px 8px rgba(17, 17, 19, 0.06);
 
   /* Radius scale */
   --radius-sm:  4px;
@@ -73,50 +77,59 @@
   --radius-2xl: 16px;
 }
 
-/* ── Dark mode ── */
+/* ── Dark mode — CocoCorp visual redesign ── */
 .dark {
-  --background: #09071A;
-  --foreground: #EEF0FC;
-  --card:       #0E0B24;
-  --card2:      #130F2D;
-  --card3:      #1A1640;
-  --muted:      #C0BBDF;
-  --muted2:     #7B74A8;
-  --border:     #231E54;
-  --border2:    #312A6A;
+  --background: #141417;
+  --foreground: #F5F4F2;
+  --card:       #1C1C1F;
+  --card2:      #26262A;
+  --card3:      #303036;
+  --muted:      #95949C;
+  --muted2:     #6E6E76;
+  --border:     rgba(255, 255, 255, 0.12);
+  --border2:    rgba(255, 255, 255, 0.18);
 
   /* Primary inverts in dark mode (light button on dark bg) */
-  --primary:       #E2E8F0;
-  --primary-hover: #F8FAFC;
-  --primary-fg:    #0F172A;
+  --primary:       #F5F4F2;
+  --primary-hover: #FFFFFF;
+  --primary-fg:    #1A1A1D;
 
-  /* Accent glow — more visible in dark */
-  --accent-glow:   rgba(16, 185, 129, 0.22);
-  --accent-subtle: rgba(16, 185, 129, 0.10);
+  /* Accent — pink stays vivid; slightly stronger glow */
+  --accent-glow:   rgba(236, 72, 153, 0.24);
+  --accent-subtle: rgba(236, 72, 153, 0.12);
+
+  /* Secondary accent — blue */
+  --blue-c:   #3B82F6;
+
+  /* Semantic colours warm/brighten for dark surfaces */
+  --red-c:    #E8615F;
+  --amber-c:  #DDA13B;
+  --cyan-c:   #3B82F6;
+  --success:  #34B37E;
 
   /* Status pill backgrounds — translucent tints */
-  --danger-bg:  rgba(239, 68, 68, 0.14);
-  --warning-bg: rgba(245, 158, 11, 0.14);
-  --success-bg: rgba(16, 185, 129, 0.14);
-  --info-bg:    rgba(6, 182, 212, 0.14);
-  --purple-bg:  rgba(139, 92, 246, 0.14);
-  --pink-bg:    rgba(232, 67, 147, 0.14);
+  --danger-bg:  rgba(232, 97, 95, 0.16);
+  --warning-bg: rgba(221, 161, 59, 0.16);
+  --success-bg: rgba(52, 179, 126, 0.16);
+  --info-bg:    rgba(59, 130, 246, 0.16);
+  --purple-bg:  rgba(139, 92, 246, 0.16);
+  --pink-bg:    rgba(236, 72, 153, 0.16);
 
-  /* Sidebar blends with dark page bg */
-  --sidebar-bg:        #070515;
-  --sidebar-border:    #1A1640;
-  --sidebar-fg:        #7B74A8;
-  --sidebar-fg-hover:  #C0BBDF;
-  --sidebar-fg-active: #EEF0FC;
-  --sidebar-label:     #4A4470;
-  --sidebar-hover:     rgba(255, 255, 255, 0.04);
-  --sidebar-active:    rgba(16, 185, 129, 0.14);
+  /* Sidebar — deep warm charcoal rail */
+  --sidebar-bg:        #111113;
+  --sidebar-border:    rgba(255, 255, 255, 0.12);
+  --sidebar-fg:        #8B8B93;
+  --sidebar-fg-hover:  #D7D6DA;
+  --sidebar-fg-active: #F5F4F2;
+  --sidebar-label:     #6E6E76;
+  --sidebar-hover:     rgba(255, 255, 255, 0.05);
+  --sidebar-active:    rgba(236, 72, 153, 0.16);
 
   /* Deeper shadows on dark surfaces */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.40);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
   --shadow:    0 2px 8px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.50), 0 2px 4px rgba(0, 0, 0, 0.30);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55), 0 4px 8px rgba(0, 0, 0, 0.30);
+  --shadow-md: 0 10px 40px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.30);
+  --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.60), 0 4px 8px rgba(0, 0, 0, 0.30);
 }
 
 /* ── Tailwind colour utilities ── */
@@ -138,16 +151,25 @@
   --color-purple:      var(--purple-c);
   --color-pink:        var(--pink);
   --color-cyan:        var(--cyan-c);
+  --color-blue:        var(--blue-c);
+  --color-success:     var(--success);
   --font-sans:         var(--font-geist-sans);
   --font-mono:         var(--font-geist-mono);
+  --font-display:      var(--font-display);
 }
 
 /* ── Base styles ── */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), "Inter", Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* ── Display headings — Bebas Neue on page titles ── */
+h1 {
+  font-family: var(--font-display), "Bebas Neue", var(--font-geist-sans), sans-serif;
+  letter-spacing: 0.01em;
 }
 
 /* Smooth theme transitions */

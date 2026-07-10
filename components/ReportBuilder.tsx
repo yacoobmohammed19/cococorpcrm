@@ -70,7 +70,7 @@ const AGG_LABELS: Record<AggType, string> = {
   SUM: "Sum", AVG: "Average", COUNT: "Count", MIN: "Minimum", MAX: "Maximum",
 };
 
-const CHART_COLORS = ["#10b981","#e84393","#8b5cf6","#f59e0b","#06b6d4","#ef4444","#84cc16","#f97316"];
+const CHART_COLORS = ["#ec4899","#e84393","#8b5cf6","#f59e0b","#06b6d4","#ef4444","#84cc16","#f97316"];
 const ORPHAN_COLOR = "#f59e0b";
 const TT_STYLE = { background: "var(--card2)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 };
 const TICK_STYLE = { fontSize: 10, fill: "var(--muted2)" };
@@ -547,7 +547,7 @@ export function ReportBuilder({ rawInvoices, rawLeads, rawCosts, rawCashflow, cu
                       </span>
                     ) : groupByDimLink?.dimKey ? (
                       <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
-                        style={{ background: "rgba(16,185,129,0.12)", color: "var(--accent)" }}>
+                        style={{ background: "rgba(236,72,153,0.12)", color: "var(--accent)" }}>
                         ✓ linked
                       </span>
                     ) : null}

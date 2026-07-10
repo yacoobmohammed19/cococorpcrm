@@ -10,7 +10,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const supabase = await createServerClient();
   const orgId = await getCurrentOrgId();
 
-  const [{ data: customer }, { data: invoices }, { data: org }, { data: paymentTypes }, { data: products }, { data: quotes }, { data: subscriptions }] = await Promise.all([
+  const [{ data: customer }, { data: invoices }, { data: org }, { data: paymentTypes }, { data: products }, { data: quotes }, { data: subscriptions }, { data: invoiceStatuses }] = await Promise.all([
     supabase.from("dim_customers").select("*").eq("id", customerId).single(),
     supabase.from("fact_invoices")
       .select("id, invoice_number, amount, status, transaction_date, due_date, description, payment_type_id, dim_payment_types(name)")
@@ -27,6 +27,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       .select("id, description, amount, frequency, start_date, end_date, status, invoice_prefix, product_id, payment_type_id")
       .eq("customer_id", customerId)
       .order("created_at", { ascending: false }),
+    supabase.from("dim_invoice_statuses").select("id, name, color").eq("org_id", orgId).order("position"),
   ]);
 
   // Fetch all invoice lines for this customer's invoices
@@ -98,7 +99,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold">{customer.name}</h1>
-          {customer.source && <span className="text-xs px-2 py-0.5 rounded-full mt-1 inline-block" style={{ background: "rgba(16,185,129,.12)", color: "var(--accent)" }}>{customer.source}</span>}
+          {customer.source && <span className="text-xs px-2 py-0.5 rounded-full mt-1 inline-block" style={{ background: "rgba(236,72,153,.12)", color: "var(--accent)" }}>{customer.source}</span>}
         </div>
       </div>
 
@@ -152,6 +153,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           product_id: s.product_id ?? null,
           payment_type_id: s.payment_type_id ?? null,
         }))}
+        invoiceStatuses={invoiceStatuses || []}
       />
     </section>
   );

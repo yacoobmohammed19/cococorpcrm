@@ -71,9 +71,9 @@ function SectionHdr({ label }: { label: string }) {
 }
 function Subtotal({ label, value, cur }: { label: string; value: number; cur: string }) {
   return (
-    <div className="flex items-center py-2.5" style={{ paddingLeft: 32, paddingRight: 32, background: "#f0fdf4", borderBottom: "2px solid #10b981" }}>
+    <div className="flex items-center py-2.5" style={{ paddingLeft: 32, paddingRight: 32, background: "#f0fdf4", borderBottom: "2px solid #ec4899" }}>
       <span className="flex-1 text-sm font-bold" style={{ color: "#1a1a2e" }}>{label}</span>
-      <span className="font-mono text-sm font-bold" style={{ color: "#10b981", minWidth: 120, textAlign: "right" }}>{fmtVal(value, cur)}</span>
+      <span className="font-mono text-sm font-bold" style={{ color: "#ec4899", minWidth: 120, textAlign: "right" }}>{fmtVal(value, cur)}</span>
       <span style={{ minWidth: 80 }}>&nbsp;</span>
     </div>
   );
@@ -82,7 +82,7 @@ function Total({ label, value, cur }: { label: string; value: number; cur: strin
   return (
     <div className="flex items-center py-3" style={{ paddingLeft: 32, paddingRight: 32, background: "#1a1a2e" }}>
       <span className="flex-1 text-sm font-bold" style={{ color: "#fff" }}>{label}</span>
-      <span className="font-mono text-sm font-bold" style={{ color: "#10b981", minWidth: 120, textAlign: "right" }}>{fmtVal(value, cur)}</span>
+      <span className="font-mono text-sm font-bold" style={{ color: "#ec4899", minWidth: 120, textAlign: "right" }}>{fmtVal(value, cur)}</span>
       <span style={{ minWidth: 80 }}>&nbsp;</span>
     </div>
   );
@@ -342,8 +342,8 @@ export function AccountingClient({ invoices, costs, cashflow, accounts, orgName,
                   </thead>
                   <tbody>
                     {/* Revenue */}
-                    <tr className="border-b" style={{ borderColor: "var(--border)", background: "rgba(16,185,129,.04)" }}>
-                      <td className="px-3 py-2 font-semibold sticky left-0 z-10" style={{ background: "rgba(16,185,129,.06)", color: "var(--accent)" }}>Revenue</td>
+                    <tr className="border-b" style={{ borderColor: "var(--border)", background: "rgba(236,72,153,.04)" }}>
+                      <td className="px-3 py-2 font-semibold sticky left-0 z-10" style={{ background: "rgba(236,72,153,.06)", color: "var(--accent)" }}>Revenue</td>
                       {isMonthly.map(m => (
                         <td key={m.mk} className="px-3 py-2 text-right font-mono whitespace-nowrap" style={{ color: m.revenue > 0 ? "var(--accent)" : "var(--muted2)" }}>
                           {m.revenue > 0 ? fmtZAR(m.revenue) : "—"}
@@ -387,12 +387,12 @@ export function AccountingClient({ invoices, costs, cashflow, accounts, orgName,
                       <td className="px-3 py-2.5 font-bold sticky left-0 z-10" style={{ background: "#1a1a2e", color: "#fff" }}>Operating Profit</td>
                       {isMonthly.map(m => (
                         <td key={m.mk} className="px-3 py-2.5 text-right font-mono font-bold whitespace-nowrap"
-                          style={{ color: m.profit >= 0 ? "#10b981" : "#ef4444" }}>
+                          style={{ color: m.profit >= 0 ? "#ec4899" : "#ef4444" }}>
                           {fmtZAR(m.profit)}
                         </td>
                       ))}
                       <td className="px-3 py-2.5 text-right font-mono font-bold whitespace-nowrap"
-                        style={{ color: isMonthly.reduce((s, m) => s + m.profit, 0) >= 0 ? "#10b981" : "#ef4444" }}>
+                        style={{ color: isMonthly.reduce((s, m) => s + m.profit, 0) >= 0 ? "#ec4899" : "#ef4444" }}>
                         {fmtZAR(isMonthly.reduce((s, m) => s + m.profit, 0))}
                       </td>
                     </tr>
@@ -461,7 +461,7 @@ export function AccountingClient({ invoices, costs, cashflow, accounts, orgName,
               <SectionHdr label="NET POSITION" />
               <div className="flex items-center py-3" style={{ paddingLeft: 32, paddingRight: 32, background: "#1a1a2e" }}>
                 <span className="flex-1 text-sm font-bold" style={{ color: "#fff" }}>NET CASH IMPACT</span>
-                <span className="font-mono text-sm font-bold" style={{ color: isData.netCashImpact >= 0 ? "#10b981" : "#ef4444", minWidth: 140, textAlign: "right" }}>
+                <span className="font-mono text-sm font-bold" style={{ color: isData.netCashImpact >= 0 ? "#ec4899" : "#ef4444", minWidth: 140, textAlign: "right" }}>
                   {fmtZAR(isData.netCashImpact)}
                 </span>
                 <span style={{ minWidth: 80 }}>&nbsp;</span>
@@ -567,7 +567,7 @@ export function AccountingClient({ invoices, costs, cashflow, accounts, orgName,
                       <td className="px-3 py-2.5 font-bold sticky left-0 z-10" style={{ background: "#1a1a2e", color: "#fff" }}>Total Equity</td>
                       {bsMonthly.map(m => (
                         <td key={m.mk} className="px-3 py-2.5 text-right font-mono font-bold whitespace-nowrap"
-                          style={{ color: m.retainedEarnings >= 0 ? "#10b981" : "#ef4444" }}>
+                          style={{ color: m.retainedEarnings >= 0 ? "#ec4899" : "#ef4444" }}>
                           {fmtZAR(m.retainedEarnings)}
                         </td>
                       ))}

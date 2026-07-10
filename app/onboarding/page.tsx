@@ -22,7 +22,7 @@ export default async function OnboardingPage() {
         <div>
           <div
             className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
-            style={{ background: "linear-gradient(135deg, #10B981 0%, #059669 100%)" }}
+            style={{ background: "linear-gradient(135deg, #EC4899 0%, #DB2777 100%)" }}
           >
             <span className="text-white font-black text-sm">C</span>
           </div>

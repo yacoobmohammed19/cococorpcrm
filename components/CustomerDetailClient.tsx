@@ -25,7 +25,7 @@ type Activity = { id: number; type: string; subject: string; notes: string | nul
 type Customer = { id: number; name: string; email: string | null; phone: string | null; contact_person: string | null; source: string | null; notes: string | null };
 
 const ACTIVITY_TYPES = ["Call", "Email", "Meeting", "Task", "Note"];
-const STATUS_COLORS: Record<string, string> = { Completed: "var(--accent)", Pending: "var(--amber-c)", "Written Off": "var(--red-c)" };
+const FALLBACK_INV_STATUS_COLORS: Record<string, string> = { Completed: "#ec4899", Pending: "#f59e0b", "Written Off": "#ef4444", Hold: "#6366f1" };
 
 const inp = "w-full px-3 py-2 rounded border text-sm outline-none focus:ring-1 focus:ring-[var(--accent)]";
 const inpS = { background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" } as const;
@@ -68,7 +68,9 @@ const QUOTE_STATUS_COLORS: Record<string, string> = {
   Declined: "var(--red-c)", Invoiced: "var(--purple-c)",
 };
 
-export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {}, products = [], paymentTypes = [], quotes = [], contacts, activities, currency, customerId, productsPurchased = [], subscriptions = [] }: {
+type InvoiceStatus = { id: number; name: string; color: string };
+
+export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {}, products = [], paymentTypes = [], quotes = [], contacts, activities, currency, customerId, productsPurchased = [], subscriptions = [], invoiceStatuses = [] }: {
   customer: Customer; invoices: Invoice[];
   invoiceLinesMap?: Record<number, InvLine[]>;
   products?: Product[];
@@ -77,7 +79,11 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
   activities: Activity[]; currency: string; customerId: number;
   productsPurchased?: ProductPurchased[];
   subscriptions?: Subscription[];
+  invoiceStatuses?: InvoiceStatus[];
 }) {
+  const statusColorMap = Object.fromEntries(invoiceStatuses.map(s => [s.name, s.color]));
+  function getInvStatusColor(s: string) { return statusColorMap[s] ?? FALLBACK_INV_STATUS_COLORS[s] ?? "#6b7280"; }
+
   const toast = useToast();
   const { confirm, dialogProps } = useConfirm();
   const [activityDueDate, setActivityDueDate] = useState("");
@@ -311,9 +317,7 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
                 className="px-2 py-1 rounded text-xs border-0 outline-none"
                 style={{ background: "rgba(255,255,255,0.12)", color: "inherit" }}>
                 <option value="">Status…</option>
-                <option value="Completed">Completed</option>
-                <option value="Pending">Pending</option>
-                <option value="Written Off">Written Off</option>
+                {invoiceStatuses.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
               </select>
               <select value={bulkPayType} onChange={e => setBulkPayType(e.target.value)}
                 className="px-2 py-1 rounded text-xs border-0 outline-none"
@@ -385,7 +389,7 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
               </thead>
               <tbody>
                 {invoices.map(inv => {
-                  const col = STATUS_COLORS[inv.status] || "var(--muted2)";
+                  const col = getInvStatusColor(inv.status);
                   const isOverdue = inv.due_date && inv.status === "Pending" && new Date(inv.due_date) < new Date();
                   const selected = selectedInvIds.has(inv.id);
                   return (
@@ -536,7 +540,7 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
                                 }}
                                 disabled={busy}
                                 className="px-2 py-1 rounded text-xs font-semibold"
-                                style={{ background: "rgba(16,185,129,.15)", color: "var(--accent)", border: "1px solid var(--accent)" }}>
+                                style={{ background: "rgba(236,72,153,.15)", color: "var(--accent)", border: "1px solid var(--accent)" }}>
                                 → Invoice
                               </button>
                             )}
@@ -607,7 +611,7 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
                 <div>
                   <div className="font-semibold text-sm flex items-center gap-2">
                     {c.name}
-                    {c.is_primary && <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: "rgba(16,185,129,.12)", color: "var(--accent)" }}>Primary</span>}
+                    {c.is_primary && <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: "rgba(236,72,153,.12)", color: "var(--accent)" }}>Primary</span>}
                   </div>
                   <div className="text-xs mt-0.5 space-x-3" style={{ color: "var(--muted2)" }}>
                     {c.role && <span>{c.role}</span>}
@@ -806,7 +810,7 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
                   <div>
                     <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Status</label>
                     <select name="status" defaultValue={inv.status} className={inp} style={inpS}>
-                      {["Pending", "Completed", "Written Off"].map(s => <option key={s} value={s}>{s}</option>)}
+                      {invoiceStatuses.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                     </select>
                   </div>
                   <div>
@@ -986,7 +990,7 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
                       <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Description</label>
                       <button type="button" onClick={generateInvDesc} disabled={descBusy}
                         className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded transition-opacity hover:opacity-80"
-                        style={{ background: "rgba(16,185,129,.12)", color: "var(--accent)", border: "1px solid var(--accent)", opacity: descBusy ? 0.5 : 1 }}>
+                        style={{ background: "rgba(236,72,153,.12)", color: "var(--accent)", border: "1px solid var(--accent)", opacity: descBusy ? 0.5 : 1 }}>
                         {descBusy ? "…" : "✨ Generate"}
                       </button>
                     </div>
