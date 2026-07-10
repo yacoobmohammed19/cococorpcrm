@@ -10,7 +10,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const supabase = await createServerClient();
   const orgId = await getCurrentOrgId();
 
-  const [{ data: invoice }, { data: lines }, { data: org }] = await Promise.all([
+  const [{ data: invoice }, { data: lines }, { data: org }, { data: invoiceStatuses }] = await Promise.all([
     supabase
       .from("fact_invoices")
       .select("id, invoice_number, amount, status, transaction_date, due_date, description, customer_id, dim_customers(id, name)")
@@ -22,6 +22,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       .eq("invoice_id", invoiceId)
       .order("position"),
     supabase.from("organizations").select("currency").eq("id", orgId).single(),
+    supabase.from("dim_invoice_statuses").select("id, name, color").eq("org_id", orgId).order("position"),
   ]);
 
   if (!invoice) notFound();
@@ -53,6 +54,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           line_total: Number(l.line_total),
         }))}
         currency={org?.currency || "ZAR"}
+        invoiceStatuses={invoiceStatuses || []}
       />
     </section>
   );

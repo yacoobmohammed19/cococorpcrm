@@ -14,7 +14,7 @@ export const InvoiceSchema = z.object({
   invoice_number: z.string().min(1),
   description: z.string().optional(),
   amount: z.coerce.number().nonnegative(),
-  status: z.enum(["Pending", "Completed", "Written Off"]).default("Pending"),
+  status: z.string().min(1).default("Pending"),
   due_date: z.string().optional(),
 });
 

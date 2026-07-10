@@ -7,24 +7,27 @@ import {
   createPaymentType, deletePaymentType, updatePaymentType,
   createCostCategory, deleteCostCategory, updateCostCategory,
   createAccount, deleteAccount, updateAccount,
+  createInvoiceStatus, deleteInvoiceStatus, updateInvoiceStatus,
 } from "@/server-actions/settings";
 
 type Status = { id: number; name: string; category: string | null };
 type PayType = { id: number; name: string; description: string | null };
 type CostCat = { id: number; name: string; description: string | null };
 type Account = { id: number; name: string; account_type: string | null };
+type InvoiceStatus = { id: number; name: string; color: string; position: number };
 
 interface Props {
   statuses: Status[];
   payTypes: PayType[];
   costCats: CostCat[];
   accounts: Account[];
+  invoiceStatuses: InvoiceStatus[];
 }
 
 const inputCss = "px-2 py-1 rounded border outline-none text-sm focus:ring-1 focus:ring-[var(--accent)] flex-1 min-w-0";
 const inputStyle = { background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" };
 
-type Field = { key: string; value: string; placeholder: string };
+type Field = { key: string; value: string; placeholder: string; type?: "text" | "color" };
 
 function EditableRow({
   fields,
@@ -43,12 +46,17 @@ function EditableRow({
   onDelete: () => void;
   isPending: boolean;
 }) {
+  const colorField = fields.find(f => f.type === "color");
+
   if (!editing) {
     return (
       <div className="flex items-center justify-between px-3 py-2 rounded" style={{ background: "var(--card3)", border: "1px solid var(--border)" }}>
         <div className="flex items-center gap-2 flex-1 min-w-0">
+          {colorField && (
+            <span className="w-3 h-3 rounded-full shrink-0 inline-block" style={{ background: colorField.value }} />
+          )}
           <span className="text-sm font-medium truncate">{fields[0].value}</span>
-          {fields[1]?.value && (
+          {fields[1]?.type !== "color" && fields[1]?.value && (
             <span className="text-xs shrink-0" style={{ color: "var(--muted2)" }}>{fields[1].value}</span>
           )}
         </div>
@@ -73,16 +81,27 @@ function EditableRow({
       className="flex items-center gap-2 px-3 py-2 rounded"
       style={{ background: "var(--card3)", border: "1px solid var(--accent)" }}
     >
-      {fields.map(f => (
-        <input
-          key={f.key}
-          name={f.key}
-          defaultValue={f.value}
-          placeholder={f.placeholder}
-          className={inputCss}
-          style={inputStyle}
-        />
-      ))}
+      {fields.map(f =>
+        f.type === "color" ? (
+          <input
+            key={f.key}
+            type="color"
+            name={f.key}
+            defaultValue={f.value || "#6b7280"}
+            className="w-8 h-8 rounded cursor-pointer border-0 p-0.5 shrink-0"
+            style={{ background: "var(--card2)" }}
+          />
+        ) : (
+          <input
+            key={f.key}
+            name={f.key}
+            defaultValue={f.value}
+            placeholder={f.placeholder}
+            className={inputCss}
+            style={inputStyle}
+          />
+        )
+      )}
       <button type="submit" disabled={isPending} className="p-1 rounded" style={{ color: "var(--accent)" }}>
         <Check size={15} />
       </button>
@@ -106,7 +125,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-export function SettingsDimensions({ statuses, payTypes, costCats, accounts }: Props) {
+export function SettingsDimensions({ statuses, payTypes, costCats, accounts, invoiceStatuses }: Props) {
   const [editing, setEditing] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -128,6 +147,31 @@ export function SettingsDimensions({ statuses, payTypes, costCats, accounts }: P
 
   return (
     <>
+      <Section title="Invoice Statuses">
+        {invoiceStatuses.map(s => (
+          <EditableRow
+            key={s.id}
+            fields={[
+              { key: "name", value: s.name, placeholder: "Status name" },
+              { key: "color", value: s.color || "#6b7280", placeholder: "Color", type: "color" },
+            ]}
+            editing={editing === `invstatus-${s.id}`}
+            onEdit={() => setEditing(`invstatus-${s.id}`)}
+            onCancel={() => setEditing(null)}
+            onSave={saveWith(updateInvoiceStatus, s.id)}
+            onDelete={() => deleteWith(deleteInvoiceStatus, s.id)}
+            isPending={isPending}
+          />
+        ))}
+        <form action={createInvoiceStatus} className="flex gap-2 mt-3 pt-3 border-t" style={borderTop}>
+          <input name="name" placeholder="Status name" required className={addInputCss} style={inputStyle} />
+          <input type="color" name="color" defaultValue="#6b7280"
+            className="w-10 h-9 rounded cursor-pointer border p-0.5 shrink-0"
+            style={{ borderColor: "var(--border)", background: "var(--background)" }} />
+          <button className="px-4 py-2 rounded text-sm font-semibold whitespace-nowrap" style={{ background: "var(--accent)", color: "#fff" }}>+ Add</button>
+        </form>
+      </Section>
+
       <Section title="Lead Statuses">
         {statuses.map(s => (
           <EditableRow

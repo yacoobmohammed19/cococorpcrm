@@ -6,7 +6,7 @@ export default async function BillingPage() {
   const supabase = await createServerClient();
   const orgId = await getCurrentOrgId();
 
-  const [{ data: invoices }, { data: customers }, { data: costs }, { data: org }] = await Promise.all([
+  const [{ data: invoices }, { data: customers }, { data: costs }, { data: org }, { data: invoiceStatuses }] = await Promise.all([
     supabase
       .from("fact_invoices")
       .select("id, customer_id, transaction_date, invoice_number, amount, status, description, payment_type_id, dim_payment_types(name)")
@@ -20,6 +20,7 @@ export default async function BillingPage() {
       .eq("org_id", orgId)
       .is("deleted_at", null),
     supabase.from("organizations").select("currency, fiscal_year_start").eq("id", orgId).single(),
+    supabase.from("dim_invoice_statuses").select("id, name, color").eq("org_id", orgId).order("position"),
   ]);
 
   const fiscalStart = org?.fiscal_year_start ?? 3;
@@ -54,6 +55,7 @@ export default async function BillingPage() {
         costs={mappedCosts}
         currency={org?.currency || "ZAR"}
         fiscalYearFrom={fiscalYearFrom}
+        invoiceStatuses={invoiceStatuses || []}
       />
     </section>
   );

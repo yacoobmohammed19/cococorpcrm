@@ -26,6 +26,7 @@ type Status = { id: number; name: string; category: string | null };
 type PayType = { id: number; name: string; description: string | null };
 type CostCat = { id: number; name: string; description: string | null };
 type Account = { id: number; name: string; account_type: string | null };
+type InvoiceStatus = { id: number; name: string; color: string; position: number };
 
 interface Props {
   org: Org | null;
@@ -34,6 +35,7 @@ interface Props {
   payTypes: PayType[];
   costCats: CostCat[];
   accounts: Account[];
+  invoiceStatuses: InvoiceStatus[];
 }
 
 // ── Tab config ────────────────────────────────────────────────────────────────
@@ -83,7 +85,7 @@ const sectionHdr = { borderBottom: "1px solid var(--border)", paddingBottom: 12,
 
 // ── Main shell ────────────────────────────────────────────────────────────────
 
-export function SettingsShell({ org, orgId, statuses, payTypes, costCats, accounts }: Props) {
+export function SettingsShell({ org, orgId, statuses, payTypes, costCats, accounts, invoiceStatuses }: Props) {
   const [tab, setTab] = useState<TabKey>("general");
 
   return (
@@ -119,7 +121,7 @@ export function SettingsShell({ org, orgId, statuses, payTypes, costCats, accoun
       {tab === "general"    && <GeneralTab org={org} orgId={orgId} />}
       {tab === "appearance" && <SettingsAppearance />}
       {tab === "modules"    && <ModulesTab flags={(org?.feature_flags as Record<string, boolean>) ?? {}} />}
-      {tab === "data"       && <SettingsDimensions statuses={statuses} payTypes={payTypes} costCats={costCats} accounts={accounts} />}
+      {tab === "data"       && <SettingsDimensions statuses={statuses} payTypes={payTypes} costCats={costCats} accounts={accounts} invoiceStatuses={invoiceStatuses} />}
       {tab === "ai"         && <AiTab aiPrompt={(org?.feature_flags as Record<string, unknown>)?.ai_system_prompt as string ?? null} />}
     </section>
   );

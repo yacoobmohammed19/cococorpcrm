@@ -53,6 +53,40 @@ export async function saveDashboardSettings(settings: Record<string, unknown>) {
   if (error) throw new Error(error.message);
 }
 
+export async function createInvoiceStatus(formData: FormData) {
+  const orgId = await getCurrentOrgId();
+  const supabase = await createServerClient();
+  const { error } = await supabase.from("dim_invoice_statuses").insert({
+    org_id: orgId,
+    name: formData.get("name"),
+    color: formData.get("color") || "#6b7280",
+  });
+  if (error) throw new Error(error.message);
+  revalidateTag(dimCacheTag(orgId), "default");
+  revalidatePath("/settings");
+}
+
+export async function deleteInvoiceStatus(id: number) {
+  const orgId = await getCurrentOrgId();
+  const supabase = await createServerClient();
+  const { error } = await supabase.from("dim_invoice_statuses").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidateTag(dimCacheTag(orgId), "default");
+  revalidatePath("/settings");
+}
+
+export async function updateInvoiceStatus(id: number, formData: FormData) {
+  const orgId = await getCurrentOrgId();
+  const supabase = await createServerClient();
+  const { error } = await supabase.from("dim_invoice_statuses").update({
+    name: formData.get("name"),
+    color: formData.get("color") || "#6b7280",
+  }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidateTag(dimCacheTag(orgId), "default");
+  revalidatePath("/settings");
+}
+
 export async function createStatus(formData: FormData) {
   const orgId = await getCurrentOrgId();
   const supabase = await createServerClient();
@@ -216,6 +250,16 @@ export async function seedDefaults() {
       { org_id: orgId, name: "Closed Won", category: "Closed", is_active: false },
       { org_id: orgId, name: "Closed Lost", category: "Closed", is_active: false },
       { org_id: orgId, name: "Blacklist", category: "Closed", is_active: false },
+    ]);
+  }
+
+  const { data: existingInvoiceStatuses } = await supabase.from("dim_invoice_statuses").select("id").eq("org_id", orgId).limit(1);
+  if (!existingInvoiceStatuses?.length) {
+    await supabase.from("dim_invoice_statuses").insert([
+      { org_id: orgId, name: "Pending",     color: "#f59e0b", position: 0 },
+      { org_id: orgId, name: "Completed",   color: "#10b981", position: 1 },
+      { org_id: orgId, name: "Written Off", color: "#ef4444", position: 2 },
+      { org_id: orgId, name: "Hold",        color: "#6366f1", position: 3 },
     ]);
   }
 
