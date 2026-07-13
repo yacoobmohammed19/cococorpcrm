@@ -56,10 +56,20 @@ export async function saveDashboardSettings(settings: Record<string, unknown>) {
 export async function createInvoiceStatus(formData: FormData) {
   const orgId = await getCurrentOrgId();
   const supabase = await createServerClient();
+  // Append new statuses at the end (position defaults to 0 otherwise, so all
+  // new options would collide and sort unpredictably).
+  const { data: last } = await supabase
+    .from("dim_invoice_statuses")
+    .select("position")
+    .eq("org_id", orgId)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
   const { error } = await supabase.from("dim_invoice_statuses").insert({
     org_id: orgId,
     name: formData.get("name"),
     color: formData.get("color") || "#6b7280",
+    position: (last?.position ?? -1) + 1,
   });
   if (error) throw new Error(error.message);
   revalidateTag(dimCacheTag(orgId), "default");
