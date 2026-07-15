@@ -3,7 +3,7 @@
 import { Fragment, useState, useMemo, useCallback, useEffect, useRef } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-  PieChart, Pie, Cell, Legend, AreaChart, Area,
+  PieChart, Pie, Cell, Legend, AreaChart, Area, ComposedChart, Line,
 } from "recharts";
 import { MultiSelect } from "@/components/ui/MultiSelect";
 import { PnlModeToggle } from "@/components/PnlModeToggle";
@@ -58,6 +58,7 @@ const ALL_SECTIONS: SectionDef[] = [
   { id: "costs_category",   label: "Costs by Category",       group: "chart" },
   { id: "bank_trend",       label: "Bank Balance Trend",      group: "chart" },
   { id: "revenue_customer", label: "Revenue by Customer",     group: "chart" },
+  { id: "avg_monthly",      label: "Monthly Averages",        group: "block" },
   { id: "growth",           label: "Growth Analysis",         group: "block" },
   { id: "monthly_table",    label: "Monthly Performance",     group: "block" },
   { id: "cashflow_recon",   label: "Cashflow Reconciliation", group: "block" },
@@ -82,8 +83,9 @@ const SECTION_TABS: Record<string, DashTab[]> = {
   profit_trend:     ["revenue"],
   costs_category:   ["revenue"],
   bank_trend:       ["overview", "cashflow"],
-  revenue_customer: ["leads", "revenue"],
-  growth:           ["overview", "revenue", "leads"],
+  revenue_customer: ["revenue"],
+  avg_monthly:      ["revenue"],
+  growth:           ["leads"],
   monthly_table:    ["revenue"],
   cashflow_recon:   ["cashflow"],
   alerts:           ["overview", "leads", "cashflow"],
@@ -1026,7 +1028,14 @@ export function DashboardCharts({
     try { const s = localStorage.getItem(LS_LAYOUT_HIDDEN); return s ? new Set(JSON.parse(s) as string[]) : new Set(); } catch { return new Set(); }
   });
   const [layoutOrder, setLayoutOrder] = useState<string[]>(() => {
-    try { const s = localStorage.getItem(LS_LAYOUT_ORDER); return s ? (JSON.parse(s) as string[]) : DEFAULT_SECTION_ORDER; } catch { return DEFAULT_SECTION_ORDER; }
+    try {
+      const s = localStorage.getItem(LS_LAYOUT_ORDER);
+      const stored = s ? (JSON.parse(s) as string[]) : DEFAULT_SECTION_ORDER;
+      // Append sections added since this layout was saved so new features appear
+      // for existing users instead of being silently dropped by the render loop.
+      const missing = DEFAULT_SECTION_ORDER.filter(id => !stored.includes(id));
+      return [...stored, ...missing];
+    } catch { return DEFAULT_SECTION_ORDER; }
   });
   const [layoutDragId, setLayoutDragId] = useState<string | null>(null);
   const [dashTab, setDashTab] = useState<DashTab>(() => {
@@ -1068,7 +1077,8 @@ export function DashboardCharts({
   // deducts only P&L costs, "total" deducts all costs. Kept as `calcMode` so the
   // existing "opex"/"full" reads below are unchanged.
   const pnlMode = usePnlMode();
-  const calcMode: "opex" | "full" = pnlMode === "total" ? "full" : "opex";
+  const includeAll = pnlMode === "total";
+  const calcMode: "opex" | "full" = includeAll ? "full" : "opex";
   const [nowMs] = useState(() => Date.now());
 
   // Reactive theme detection so recharts colours update when user toggles theme
@@ -1276,13 +1286,25 @@ export function DashboardCharts({
     });
     fCosts.forEach(c => {
       const m = c.transaction_date?.slice(0, 7);
-      if (m && cost[m] !== undefined) cost[m] += Number(c.amount || 0);
+      // Honour the P&L lens: in "Business P&L" mode, non-P&L costs (owner draws,
+      // zakat, personal…) are excluded from the monthly Costs/Profit series.
+      if (m && cost[m] !== undefined && (includeAll || c.include_in_pnl !== false)) cost[m] += Number(c.amount || 0);
     });
     return months12.map(m => ({
       month: monthLabel(m), fullMonth: m,
       Revenue: rev[m], Costs: cost[m], Profit: rev[m] - cost[m],
     }));
-  }, [metrics.completedInv, fCosts, months12]);
+  }, [metrics.completedInv, fCosts, months12, includeAll]);
+
+  // Averages across the displayed months (Profit follows the P&L lens via monthlyData).
+  const monthlyAverages = useMemo(() => {
+    const n = monthlyData.length || 1;
+    return {
+      avgRevenue: monthlyData.reduce((s, r) => s + r.Revenue, 0) / n,
+      avgProfit: monthlyData.reduce((s, r) => s + r.Profit, 0) / n,
+      months: monthlyData.length,
+    };
+  }, [monthlyData]);
 
   const leadsByStatus = useMemo(() => {
     const map: Record<string, number> = {};
@@ -1663,7 +1685,7 @@ export function DashboardCharts({
               />
             );
             case "revenue_cost": return (
-              <ChartCard title="Revenue vs Costs (12 months)">
+              <ChartCard title={`Revenue vs Costs — ${pnlMode === "total" ? "All costs" : "Business P&L"}`}>
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={monthlyData} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
@@ -1693,7 +1715,7 @@ export function DashboardCharts({
               </ChartCard>
             );
             case "profit_trend": return (
-              <ChartCard title="Profit Trend">
+              <ChartCard title={`Profit Trend — ${pnlMode === "total" ? "All costs" : "Business P&L"}`}>
                 <ResponsiveContainer width="100%" height={200}>
                   <AreaChart data={monthlyData} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
@@ -1753,9 +1775,39 @@ export function DashboardCharts({
                 cur={cur} prevLabel={`vs ${prevLabel}`} lyLabel={`vs ${lyLabel}`}
               />
             );
+            case "avg_monthly": return (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="rounded-2xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: "3px solid var(--accent)" }}>
+                  <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--muted2)" }}>Avg Monthly Revenue</p>
+                  <p className="text-2xl font-bold font-mono mt-1" style={{ color: "var(--accent)" }}>{cur} {fmt(monthlyAverages.avgRevenue)}</p>
+                  <p className="text-[10px] mt-1" style={{ color: "var(--muted2)" }}>across {monthlyAverages.months} months</p>
+                </div>
+                <div className="rounded-2xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${monthlyAverages.avgProfit >= 0 ? "var(--purple-c)" : "var(--red-c)"}` }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--muted2)" }}>Avg Monthly Profit</p>
+                    <span className="text-[9px] font-semibold rounded-full px-2 py-0.5 shrink-0" style={{ background: "var(--card2)", color: "var(--muted2)", border: "1px solid var(--border)" }}>
+                      {pnlMode === "total" ? "All costs" : "Business P&L"}
+                    </span>
+                  </div>
+                  <p className="text-2xl font-bold font-mono mt-1" style={{ color: monthlyAverages.avgProfit >= 0 ? "var(--purple-c)" : "var(--red-c)" }}>{cur} {fmt(monthlyAverages.avgProfit)}</p>
+                  <p className="text-[10px] mt-1" style={{ color: "var(--muted2)" }}>across {monthlyAverages.months} months</p>
+                </div>
+              </div>
+            );
             case "monthly_table": return (
-              <ChartCard title="Monthly Performance">
-                <div className="overflow-x-auto -mx-1">
+              <ChartCard title={`Monthly Performance — ${pnlMode === "total" ? "All costs" : "Business P&L"}`}>
+                <ResponsiveContainer width="100%" height={180}>
+                  <ComposedChart data={monthlyData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
+                    <XAxis dataKey="month" tick={TICK_STYLE} axisLine={false} tickLine={false} />
+                    <YAxis tick={TICK_STYLE} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={TT_STYLE} formatter={(v: unknown) => `${cur} ${fmt(Number(v ?? 0))}`} />
+                    <Legend iconSize={8} wrapperStyle={LEGEND_STYLE} />
+                    <Bar dataKey="Revenue" fill="#ec4899" radius={[3,3,0,0]} />
+                    <Line dataKey="Profit" stroke="#8b5cf6" strokeWidth={2} dot={false} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+                <div className="overflow-x-auto -mx-1 mt-3">
                   <table className="w-full text-xs border-collapse">
                     <thead>
                       <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--card2)" }}>
