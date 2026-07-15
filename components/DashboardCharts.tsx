@@ -6,6 +6,8 @@ import {
   PieChart, Pie, Cell, Legend, AreaChart, Area,
 } from "recharts";
 import { MultiSelect } from "@/components/ui/MultiSelect";
+import { PnlModeToggle } from "@/components/PnlModeToggle";
+import { usePnlMode, setPnlMode } from "@/hooks/usePnlMode";
 import { saveDashboardSettings } from "@/server-actions/settings";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -40,7 +42,6 @@ const LS_CUSTOM_KPIS = "crm_dash_custom_kpis";
 const LS_KPI_HIDDEN = "crm_dash_kpi_hidden";
 const LS_KPI_ORDER = "crm_dash_kpi_order";
 const LS_REVENUE_TARGET = "crm_dash_revenue_target";
-const LS_CALC_MODE = "crm_dash_calc_mode";
 const LS_LAYOUT_HIDDEN = "crm_dash_layout_hidden";
 const LS_LAYOUT_ORDER = "crm_dash_layout_order";
 const LS_DASH_TAB = "crm_dash_report_tab";
@@ -1063,7 +1064,11 @@ export function DashboardCharts({
   }
 
   function isVisible(id: string) { return !layoutHidden.has(id); }
-  const [calcMode, setCalcMode] = useState<"opex" | "full">(() => readLS(LS_CALC_MODE, "opex" as "opex" | "full"));
+  // Cashflow calc lens is driven by the app-wide P&L mode (see usePnlMode): "pnl"
+  // deducts only P&L costs, "total" deducts all costs. Kept as `calcMode` so the
+  // existing "opex"/"full" reads below are unchanged.
+  const pnlMode = usePnlMode();
+  const calcMode: "opex" | "full" = pnlMode === "total" ? "full" : "opex";
   const [nowMs] = useState(() => Date.now());
 
   // Reactive theme detection so recharts colours update when user toggles theme
@@ -1545,6 +1550,7 @@ export function DashboardCharts({
           <p className="text-xs mt-0.5" style={{ color: "var(--muted2)" }}>{orgName}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <PnlModeToggle />
           <div className="flex rounded-xl overflow-hidden border text-xs" style={{ borderColor: "var(--border)" }}>
             <button onClick={() => setCompareMode("prev")} className="px-3 py-1.5 font-semibold transition-colors"
               style={{ background: compareMode === "prev" ? "var(--card2)" : "transparent", color: compareMode === "prev" ? "var(--foreground)" : "var(--muted2)" }}>
@@ -1794,11 +1800,7 @@ export function DashboardCharts({
                       <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--muted2)" }}>{card.label}</p>
                       {"toggle" in card && card.toggle && (
                         <button
-                          onClick={() => {
-                            const next = calcMode === "opex" ? "full" : "opex";
-                            setCalcMode(next);
-                            try { localStorage.setItem(LS_CALC_MODE, JSON.stringify(next)); } catch { /* ignore */ }
-                          }}
+                          onClick={() => setPnlMode(pnlMode === "pnl" ? "total" : "pnl")}
                           className="text-[9px] font-semibold rounded-full px-2 py-0.5 shrink-0"
                           style={{ background: "var(--card2)", color: "var(--muted2)", border: "1px solid var(--border)" }}
                           title={calcMode === "opex" ? "Switch to all costs" : "Switch to P&L costs only"}

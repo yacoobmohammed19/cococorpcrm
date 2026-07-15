@@ -8,6 +8,8 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useOptimisticList } from "@/hooks/useOptimisticList";
+import { usePnlMode, includesAllCosts } from "@/hooks/usePnlMode";
+import { PnlModeToggle } from "@/components/PnlModeToggle";
 import {
   saveBankBalance,
   deleteBankBalance,
@@ -145,10 +147,12 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
   const router = useRouter();
   // Optimistic mirror of bank-balance snapshots so deletes reflect instantly.
   const { items: cashflow, remove: removeBalance } = useOptimisticList(initialCashflow, toast);
+  // P&L lens: in "total" mode the income statement counts non-P&L costs too.
+  const pnlMode = usePnlMode();
+  const includeAll = includesAllCosts(pnlMode);
   const [tab, setTab] = useState<"is" | "bs" | "bank">("is");
   const [start, setStart] = useState(defaultStart);
   const [end, setEnd] = useState(defaultEnd);
-  const [pnlView, setPnlView] = useState<"operational" | "full">("operational");
   const [isView, setIsView] = useState<"statement" | "monthly">("statement");
   const [bsView, setBsView] = useState<"statement" | "monthly">("statement");
 
@@ -211,13 +215,13 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
       const ms = mk + "-01";
       const inMonth = (d: string) => d >= ms && d <= me;
       const revenue = invoices.filter(i => i.status === "Completed" && inMonth(i.transaction_date)).reduce((s, i) => s + i.amount, 0);
-      const opCosts = costs.filter(c => inMonth(c.transaction_date) && c.include_in_pnl);
+      const opCosts = costs.filter(c => inMonth(c.transaction_date) && (includeAll || c.include_in_pnl));
       const byCat: Record<string, number> = {};
       opCosts.forEach(c => { const cat = c.category_name || "Other"; byCat[cat] = (byCat[cat] || 0) + c.amount; });
       const totalCosts = opCosts.reduce((s, c) => s + c.amount, 0);
       return { mk, revenue, byCat, totalCosts, profit: revenue - totalCosts };
     });
-  }, [invoices, costs, start, end]);
+  }, [invoices, costs, start, end, includeAll]);
 
   const isMonthlyAllCats = useMemo(() => {
     const s = new Set<string>();
@@ -303,18 +307,8 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
                 </button>
               ))}
             </div>
-            {/* Operational / Full toggle (statement view only) */}
-            {isView === "statement" && (
-              <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: "var(--border)" }}>
-                {(["operational", "full"] as const).map(v => (
-                  <button key={v} onClick={() => setPnlView(v)}
-                    className="px-3 py-1.5 text-xs font-semibold transition-colors"
-                    style={{ background: pnlView === v ? "var(--accent)" : "var(--card3)", color: pnlView === v ? "#fff" : "var(--muted)" }}>
-                    {v === "operational" ? "Operational" : "Full Business"}
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* Global P&L lens — drives both the statement layout and the monthly view */}
+            <PnlModeToggle />
             <button onClick={() => window.print()}
               className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold"
               style={{ background: "var(--card3)", border: "1px solid var(--border)", color: "var(--muted)" }}>
@@ -327,7 +321,7 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
             <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
               <div className="px-5 py-3 border-b flex items-center justify-between" style={{ background: "var(--card2)", borderColor: "var(--border)" }}>
                 <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>
-                  Monthly Income Statement — Operational
+                  Monthly Income Statement — {pnlMode === "total" ? "All Costs" : "Operational"}
                 </h3>
                 <span className="text-xs" style={{ color: "var(--muted2)" }}>{mLabel(start.slice(0,7))} → {mLabel(end.slice(0,7))}</span>
               </div>
@@ -404,8 +398,8 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
             </div>
           )}
 
-          {/* ── Operational view ── */}
-          {isView === "statement" && pnlView === "operational" && (
+          {/* ── Operational view (Business P&L lens) ── */}
+          {isView === "statement" && pnlMode === "pnl" && (
             <div className="rounded-lg overflow-hidden" style={{ background: "#fff", color: "#111", boxShadow: "0 4px 20px rgba(0,0,0,.15)" }}>
               <div className="px-8 py-6" style={{ background: "#1a1a2e", color: "#fff" }}>
                 <h2 className="text-lg font-bold">{orgName}</h2>
@@ -432,8 +426,8 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
             </div>
           )}
 
-          {/* ── Full business view ── */}
-          {isView === "statement" && pnlView === "full" && (
+          {/* ── Full business view (All costs lens) ── */}
+          {isView === "statement" && pnlMode === "total" && (
             <div className="rounded-lg overflow-hidden" style={{ background: "#fff", color: "#111", boxShadow: "0 4px 20px rgba(0,0,0,.15)" }}>
               <div className="px-8 py-6" style={{ background: "#1a1a2e", color: "#fff" }}>
                 <h2 className="text-lg font-bold">{orgName}</h2>

@@ -9,6 +9,8 @@ import { DateInput } from "@/components/ui/DateInput";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useOptimisticList } from "@/hooks/useOptimisticList";
+import { usePnlMode, includesAllCosts } from "@/hooks/usePnlMode";
+import { PnlModeToggle } from "@/components/PnlModeToggle";
 import { createCost, updateCost, deleteCost } from "@/server-actions/costs";
 import { COST_TYPES, type CostTypeValue } from "@/lib/schemas/costs";
 
@@ -160,6 +162,8 @@ function mLabel(m: string) { const [y, mo] = m.split("-"); return ["", "Jan", "F
 
 export function CostsClient({ costs: initialCosts, categories, accounts, customers, currency }: Props) {
   const cur = currency === "ZAR" ? "R" : "$";
+  const pnlMode = usePnlMode();
+  const includeAll = includesAllCosts(pnlMode);
   const [view, setView] = useState<"table" | "monthly">("table");
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState<string[]>([]);
@@ -266,6 +270,9 @@ export function CostsClient({ costs: initialCosts, categories, accounts, custome
   }, [costs, dateFrom, dateTo, catFilter, acctFilter, custFilter, recoupedFilter, search]);
 
   const total = filtered.reduce((s, c) => s + Number(c.amount), 0);
+  // Summary figure honours the P&L lens: "Business P&L" counts only include_in_pnl
+  // costs, "All costs" counts everything. The list below always shows every cost.
+  const shownTotal = includeAll ? total : filtered.reduce((s, c) => s + (c.include_in_pnl ? Number(c.amount) : 0), 0);
 
   const months = useMemo(() => monthRange(mFrom, mTo), [mFrom, mTo]);
   const cats = useMemo(() => [...new Set(costs.map(c => c.category_name || "Other"))].sort(), [costs]);
@@ -300,8 +307,9 @@ export function CostsClient({ costs: initialCosts, categories, accounts, custome
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Costs</h1>
           <p className="text-sm mt-0.5" style={{ color: "var(--muted2)" }}>
-            {filtered.length} entries · {cur} {fmt(total)} filtered OPEX
+            {filtered.length} entries · {cur} {fmt(shownTotal)} {pnlMode === "total" ? "total costs" : "P&L OPEX"}
           </p>
+          <div className="mt-2"><PnlModeToggle /></div>
         </div>
         <button
           onClick={() => downloadCsv(`costs-${new Date().toISOString().slice(0,10)}.csv`, filtered.map(c => ({ Date: c.transaction_date, Details: c.cost_details || "", Category: c.category_name || "", Customer: c.apportion_to_customers ? "All (Apportioned)" : (c.customer_name || ""), Amount: c.amount, Account: c.account_name || "", Recouped: c.recouped === "Y" ? "Yes" : "No", Apportioned: c.apportion_to_customers ? "Yes" : "No" })))}
@@ -322,8 +330,8 @@ export function CostsClient({ costs: initialCosts, categories, accounts, custome
       {/* Summary KPI */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
         <div className="rounded-xl p-4" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
-          <div className="text-xs uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Total OPEX</div>
-          <div className="text-2xl font-bold font-mono" style={{ color: "var(--red-c)" }}>{cur} {fmt(total)}</div>
+          <div className="text-xs uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>{pnlMode === "total" ? "Total Costs" : "P&L OPEX"}</div>
+          <div className="text-2xl font-bold font-mono" style={{ color: "var(--red-c)" }}>{cur} {fmt(shownTotal)}</div>
           <div className="text-xs mt-1" style={{ color: "var(--muted2)" }}>{filtered.length} items</div>
         </div>
       </div>

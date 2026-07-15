@@ -7,6 +7,8 @@ import { MultiSelect } from "@/components/ui/MultiSelect";
 import { useToast } from "@/components/Toast";
 import { bulkDeleteInvoices, updateInvoiceStatus } from "@/server-actions/invoices";
 import { useOptimisticList } from "@/hooks/useOptimisticList";
+import { usePnlMode, includesAllCosts } from "@/hooks/usePnlMode";
+import { PnlModeToggle } from "@/components/PnlModeToggle";
 
 type Invoice = {
   id: number; customer_id: number; transaction_date: string;
@@ -186,6 +188,9 @@ export function BillingClient({ invoices: rawInvoices, customers, costs, currenc
   // (with rollback on failure) and status changes reflect immediately. Re-syncs to
   // server data on revalidation.
   const { items: invoices, removeMany, setItems } = useOptimisticList(rawInvoices, toast);
+  // P&L lens: in "total" mode OPEX includes non-P&L costs too.
+  const pnlMode = usePnlMode();
+  const includeAll = includesAllCosts(pnlMode);
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [preset, setPreset] = useState("ytd");
@@ -271,14 +276,14 @@ export function BillingClient({ invoices: rawInvoices, customers, costs, currenc
       const collected = monthInvs.filter(i => i.status === "Completed").reduce((s, i) => s + i.amount, 0);
       const pending = monthInvs.filter(i => i.status === "Pending").reduce((s, i) => s + i.amount, 0);
       const opex = costs
-        .filter(c => c.include_in_pnl && c.transaction_date.slice(0, 7) === m)
+        .filter(c => (includeAll || c.include_in_pnl) && c.transaction_date.slice(0, 7) === m)
         .reduce((s, c) => s + c.amount, 0);
       const revenue = collected + pending; // secured = best current estimate
       const profit = collected - opex;     // conservative: only collected revenue counts
       const margin = collected > 0 ? profit / collected : null;
       return { m, collected, pending, revenue, opex, profit, margin };
     });
-  }, [filteredInvs, costs, windowMonths]);
+  }, [filteredInvs, costs, windowMonths, includeAll]);
 
   const pnlTotals = useMemo(() => {
     const collected = pnlMonths.reduce((s, r) => s + r.collected, 0);
@@ -342,13 +347,14 @@ export function BillingClient({ invoices: rawInvoices, customers, costs, currenc
   return (
     <div>
       {/* Page header */}
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex items-start justify-between mb-6 gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Billing</h1>
           <p className="text-sm mt-0.5" style={{ color: "var(--muted2)" }}>
             {invoices.length} invoice{invoices.length !== 1 ? "s" : ""} · {cur} {fmt(grand.completed)} collected
           </p>
         </div>
+        {mainView === "pnl" && <PnlModeToggle />}
       </div>
 
       {/* Controls */}
