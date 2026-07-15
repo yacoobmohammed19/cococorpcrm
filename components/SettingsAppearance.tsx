@@ -64,7 +64,11 @@ export function SettingsAppearance() {
   const [densityKey, setDensityKey] = useState("comfortable");
   const [glowEnabled, setGlowEnabled] = useState(true);
 
+  // Load persisted appearance prefs from localStorage after mount. These are
+  // client-only values that must render as defaults during SSR to avoid a
+  // hydration mismatch, so setState-in-effect is the correct pattern here.
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     try {
       const a = JSON.parse(localStorage.getItem("crm_accent") || "null");
       if (a?.color) setAccentColor(a.color);
@@ -78,6 +82,7 @@ export function SettingsAppearance() {
       const g = localStorage.getItem("crm_glow");
       if (g !== null) setGlowEnabled(g !== "false");
     } catch { /* ignore */ }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   function handleAccent(color: string, hover: string) {

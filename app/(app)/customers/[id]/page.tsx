@@ -32,7 +32,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
   // Fetch all invoice lines for this customer's invoices
   type InvLine = { id: number; invoice_id: number; description: string; quantity: number; unit_price: number; line_total: number; product_id: number | null };
-  let invoiceLinesMap: Record<number, InvLine[]> = {};
+  const invoiceLinesMap: Record<number, InvLine[]> = {};
   let productsPurchased: { id: number; name: string; times: number; revenue: number }[] = [];
 
   try {

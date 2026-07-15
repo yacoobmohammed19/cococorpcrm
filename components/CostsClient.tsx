@@ -8,7 +8,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/hooks/useConfirm";
-import { runAction } from "@/lib/action-utils";
+import { useOptimisticList } from "@/hooks/useOptimisticList";
 import { createCost, updateCost, deleteCost } from "@/server-actions/costs";
 import { COST_TYPES, type CostTypeValue } from "@/lib/schemas/costs";
 
@@ -158,7 +158,7 @@ function monthRange(from: string, to: string) {
 }
 function mLabel(m: string) { const [y, mo] = m.split("-"); return ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][+mo] + " " + y.slice(2); }
 
-export function CostsClient({ costs, categories, accounts, customers, currency }: Props) {
+export function CostsClient({ costs: initialCosts, categories, accounts, customers, currency }: Props) {
   const cur = currency === "ZAR" ? "R" : "$";
   const [view, setView] = useState<"table" | "monthly">("table");
   const [search, setSearch] = useState("");
@@ -172,8 +172,8 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
   const [editCost, setEditCost] = useState<Cost | null>(null);
   const [editCostDate, setEditCostDate] = useState("");
   const [createCostDate, setCreateCostDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [busy, setBusy] = useState(false);
   const toast = useToast();
+  const { items: costs, add, update, remove } = useOptimisticList(initialCosts, toast);
   const { confirm, dialogProps } = useConfirm();
 
   // Receipt image extraction state
@@ -422,7 +422,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                 </div>
                 <div className="flex gap-2 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
                   <button onClick={() => { setEditCostDate(c.transaction_date.slice(0, 10)); setEditApportion(c.apportion_to_customers); setEditCostType(c.cost_type as CostTypeValue); setEditIncludeInPnl(c.include_in_pnl); setEditCost(c); }} className="flex-1 py-2 rounded-xl text-xs font-semibold" style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted)" }}>✏️ Edit</button>
-                  <button onClick={async () => { if (!await confirm("Delete this cost?", "This cost record will be permanently removed.")) return; await runAction(() => deleteCost(c.id), toast, "Cost deleted"); }}
+                  <button onClick={async () => { if (!await confirm("Delete this cost?", "This cost record will be permanently removed.")) return; void remove(c.id, () => deleteCost(c.id), { success: "Cost deleted" }); }}
                     className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(239,68,68,.1)", color: "var(--red-c)" }}>🗑️</button>
                 </div>
               </div>
@@ -474,7 +474,7 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
                         <div className="flex gap-1">
                           <button onClick={() => { setEditCostDate(c.transaction_date.slice(0, 10)); setEditApportion(c.apportion_to_customers); setEditCostType(c.cost_type as CostTypeValue); setEditIncludeInPnl(c.include_in_pnl); setEditCost(c); }}
                             className="px-2 py-1 rounded text-xs" style={{ border: "1px solid var(--border)", background: "var(--card2)" }}>✏️</button>
-                          <button onClick={async () => { if (!await confirm("Delete this cost?", "This cost record will be permanently removed.")) return; await runAction(() => deleteCost(c.id), toast, "Cost deleted"); }}
+                          <button onClick={async () => { if (!await confirm("Delete this cost?", "This cost record will be permanently removed.")) return; void remove(c.id, () => deleteCost(c.id), { success: "Cost deleted" }); }}
                             className="px-2 py-1 rounded text-xs" style={{ border: "1px solid var(--border)", background: "var(--card2)" }}>🗑️</button>
                         </div>
                       </td>
@@ -600,11 +600,30 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
               )}
             </div>
             <form className="p-5 space-y-3"
-              action={async (fd: FormData) => {
-                setBusy(true);
-                try { await updateCost(editCost.id, fd); toast.success("Cost updated"); setEditCost(null); setEditImageUrl(""); setEditApportion(false); setEditCostType("operational"); setEditIncludeInPnl(true); }
-                catch { toast.error("Failed to update cost"); }
-                finally { setBusy(false); }
+              action={(fd: FormData) => {
+                const id = editCost.id;
+                const catId = fd.get("cost_category_id") ? Number(fd.get("cost_category_id")) : null;
+                const acctId = fd.get("account_id") ? Number(fd.get("account_id")) : null;
+                const apportion = fd.get("apportion_to_customers") === "on";
+                const custId = apportion ? null : (fd.get("customer_id") ? Number(fd.get("customer_id")) : null);
+                const patch: Partial<Cost> = {
+                  transaction_date: fd.get("transaction_date") as string,
+                  cost_details: (fd.get("cost_details") as string) || null,
+                  cost_category_id: catId,
+                  category_name: categories.find(c => c.id === catId)?.name ?? null,
+                  amount: Number(fd.get("amount")),
+                  account_id: acctId,
+                  account_name: accounts.find(a => a.id === acctId)?.name ?? null,
+                  customer_id: custId,
+                  customer_name: custId != null ? (customers.find(c => c.id === custId)?.name ?? null) : null,
+                  recouped: (fd.get("recouped") as string) || "",
+                  receipt_image_url: (fd.get("receipt_image_url") as string) || null,
+                  apportion_to_customers: apportion,
+                  cost_type: editCostType,
+                  include_in_pnl: editIncludeInPnl,
+                };
+                setEditCost(null); setEditImageUrl(""); setEditApportion(false); setEditCostType("operational"); setEditIncludeInPnl(true);
+                void update(id, patch, () => updateCost(id, fd), { success: "Cost updated" });
               }}>
               <input type="hidden" name="receipt_image_url" value={editImageUrl || editCost.receipt_image_url || ""} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -702,8 +721,8 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
               </div>
               <div className="flex gap-3 pt-2 pb-2">
                 <button type="button" onClick={() => { setEditCost(null); setEditApportion(false); setEditCostType("operational"); setEditIncludeInPnl(true); }} className="flex-1 py-2.5 text-sm rounded-xl border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>Cancel</button>
-                <button type="submit" disabled={busy} className="flex-1 py-2.5 text-sm font-semibold rounded-xl" style={{ background: "var(--accent)", color: "#fff", opacity: busy ? .6 : 1 }}>
-                  {busy ? "Saving…" : "Update Cost"}
+                <button type="submit" className="flex-1 py-2.5 text-sm font-semibold rounded-xl" style={{ background: "var(--accent)", color: "#fff" }}>
+                  Update Cost
                 </button>
               </div>
             </form>
@@ -738,13 +757,31 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
               )}
             </div>
             <form className="p-5 space-y-3"
-              action={async (fd: FormData) => {
-                setBusy(true);
-                try {
-                  await createCost(fd);
-                  setModal(false);
-                  setNewAmount(""); setNewDetails(""); setNewCategoryId(""); setNewImageUrl(""); setNewApportion(false); setNewCostType("operational"); setNewIncludeInPnl(true);
-                } finally { setBusy(false); }
+              action={(fd: FormData) => {
+                const catId = fd.get("cost_category_id") ? Number(fd.get("cost_category_id")) : null;
+                const acctId = fd.get("account_id") ? Number(fd.get("account_id")) : null;
+                const apportion = fd.get("apportion_to_customers") === "on";
+                const custId = apportion ? null : (fd.get("customer_id") ? Number(fd.get("customer_id")) : null);
+                const temp: Cost = {
+                  id: -Date.now(),
+                  transaction_date: fd.get("transaction_date") as string,
+                  cost_details: (fd.get("cost_details") as string) || null,
+                  cost_category_id: catId,
+                  category_name: categories.find(c => c.id === catId)?.name ?? null,
+                  amount: Number(fd.get("amount")),
+                  account_id: acctId,
+                  account_name: accounts.find(a => a.id === acctId)?.name ?? null,
+                  customer_id: custId,
+                  customer_name: custId != null ? (customers.find(c => c.id === custId)?.name ?? null) : null,
+                  recouped: (fd.get("recouped") as string) || "",
+                  receipt_image_url: (fd.get("receipt_image_url") as string) || null,
+                  apportion_to_customers: apportion,
+                  cost_type: newCostType,
+                  include_in_pnl: newIncludeInPnl,
+                };
+                setModal(false);
+                setNewAmount(""); setNewDetails(""); setNewCategoryId(""); setNewImageUrl(""); setNewApportion(false); setNewCostType("operational"); setNewIncludeInPnl(true);
+                void add(temp, () => createCost(fd), { success: "Cost created" });
               }}>
               <input type="hidden" name="receipt_image_url" value={newImageUrl} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -842,8 +879,8 @@ export function CostsClient({ costs, categories, accounts, customers, currency }
               </div>
               <div className="flex gap-3 pt-2 pb-2">
                 <button type="button" onClick={() => setModal(false)} className="flex-1 py-2.5 text-sm rounded-xl border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>Cancel</button>
-                <button type="submit" disabled={busy} className="flex-1 py-2.5 text-sm font-semibold rounded-xl" style={{ background: "var(--accent)", color: "#fff" }}>
-                  {busy ? "Saving…" : "Create Cost"}
+                <button type="submit" className="flex-1 py-2.5 text-sm font-semibold rounded-xl" style={{ background: "var(--accent)", color: "#fff" }}>
+                  Create Cost
                 </button>
               </div>
             </form>

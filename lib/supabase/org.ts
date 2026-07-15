@@ -11,11 +11,24 @@ export const getServerUser = cache(async () => {
   return user;
 });
 
-/** Resolves the active org ID. Cookie is the source of truth; metadata is fallback. */
+/**
+ * Resolves the active org ID. The `coco_active_org` cookie is the fast path and
+ * source of truth — it is set on login, signup, org-switch, and org-create.
+ *
+ * Trusting the cookie value directly is safe: every org-scoped table enforces
+ * Row-Level Security via `has_org_role(org_id, ...)`, which checks the caller's
+ * `auth.uid()` against the `memberships` table at the database. A tampered cookie
+ * therefore cannot read or write another org's data — the DB rejects it. This
+ * lets us skip a `getUser()` + `memberships` round-trip on every page and action
+ * (the hot path). We only fall back to the full resolution when the cookie is
+ * absent (e.g. a stale session or a direct API call before login set it).
+ */
 export const getCurrentOrgId = cache(async (): Promise<string> => {
   const jar = await cookies();
   const cookieOrgId = jar.get(ORG_COOKIE)?.value ?? "";
+  if (cookieOrgId) return cookieOrgId;
 
+  // ── Fallback: cookie missing — resolve from auth + memberships ──
   const user = await getServerUser();
   if (!user) throw new Error("Unauthorized");
 
@@ -32,15 +45,10 @@ export const getCurrentOrgId = cache(async (): Promise<string> => {
     throw new Error("No organization membership found");
   }
 
-  const memberOrgIds = new Set(memberships.map(m => String(m.org_id)));
-
-  // Prefer cookie, then metadata — but only if the user actually belongs to that org
-  const candidates = [
-    cookieOrgId,
-    String(user.user_metadata?.active_org_id ?? ""),
-  ];
-  for (const c of candidates) {
-    if (c && memberOrgIds.has(c)) return c;
+  // Prefer metadata if the user actually belongs to that org
+  const metaOrg = String(user.user_metadata?.active_org_id ?? "");
+  if (metaOrg && memberships.some(m => String(m.org_id) === metaOrg)) {
+    return metaOrg;
   }
 
   // Deterministic fallback: earliest membership

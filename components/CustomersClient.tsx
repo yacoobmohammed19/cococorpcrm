@@ -7,7 +7,7 @@ import { MultiSelect } from "@/components/ui/MultiSelect";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { runAction } from "@/lib/action-utils";
+import { useOptimisticList } from "@/hooks/useOptimisticList";
 import { createCustomer, updateCustomer, deleteCustomer, bulkDeleteCustomers } from "@/server-actions/customers";
 
 type Customer = {
@@ -62,14 +62,13 @@ function SourceBadge({ source }: { source: string | null }) {
 
 export function CustomersClient({ customers }: { customers: Customer[] }) {
   const toast = useToast();
+  const { items: rows, add, update, remove, removeMany } = useOptimisticList(customers, toast);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [sourceFilter, setSourceFilter] = useState<string[]>([]);
   const [modal, setModal] = useState<{ open: boolean; customer: Customer | null }>({ open: false, customer: null });
-  const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; name: string } | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [bulkBusy, setBulkBusy] = useState(false);
 
   function togStr(arr: string[], v: string) { return arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]; }
   function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
@@ -81,7 +80,7 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
     a.click(); URL.revokeObjectURL(a.href);
   }
 
-  const filtered = customers.filter(c => {
+  const filtered = rows.filter(c => {
     if (statusFilter.length > 0 && !statusFilter.includes(c.status || "Active")) return false;
     if (sourceFilter.length > 0 && !sourceFilter.includes(c.source || "")) return false;
     if (search) {
@@ -96,12 +95,11 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
   function open(c: Customer | null) { setModal({ open: true, customer: c }); }
   function close() { setModal({ open: false, customer: null }); }
 
-  async function handleDeleteConfirmed() {
+  function handleDeleteConfirmed() {
     if (!confirmDelete) return;
-    setBusy(true);
-    await runAction(() => deleteCustomer(confirmDelete.id), toast, "Customer archived");
+    const id = confirmDelete.id;
     setConfirmDelete(null);
-    setBusy(false);
+    void remove(id, () => deleteCustomer(id), { success: "Customer archived" });
   }
 
   function toggleSelect(id: number) {
@@ -110,12 +108,11 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
   function toggleAll() {
     setSelected(prev => prev.size === filtered.length ? new Set() : new Set(filtered.map(c => c.id)));
   }
-  async function handleBulkDelete() {
+  function handleBulkDelete() {
     if (selected.size === 0) return;
-    setBulkBusy(true);
-    await runAction(() => bulkDeleteCustomers(Array.from(selected)), toast, `${selected.size} customer${selected.size > 1 ? "s" : ""} archived`);
+    const ids = Array.from(selected);
     setSelected(new Set());
-    setBulkBusy(false);
+    void removeMany(ids, () => bulkDeleteCustomers(ids), { success: `${ids.length} customer${ids.length > 1 ? "s" : ""} archived` });
   }
 
   return (
@@ -125,7 +122,7 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Customers</h1>
           <p className="text-sm mt-0.5" style={{ color: "var(--muted2)" }}>
-            {customers.length} {customers.length === 1 ? "customer" : "customers"} total
+            {rows.length} {rows.length === 1 ? "customer" : "customers"} total
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -137,11 +134,11 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
             <BarChart2 size={14} /> KPIs
           </Link>
           {selected.size > 0 && (
-            <button onClick={handleBulkDelete} disabled={bulkBusy}
+            <button onClick={handleBulkDelete}
               className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-lg"
-              style={{ background: "var(--danger-bg)", color: "var(--red-c)", border: "1px solid var(--red-c)", opacity: bulkBusy ? .6 : 1 }}>
+              style={{ background: "var(--danger-bg)", color: "var(--red-c)", border: "1px solid var(--red-c)" }}>
               <Trash2 size={14} />
-              {bulkBusy ? "Archiving…" : `Archive (${selected.size})`}
+              {`Archive (${selected.size})`}
             </button>
           )}
           <button
@@ -164,7 +161,7 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
       {/* ── Stats row ── */}
       <div className="grid grid-cols-3 gap-3 mb-5">
         {[
-          { label: "Total", value: customers.length, color: "var(--accent)" },
+          { label: "Total", value: rows.length, color: "var(--accent)" },
           { label: "Showing", value: filtered.length, color: "var(--cyan-c)" },
           { label: "Filters", value: activeFilters, color: activeFilters > 0 ? "var(--amber-c)" : "var(--muted2)" },
         ].map(({ label, value, color }) => (
@@ -253,7 +250,6 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
               </Link>
               <button
                 onClick={() => setConfirmDelete({ id: c.id, name: c.name })}
-                disabled={busy}
                 className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors"
                 style={{ background: "var(--danger-bg)", color: "var(--red-c)" }}
               >
@@ -340,7 +336,6 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
                     </button>
                     <button
                       onClick={() => setConfirmDelete({ id: c.id, name: c.name })}
-                      disabled={busy}
                       title="Archive"
                       className="w-8 h-8 rounded-md flex items-center justify-center transition-colors"
                       style={{ color: "var(--red-c)", background: "var(--danger-bg)" }}
@@ -411,13 +406,31 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
 
             <form
               className="p-5 space-y-4"
-              action={async (fd: FormData) => {
-                setBusy(true);
-                const ok = modal.customer
-                  ? await runAction(() => updateCustomer(modal.customer!.id, fd), toast, "Customer updated")
-                  : await runAction(() => createCustomer(fd), toast, "Customer created");
-                if (ok) close();
-                setBusy(false);
+              action={(fd: FormData) => {
+                const g = (k: string) => (fd.get(k) as string) || null;
+                const editing = modal.customer;
+                close();
+                if (editing) {
+                  const patch: Partial<Customer> = {
+                    name: (fd.get("name") as string) || "",
+                    email: g("email"), phone: g("phone"), contact_person: g("contact_person"),
+                    source: g("source"), notes: g("notes"),
+                    status: (fd.get("status") as string) || "Active",
+                    payment_method: g("payment_method"), reg_no: g("reg_no"), vat_no: g("vat_no"),
+                  };
+                  void update(editing.id, patch, () => updateCustomer(editing.id, fd), { success: "Customer updated" });
+                } else {
+                  const temp: Customer = {
+                    id: -Date.now(),
+                    name: (fd.get("name") as string) || "",
+                    email: g("email"), phone: g("phone"), contact_person: g("contact_person"),
+                    source: g("source"), notes: g("notes"),
+                    status: (fd.get("status") as string) || "Active",
+                    payment_method: g("payment_method"), reg_no: g("reg_no"), vat_no: g("vat_no"),
+                    created_at: new Date().toISOString(),
+                  };
+                  void add(temp, () => createCustomer(fd), { success: "Customer created" });
+                }
               }}
             >
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -520,11 +533,11 @@ export function CustomersClient({ customers }: { customers: Customer[] }) {
                   Cancel
                 </button>
                 <button
-                  type="submit" disabled={busy}
+                  type="submit"
                   className="flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all"
-                  style={{ background: "var(--accent)", color: "#fff", opacity: busy ? 0.6 : 1 }}
+                  style={{ background: "var(--accent)", color: "#fff" }}
                 >
-                  {busy ? "Saving…" : modal.customer ? "Save Changes" : "Create Customer"}
+                  {modal.customer ? "Save Changes" : "Create Customer"}
                 </button>
               </div>
             </form>

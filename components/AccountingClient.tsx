@@ -7,7 +7,7 @@ import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
 import { useConfirm } from "@/hooks/useConfirm";
-import { runAction } from "@/lib/action-utils";
+import { useOptimisticList } from "@/hooks/useOptimisticList";
 import {
   saveBankBalance,
   deleteBankBalance,
@@ -139,10 +139,12 @@ function calcSystemBalance(invoices: Invoice[], costs: Cost[], asOfDate: string 
 }
 
 // ── Main component ───────────────────────────────────────────────────────────
-export function AccountingClient({ invoices, costs, cashflow, accounts, orgName, orgRegNo, currency, defaultStart, defaultEnd }: Props) {
+export function AccountingClient({ invoices, costs, cashflow: initialCashflow, accounts, orgName, orgRegNo, currency, defaultStart, defaultEnd }: Props) {
   const toast = useToast();
   const { confirm, dialogProps } = useConfirm();
   const router = useRouter();
+  // Optimistic mirror of bank-balance snapshots so deletes reflect instantly.
+  const { items: cashflow, remove: removeBalance } = useOptimisticList(initialCashflow, toast);
   const [tab, setTab] = useState<"is" | "bs" | "bank">("is");
   const [start, setStart] = useState(defaultStart);
   const [end, setEnd] = useState(defaultEnd);
@@ -241,7 +243,7 @@ export function AccountingClient({ invoices, costs, cashflow, accounts, orgName,
   // ── Handlers ──────────────────────────────────────────────────────────────
   async function handleDeleteBalance(id: number) {
     if (!await confirm("Delete this snapshot?", "This bank balance record will be permanently removed.")) return;
-    const ok = await runAction(() => deleteBankBalance(id), toast, "Snapshot deleted");
+    const ok = await removeBalance(id, () => deleteBankBalance(id), { success: "Snapshot deleted" });
     if (ok) router.refresh();
   }
 

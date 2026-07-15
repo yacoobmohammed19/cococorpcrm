@@ -6,7 +6,7 @@ import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
 import { useConfirm } from "@/hooks/useConfirm";
-import { runAction } from "@/lib/action-utils";
+import { useOptimisticList } from "@/hooks/useOptimisticList";
 import { createClient } from "@/lib/supabase/client";
 import {
   createRdStatus, updateRdStatus, deleteRdStatus, reorderRdStatuses,
@@ -104,10 +104,14 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
   const canEdit = ["owner", "admin", "member"].includes(currentRole);
   const canDelete = ["owner", "admin"].includes(currentRole);
 
-  const [statuses, setStatuses] = useState(() => [...initialStatuses].sort((a, b) => a.position - b.position));
-  const [projects] = useState(initialProjects);
+  const {
+    items: statusItems, add: addStatus, update: updateStatus, remove: removeStatus, setItems: setStatuses,
+  } = useOptimisticList(initialStatuses, toast);
+  const statuses = [...statusItems].sort((a, b) => a.position - b.position);
+  const {
+    items: projects, add: addProject, update: updateProject, remove: removeProject,
+  } = useOptimisticList(initialProjects, toast);
   const [view, setView] = useState<"kanban" | "table">("kanban");
-  const [busy, setBusy] = useState(false);
 
   // ── Column manager ────────────────────────────────────────────────────────
   const [colPanel, setColPanel] = useState(false);
@@ -146,6 +150,9 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
 
   // ── Column drag & drop ────────────────────────────────────────────────────
   const colDragId = useRef<number | null>(null);
+  // State mirror of colDragId for the render path (a ref can't be read during render).
+  // Handlers keep using the ref for synchronous checks; this only drives display.
+  const [draggingColId, setDraggingColId] = useState<number | null>(null);
   const [colDragOver, setColDragOver] = useState<number | null>(null);
 
   // ── Fetch updates ─────────────────────────────────────────────────────────
@@ -188,27 +195,25 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
     setFPrice(p.budget_estimate ?? 0); setFCategory("");
   }
 
-  async function saveProject() {
+  function saveProject() {
     if (!pName.trim()) return;
-    setBusy(true);
-    try {
-      const data = {
-        name: pName.trim(), description: pDesc || null, status_id: pStatus,
-        target_date: pTargetDate || null, assigned_to: pAssigned || null,
-        priority: pPriority,
-        budget_estimate: pBudget !== "" ? Number(pBudget) : null,
-        notes: pNotes || null,
+    const data = {
+      name: pName.trim(), description: pDesc || null, status_id: pStatus,
+      target_date: pTargetDate || null, assigned_to: pAssigned || null,
+      priority: pPriority,
+      budget_estimate: pBudget !== "" ? Number(pBudget) : null,
+      notes: pNotes || null,
+    };
+    const editing = projectModal.project;
+    setProjectModal({ open: false, project: null });
+    if (editing) {
+      void updateProject(editing.id, data, () => updateRdProject(editing.id, data), { success: "Project updated" });
+    } else {
+      const temp: RdProject = {
+        id: -Date.now(), ...data, product_id: null, finalized_at: null, created_at: new Date().toISOString(),
       };
-      if (projectModal.project) {
-        await updateRdProject(projectModal.project.id, data);
-        toast.success("Project updated");
-      } else {
-        await createRdProject(data);
-        toast.success("Project created");
-      }
-      setProjectModal({ open: false, project: null });
-    } catch { toast.error("Failed to save project"); }
-    finally { setBusy(false); }
+      void addProject(temp, () => createRdProject(data), { success: "Project created" });
+    }
   }
 
   async function handlePostUpdate() {
@@ -222,33 +227,37 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
     finally { setUpdateBusy(false); }
   }
 
-  async function handleFinalize() {
+  function handleFinalize() {
     if (!finalizeProject || !fName.trim()) return;
-    setBusy(true);
-    try {
-      await finalizeRdProject(finalizeProject.id, {
-        name: fName.trim(), sku: fSku || null, description: fDesc || null,
-        unit_price: Number(fPrice) || 0, category: fCategory || null,
-      });
-      toast.success(`"${fName}" added to Products`);
-      setFinalizeProject(null);
-    } catch { toast.error("Failed to finalize project"); }
-    finally { setBusy(false); }
+    const id = finalizeProject.id;
+    const name = fName.trim();
+    const productData = {
+      name, sku: fSku || null, description: fDesc || null,
+      unit_price: Number(fPrice) || 0, category: fCategory || null,
+    };
+    setFinalizeProject(null);
+    void updateProject(
+      id, { finalized_at: new Date().toISOString() },
+      () => finalizeRdProject(id, productData),
+      { success: `"${name}" added to Products` },
+    );
   }
 
   // ── Card drag handlers ────────────────────────────────────────────────────
-  async function handleDrop(e: React.DragEvent, statusId: number | null) {
+  function handleDrop(e: React.DragEvent, statusId: number | null) {
     e.preventDefault();
     if (colDragId.current !== null) return;
     if (dragId.current === null) return;
-    await runAction(() => updateRdProjectStatus(dragId.current!, statusId), toast, "Moved");
+    const id = dragId.current;
     dragId.current = null;
+    void updateProject(id, { status_id: statusId }, () => updateRdProjectStatus(id, statusId), { success: "Moved" });
   }
 
   // ── Column drag handlers ──────────────────────────────────────────────────
   function handleColDragStart(e: React.DragEvent, colId: number) {
     e.stopPropagation();
     colDragId.current = colId;
+    setDraggingColId(colId);
     e.dataTransfer.effectAllowed = "move";
   }
 
@@ -265,6 +274,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
     setColDragOver(null);
     const fromId = colDragId.current;
     colDragId.current = null;
+    setDraggingColId(null);
     if (!fromId || fromId === targetId) return;
 
     const reordered = [...statuses];
@@ -279,37 +289,26 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
   }
 
   // ── Column management ─────────────────────────────────────────────────────
-  async function addColumn() {
+  function addColumn() {
     if (!newColName.trim()) return;
-    setBusy(true);
-    try {
-      await createRdStatus(newColName.trim(), newColColor);
-      setNewColName(""); setNewColColor(SWATCH_COLORS[0]);
-      toast.success("Column added");
-    } catch { toast.error("Failed to add column"); }
-    finally { setBusy(false); }
+    const name = newColName.trim();
+    const color = newColColor;
+    const maxPos = statuses.reduce((m, s) => Math.max(m, s.position), -1);
+    const temp: RdStatus = { id: -new Date().getTime(), name, color, position: maxPos + 1 };
+    setNewColName(""); setNewColColor(SWATCH_COLORS[0]);
+    void addStatus(temp, () => createRdStatus(name, color), { success: "Column added" });
   }
 
-  async function saveColumn() {
+  function saveColumn() {
     if (!editingStatus || !editingStatus.name.trim()) return;
-    setBusy(true);
-    try {
-      await updateRdStatus(editingStatus.id, editingStatus.name, editingStatus.color);
-      setEditingStatus(null);
-      toast.success("Column updated");
-    } catch { toast.error("Failed to update column"); }
-    finally { setBusy(false); }
+    const { id, name, color } = editingStatus;
+    setEditingStatus(null);
+    void updateStatus(id, { name, color }, () => updateRdStatus(id, name, color), { success: "Column updated" });
   }
 
   async function removeColumn(id: number) {
     if (!await confirm("Delete this column?", "Projects in this column will become unassigned.")) return;
-    setBusy(true);
-    try {
-      await deleteRdStatus(id);
-      setStatuses(s => s.filter(x => x.id !== id));
-      toast.success("Column deleted");
-    } catch { toast.error("Failed to delete column"); }
-    finally { setBusy(false); }
+    void removeStatus(id, () => deleteRdStatus(id), { success: "Column deleted" });
   }
 
   const unassigned = projects.filter(p => p.status_id === null || !statuses.find(s => s.id === p.status_id));
@@ -356,7 +355,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
         <div className="flex gap-4 overflow-x-auto pb-4 flex-1 min-h-0" style={{ alignItems: "flex-start" }}>
           {statuses.map(status => {
             const cols = projects.filter(p => p.status_id === status.id);
-            const isDragTarget = colDragOver === status.id && colDragId.current !== status.id;
+            const isDragTarget = colDragOver === status.id && draggingColId !== status.id;
             return (
               <div key={status.id}
                 className="flex-shrink-0 flex flex-col rounded-xl transition-all"
@@ -372,7 +371,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                 }}
                 onDrop={e => {
                   if (colDragId.current !== null) { handleColDrop(e, status.id); return; }
-                  void handleDrop(e, status.id);
+                  handleDrop(e, status.id);
                 }}
                 onDragLeave={() => { if (colDragOver === status.id) setColDragOver(null); }}
               >
@@ -386,7 +385,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                     <div
                       draggable
                       onDragStart={e => handleColDragStart(e, status.id)}
-                      onDragEnd={() => { colDragId.current = null; setColDragOver(null); }}
+                      onDragEnd={() => { colDragId.current = null; setDraggingColId(null); setColDragOver(null); }}
                       className="cursor-grab active:cursor-grabbing shrink-0 touch-none"
                       style={{ color: "var(--muted2)" }}
                       title="Drag to reorder column"
@@ -424,7 +423,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
             <div className="flex-shrink-0 flex flex-col rounded-xl"
               style={{ width: 272, background: "var(--card2)", border: "1px dashed var(--border)" }}
               onDragOver={e => { if (colDragId.current === null) e.preventDefault(); }}
-              onDrop={e => { if (colDragId.current === null) void handleDrop(e, null); }}>
+              onDrop={e => { if (colDragId.current === null) handleDrop(e, null); }}>
               <div className="px-3 py-2.5 border-b" style={{ borderColor: "var(--border)" }}>
                 <span className="font-semibold text-sm" style={{ color: "var(--muted2)" }}>Unassigned</span>
               </div>
@@ -508,7 +507,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                           {canDelete && (
                             <button onClick={async () => {
                               if (!await confirm(`Delete "${p.name}"?`)) return;
-                              await runAction(() => deleteRdProject(p.id), toast, "Deleted");
+                              void removeProject(p.id, () => deleteRdProject(p.id), { success: "Deleted" });
                             }}
                               className="px-2 py-1 rounded text-[10px] font-semibold"
                               style={{ background: "rgba(239,68,68,.1)", color: "var(--red-c)", border: "1px solid rgba(239,68,68,.2)" }}>
@@ -555,7 +554,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                       </div>
                       <div className="flex gap-2">
                         <button onClick={() => setEditingStatus(null)} className="flex-1 py-1.5 text-xs rounded border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>Cancel</button>
-                        <button onClick={saveColumn} disabled={busy} className="flex-1 py-1.5 text-xs rounded font-semibold" style={{ background: "var(--accent)", color: "#fff" }}>Save</button>
+                        <button onClick={saveColumn} className="flex-1 py-1.5 text-xs rounded font-semibold" style={{ background: "var(--accent)", color: "#fff" }}>Save</button>
                       </div>
                     </div>
                   ) : (
@@ -584,7 +583,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                     style={{ background: c, borderColor: newColColor === c ? "#fff" : "transparent", transform: newColColor === c ? "scale(1.2)" : "none" }} />
                 ))}
               </div>
-              <button onClick={addColumn} disabled={busy || !newColName.trim()}
+              <button onClick={addColumn} disabled={!newColName.trim()}
                 className="w-full py-2 text-sm rounded font-semibold disabled:opacity-40"
                 style={{ background: "var(--accent)", color: "#fff" }}>
                 + Add Column
@@ -698,19 +697,20 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                   )}
                   {projectModal.project && canDelete && (
                     <button type="button" onClick={async () => {
-                      if (!await confirm(`Delete "${projectModal.project!.name}"?`)) return;
-                      await runAction(() => deleteRdProject(projectModal.project!.id), toast, "Deleted");
+                      const proj = projectModal.project!;
+                      if (!await confirm(`Delete "${proj.name}"?`)) return;
                       setProjectModal({ open: false, project: null });
+                      void removeProject(proj.id, () => deleteRdProject(proj.id), { success: "Deleted" });
                     }}
                       className="px-3 py-2 text-sm rounded"
                       style={{ background: "rgba(239,68,68,.1)", color: "var(--red-c)" }}>
                       🗑️
                     </button>
                   )}
-                  <button type="button" onClick={saveProject} disabled={busy || !pName.trim()}
+                  <button type="button" onClick={saveProject} disabled={!pName.trim()}
                     className="flex-1 py-2 text-sm font-semibold rounded disabled:opacity-40"
                     style={{ background: "var(--accent)", color: "#fff" }}>
-                    {busy ? "Saving…" : projectModal.project ? "Save Changes" : "Create Project"}
+                    {projectModal.project ? "Save Changes" : "Create Project"}
                   </button>
                 </div>
               </div>
@@ -819,10 +819,10 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                   className="flex-1 py-2 text-sm rounded border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
                   Cancel
                 </button>
-                <button type="button" onClick={handleFinalize} disabled={busy || !fName.trim()}
+                <button type="button" onClick={handleFinalize} disabled={!fName.trim()}
                   className="flex-1 py-2 text-sm font-semibold rounded disabled:opacity-40"
                   style={{ background: "var(--accent)", color: "#fff" }}>
-                  {busy ? "Finalizing…" : "Finalize & Add to Products"}
+                  Finalize & Add to Products
                 </button>
               </div>
             </div>

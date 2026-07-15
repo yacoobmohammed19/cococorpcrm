@@ -6,7 +6,7 @@ import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/hooks/useConfirm";
-import { runAction } from "@/lib/action-utils";
+import { useOptimisticList } from "@/hooks/useOptimisticList";
 import { createProduct, updateProduct, deleteProduct } from "@/server-actions/products";
 
 type Product = {
@@ -25,14 +25,14 @@ function fmt(n: number) { return Number(n).toLocaleString("en-ZA", { minimumFrac
 export function ProductsClient({ products, currency }: { products: Product[]; currency: string }) {
   const cur = currency === "ZAR" ? "R" : "$";
   const toast = useToast();
+  const { items: rows, add, update, remove } = useOptimisticList(products, toast);
   const { confirm, dialogProps } = useConfirm();
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [modal, setModal] = useState<{ open: boolean; product: Product | null }>({ open: false, product: null });
-  const [busy, setBusy] = useState(false);
 
-  const filtered = products.filter(p => {
+  const filtered = rows.filter(p => {
     if (!showInactive && !p.is_active) return false;
     if (catFilter && p.category !== catFilter) return false;
     if (search) {
@@ -42,16 +42,14 @@ export function ProductsClient({ products, currency }: { products: Product[]; cu
     return true;
   });
 
-  const cats = [...new Set(products.map(p => p.category).filter(Boolean))] as string[];
+  const cats = [...new Set(rows.map(p => p.category).filter(Boolean))] as string[];
 
   function open(p: Product | null) { setModal({ open: true, product: p }); }
   function close() { setModal({ open: false, product: null }); }
 
   async function handleDelete(id: number, name: string) {
     if (!await confirm(`Archive "${name}"?`, "The product will be marked inactive.")) return;
-    setBusy(true);
-    await runAction(() => deleteProduct(id), toast, "Product archived");
-    setBusy(false);
+    void remove(id, () => deleteProduct(id), { success: "Product archived" });
   }
 
   return (
@@ -61,7 +59,7 @@ export function ProductsClient({ products, currency }: { products: Product[]; cu
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Products</h1>
           <p className="text-sm mt-0.5" style={{ color: "var(--muted2)" }}>
-            {products.filter(p => p.is_active).length} active · {products.length} total
+            {rows.filter(p => p.is_active).length} active · {rows.length} total
           </p>
         </div>
         <button
@@ -77,10 +75,10 @@ export function ProductsClient({ products, currency }: { products: Product[]; cu
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         {[
-          ["Total Products", products.length, "var(--accent)"],
-          ["Active", products.filter(p => p.is_active).length, "var(--purple-c)"],
+          ["Total Products", rows.length, "var(--accent)"],
+          ["Active", rows.filter(p => p.is_active).length, "var(--purple-c)"],
           ["Categories", cats.length, "var(--cyan-c)"],
-          ["Avg Price", `${cur} ${fmt(products.length ? products.reduce((s, p) => s + p.unit_price, 0) / products.length : 0)}`, "var(--amber-c)"],
+          ["Avg Price", `${cur} ${fmt(rows.length ? rows.reduce((s, p) => s + p.unit_price, 0) / rows.length : 0)}`, "var(--amber-c)"],
         ].map(([l, v, c]) => (
           <div key={l as string} className="rounded-lg p-3" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
             <div className="text-xs uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>{l}</div>
@@ -146,7 +144,7 @@ export function ProductsClient({ products, currency }: { products: Product[]; cu
                     <div className="flex gap-1">
                       <button onClick={() => open(p)} className="px-2 py-1 rounded text-xs"
                         style={{ border: "1px solid var(--border)", background: "var(--card)" }}>✏️</button>
-                      <button onClick={() => handleDelete(p.id, p.name)} disabled={busy}
+                      <button onClick={() => handleDelete(p.id, p.name)}
                         className="px-2 py-1 rounded text-xs"
                         style={{ border: "1px solid var(--border)", background: "var(--card)" }}>🗑️</button>
                     </div>
@@ -172,14 +170,33 @@ export function ProductsClient({ products, currency }: { products: Product[]; cu
               <button onClick={close} style={{ color: "var(--muted2)" }}>✕</button>
             </div>
             <form className="p-5 space-y-3"
-              action={async (fd: FormData) => {
-                setBusy(true);
-                try {
-                  if (modal.product) { await updateProduct(modal.product.id, fd); toast.success("Product updated"); }
-                  else { await createProduct(fd); toast.success("Product created"); }
-                  close();
-                } catch { toast.error("Something went wrong"); }
-                finally { setBusy(false); }
+              action={(fd: FormData) => {
+                const g = (k: string) => (fd.get(k) as string) || null;
+                const editing = modal.product;
+                close();
+                if (editing) {
+                  const patch: Partial<Product> = {
+                    name: (fd.get("name") as string) || "",
+                    sku: g("sku"), description: g("description"),
+                    unit_price: Number(fd.get("unit_price")),
+                    category: g("category"),
+                    is_active: fd.get("is_active") !== "false",
+                    location: g("location"),
+                  };
+                  void update(editing.id, patch, () => updateProduct(editing.id, fd), { success: "Product updated" });
+                } else {
+                  const temp: Product = {
+                    id: -Date.now(),
+                    name: (fd.get("name") as string) || "",
+                    sku: g("sku"), description: g("description"),
+                    unit_price: Number(fd.get("unit_price")),
+                    category: g("category"),
+                    is_active: fd.get("is_active") !== "false",
+                    location: g("location"),
+                    created_at: new Date().toISOString(),
+                  };
+                  void add(temp, () => createProduct(fd), { success: "Product created" });
+                }
               }}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="col-span-2">
@@ -223,9 +240,9 @@ export function ProductsClient({ products, currency }: { products: Product[]; cu
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={close} className="flex-1 py-2 text-sm rounded border"
                   style={{ borderColor: "var(--border)", color: "var(--muted)" }}>Cancel</button>
-                <button type="submit" disabled={busy} className="flex-1 py-2 text-sm font-semibold rounded"
-                  style={{ background: "var(--accent)", color: "#fff", opacity: busy ? .6 : 1 }}>
-                  {busy ? "Saving…" : modal.product ? "Update" : "Create Product"}
+                <button type="submit" className="flex-1 py-2 text-sm font-semibold rounded"
+                  style={{ background: "var(--accent)", color: "#fff" }}>
+                  {modal.product ? "Update" : "Create Product"}
                 </button>
               </div>
             </form>

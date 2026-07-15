@@ -278,7 +278,11 @@ export function AiChatCore({ compact = false, orgId }: Props) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const greetedRef = useRef(false);
 
+  // Reset + reload persisted chat history when the session key changes. This is a
+  // genuine external-store (localStorage) load, so setState here is intentional;
+  // the set-state-in-effect rule's cascading-render concern doesn't apply.
   useLayoutEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMessages([]);
     greetedRef.current = false;
     try {

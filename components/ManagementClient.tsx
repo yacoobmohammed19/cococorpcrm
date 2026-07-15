@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { Building2, Users, Plus, ChevronRight, Trash2 } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { createOrganization, deleteOrganization } from "@/server-actions/auth";
-import { runAction } from "@/lib/action-utils";
+import { useOptimisticList } from "@/hooks/useOptimisticList";
 import { setActiveOrganization } from "@/server-actions/auth";
 
 type ManagedOrg = {
@@ -35,15 +34,13 @@ function orgInitials(name: string) {
   return name.trim().split(/\s+/).slice(0, 2).map(w => w[0] ?? "").join("").toUpperCase() || "?";
 }
 
-export function ManagementClient({ orgs }: Props) {
+export function ManagementClient({ orgs: initialOrgs }: Props) {
   const toast = useToast();
-  const [deleting, setDeleting] = useState<string | null>(null);
+  const { items: orgs, remove } = useOptimisticList(initialOrgs, toast);
 
   async function handleDelete(org: ManagedOrg) {
     if (!confirm(`Delete "${org.name}"? This will permanently remove all its data including invoices, customers, and leads. This cannot be undone.`)) return;
-    setDeleting(org.id);
-    await runAction(() => deleteOrganization(org.id), toast, "Organisation deleted");
-    setDeleting(null);
+    void remove(org.id, () => deleteOrganization(org.id), { success: "Organisation deleted" });
   }
 
   return (
@@ -127,9 +124,8 @@ export function ManagementClient({ orgs }: Props) {
                   {org.callerRole === "owner" && (
                     <button
                       onClick={() => handleDelete(org)}
-                      disabled={deleting === org.id}
                       className="p-1.5 rounded-lg transition-colors hover:bg-red-500/10"
-                      style={{ color: "var(--red-c)", opacity: deleting === org.id ? 0.4 : 1 }}
+                      style={{ color: "var(--red-c)" }}
                       title="Delete organisation"
                     >
                       <Trash2 size={14} />

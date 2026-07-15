@@ -5,8 +5,8 @@ import Link from "next/link";
 import { Receipt, Printer, Trash2, X } from "lucide-react";
 import { MultiSelect } from "@/components/ui/MultiSelect";
 import { useToast } from "@/components/Toast";
-import { runAction } from "@/lib/action-utils";
 import { bulkDeleteInvoices, updateInvoiceStatus } from "@/server-actions/invoices";
+import { useOptimisticList } from "@/hooks/useOptimisticList";
 
 type Invoice = {
   id: number; customer_id: number; transaction_date: string;
@@ -182,15 +182,12 @@ export function BillingClient({ invoices: rawInvoices, customers, costs, currenc
   const cur = currency === "ZAR" ? "R" : "$";
   const toast = useToast();
 
-  // Local status overrides so the UI updates instantly after status changes
-  const [statusOverrides, setStatusOverrides] = useState<Record<number, string>>({});
-  const invoices = useMemo(() =>
-    rawInvoices.map(i => statusOverrides[i.id] ? { ...i, status: statusOverrides[i.id] } : i),
-    [rawInvoices, statusOverrides]
-  );
+  // Optimistic mirror of the fetched invoices — bulk-delete removes rows instantly
+  // (with rollback on failure) and status changes reflect immediately. Re-syncs to
+  // server data on revalidation.
+  const { items: invoices, removeMany, setItems } = useOptimisticList(rawInvoices, toast);
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [bulkBusy, setBulkBusy] = useState(false);
   const [preset, setPreset] = useState("ytd");
   const [billFrom, setBillFrom] = useState(fiscalYearFrom);
   const [billTo, setBillTo] = useState(defaultRange(1).to);
@@ -306,16 +303,17 @@ export function BillingClient({ invoices: rawInvoices, customers, costs, currenc
   function toggleAll() {
     setSelected(prev => prev.size === allInvoices.length ? new Set() : new Set(allInvoices.map(i => i.id)));
   }
-  async function handleBulkDelete() {
+  function handleBulkDelete() {
     if (selected.size === 0) return;
-    setBulkBusy(true);
-    await runAction(() => bulkDeleteInvoices(Array.from(selected)), toast, `${selected.size} invoice${selected.size > 1 ? "s" : ""} deleted`);
+    const ids = Array.from(selected);
     setSelected(new Set());
-    setBulkBusy(false);
+    void removeMany(ids, () => bulkDeleteInvoices(ids), { success: `${ids.length} invoice${ids.length > 1 ? "s" : ""} deleted` });
   }
 
+  // The drill-down modal fires updateInvoiceStatus itself, then calls this on success —
+  // so here we only mirror the new status into local state for an instant UI update.
   function handleStatusChange(id: number, status: string) {
-    setStatusOverrides(prev => ({ ...prev, [id]: status }));
+    setItems(prev => prev.map(i => (i.id === id ? { ...i, status } : i)));
   }
 
   // Click handlers that open drill-down
@@ -614,10 +612,10 @@ export function BillingClient({ invoices: rawInvoices, customers, costs, currenc
           <div className="flex items-center gap-2">
             <h3 className="text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--muted2)" }}><Receipt size={12} /> All Invoices <span style={{ color: "var(--muted2)", fontWeight: 400 }}>({allInvoices.length})</span></h3>
             {selected.size > 0 && (
-              <button onClick={handleBulkDelete} disabled={bulkBusy}
+              <button onClick={handleBulkDelete}
                 className="flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold"
-                style={{ background: "var(--danger-bg)", color: "var(--red-c)", border: "1px solid var(--red-c)", opacity: bulkBusy ? .6 : 1 }}>
-                <Trash2 size={11} />{bulkBusy ? "Deleting…" : `Delete (${selected.size})`}
+                style={{ background: "var(--danger-bg)", color: "var(--red-c)", border: "1px solid var(--red-c)" }}>
+                <Trash2 size={11} />{`Delete (${selected.size})`}
               </button>
             )}
           </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { Plus, Pencil, Trash2, UserCheck } from "lucide-react";
 import { MultiSelect } from "@/components/ui/MultiSelect";
 import { useToast } from "@/components/Toast";
@@ -8,6 +8,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/hooks/useConfirm";
+import { useOptimisticList } from "@/hooks/useOptimisticList";
 import { runAction } from "@/lib/action-utils";
 import { updateLeadStatus, deleteLead, createLead, updateLead, convertLeadToCustomer } from "@/server-actions/leads";
 
@@ -282,10 +283,13 @@ function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
   a.click(); URL.revokeObjectURL(a.href);
 }
 
-export function LeadsClient({ leads, statuses, customers, products = [], currency, operators = [], currentRole = "member" }: Props) {
+export function LeadsClient({ leads: initialLeads, statuses, customers, products = [], currency, operators = [], currentRole = "member" }: Props) {
   const cur = currency === "ZAR" ? "R" : "$";
   const toast = useToast();
   const { confirm, dialogProps } = useConfirm();
+  // Optimistic mirror of the server-fetched leads — create/edit/delete/status-change
+  // reflect immediately; the hook re-syncs to authoritative data after revalidation.
+  const { items: leads, add, update, remove } = useOptimisticList(initialLeads, toast);
   const [view, setView] = useState<"table" | "kanban" | "cards">("table");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
@@ -306,19 +310,24 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
   const [modalLeadDate, setModalLeadDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [modalFollowUp, setModalFollowUp] = useState("");
 
-  useEffect(() => {
-    if (modal.open) {
-      setFunnelState({
-        contacted: modal.lead?.contacted ?? false,
-        responded: modal.lead?.responded ?? false,
-        developed: modal.lead?.developed ?? false,
-        completed: modal.lead?.completed ?? false,
-      });
-      setModalWeight(modal.lead?.weight ?? 0);
-      setModalLeadDate(modal.lead?.lead_date?.slice(0, 10) || new Date().toISOString().slice(0, 10));
-      setModalFollowUp(modal.lead?.last_follow_up?.slice(0, 10) || "");
-    }
-  }, [modal.open, modal.lead]);
+  // Initialize the modal form each time it opens (or switches to a different lead).
+  // Done during render — React's sanctioned "adjust state on prop change" pattern —
+  // instead of in an effect, which would trip react-hooks/set-state-in-effect.
+  const [initedFor, setInitedFor] = useState<Lead | null | undefined>(undefined);
+  if (modal.open && initedFor !== modal.lead) {
+    setInitedFor(modal.lead);
+    setFunnelState({
+      contacted: modal.lead?.contacted ?? false,
+      responded: modal.lead?.responded ?? false,
+      developed: modal.lead?.developed ?? false,
+      completed: modal.lead?.completed ?? false,
+    });
+    setModalWeight(modal.lead?.weight ?? 0);
+    setModalLeadDate(modal.lead?.lead_date?.slice(0, 10) || new Date().toISOString().slice(0, 10));
+    setModalFollowUp(modal.lead?.last_follow_up?.slice(0, 10) || "");
+  } else if (!modal.open && initedFor !== undefined) {
+    setInitedFor(undefined);
+  }
 
   function computeDefaultWeight(f: FunnelState): number {
     if (f.completed) return 99;
@@ -354,7 +363,7 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
     const lid = dragId.current;
     if (!lid) return;
     document.querySelectorAll("[data-kcol]").forEach(el => el.classList.remove("ring-2", "ring-[var(--accent)]"));
-    await updateLeadStatus(lid, newStatusId);
+    await update(lid, { status_id: newStatusId }, () => updateLeadStatus(lid, newStatusId), { success: "Status updated" });
   }
 
   function openModal(lead: Lead | null) { setModal({ open: true, lead }); }
@@ -362,9 +371,7 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
 
   async function handleDelete(id: number) {
     if (!await confirm("Archive this lead?", "The lead will be hidden from the list.")) return;
-    setBusy(true);
-    await runAction(() => deleteLead(id), toast, "Lead archived");
-    setBusy(false);
+    void remove(id, () => deleteLead(id), { success: "Lead archived" });
   }
 
   async function handleConvert(id: number) {
@@ -797,7 +804,7 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
           statuses={statuses}
           cur={cur}
           onStatusChange={async (id, newStatusId) => {
-            await updateLeadStatus(id, newStatusId);
+            await update(id, { status_id: newStatusId }, () => updateLeadStatus(id, newStatusId), { success: "Status updated" });
           }}
         />
       )}
@@ -812,13 +819,38 @@ export function LeadsClient({ leads, statuses, customers, products = [], currenc
               <button onClick={closeModal} className="text-lg" style={{ color: "var(--muted2)" }}>✕</button>
             </div>
             <form className="p-5 space-y-3"
-              action={async (fd: FormData) => {
-                setBusy(true);
-                try {
-                  if (modal.lead) await updateLead(modal.lead.id, fd);
-                  else await createLead(fd);
-                  closeModal();
-                } finally { setBusy(false); }
+              action={(fd: FormData) => {
+                const editing = modal.lead;
+                const num = (k: string) => { const v = fd.get(k); return v ? Number(v) : null; };
+                const str = (k: string) => (fd.get(k) as string) || null;
+                const oppVal = num("opportunity_value") ?? 0;
+                const wt = num("weight") ?? 0;
+                const fields = {
+                  name: (fd.get("name") as string) || "",
+                  phone: str("phone"),
+                  contact: str("contact"),
+                  lead_date: str("lead_date"),
+                  status_id: fd.get("status_id") ? Number(fd.get("status_id")) : null,
+                  last_follow_up: str("last_follow_up"),
+                  opportunity_value: oppVal,
+                  weight: wt,
+                  opportunity_weighted: Math.round((oppVal * wt) / 100),
+                  total_revenue: num("total_revenue"),
+                  secured_revenue: num("secured_revenue"),
+                  contacted: fd.get("contacted") === "true",
+                  responded: fd.get("responded") === "true",
+                  developed: fd.get("developed") === "true",
+                  completed: fd.get("completed") === "true",
+                  product_id: fd.get("product_id") ? Number(fd.get("product_id")) : null,
+                  assigned_to: str("assigned_to"),
+                };
+                closeModal();
+                if (editing) {
+                  void update(editing.id, fields, () => updateLead(editing.id, fd), { success: "Lead updated" });
+                } else {
+                  const temp: Lead = { id: -new Date().getTime(), ...fields };
+                  void add(temp, () => createLead(fd), { success: "Lead created" });
+                }
               }}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>

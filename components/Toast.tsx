@@ -52,10 +52,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     try {
       await item.undo?.();
       // Show brief "Undone" confirmation
-      const newId = Date.now() + Math.random();
       setList(l => l.map(x => x.id === item.id ? { ...x, msg: "Undone", undone: true } : x));
       schedule(item.id, 1800);
-      void newId;
     } catch {
       setList(l => l.map(x => x.id === item.id ? { ...x, msg: "Undo failed", type: "error", undone: true } : x));
       schedule(item.id, 2500);

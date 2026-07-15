@@ -9,8 +9,8 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/hooks/useConfirm";
-import { runAction } from "@/lib/action-utils";
-import { createInvoice, updateInvoice, deleteInvoice, restoreInvoice, updateInvoiceStatus, bulkUpdateInvoices, bulkDeleteInvoices } from "@/server-actions/invoices";
+import { useOptimisticList } from "@/hooks/useOptimisticList";
+import { createInvoice, updateInvoice, deleteInvoice, updateInvoiceStatus, bulkUpdateInvoices, bulkDeleteInvoices } from "@/server-actions/invoices";
 
 type Invoice = {
   id: number; invoice_number: string | null; amount: number; status: string;
@@ -48,6 +48,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
   function statusColor(name: string) { return statusColorMap[name] ?? FALLBACK_STATUS_COLORS[name] ?? "#6b7280"; }
   const cur = currency === "ZAR" ? "R" : "$";
   const toast = useToast();
+  const { items: rows, update, remove, removeMany } = useOptimisticList(invoices, toast);
   const { confirm, dialogProps } = useConfirm();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
@@ -72,7 +73,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
 
   const today = new Date().toISOString().slice(0, 10);
 
-  const filtered = invoices.filter(inv => {
+  const filtered = rows.filter(inv => {
     if (statusFilter.length > 0 && !statusFilter.includes(inv.status)) return false;
     if (custFilter.length > 0 && !custFilter.includes(String(inv.customer_id))) return false;
     if (dateFrom && inv.transaction_date && inv.transaction_date < dateFrom) return false;
@@ -85,9 +86,9 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
     return true;
   });
 
-  const completed = invoices.filter(i => i.status === "Completed").reduce((s, i) => s + i.amount, 0);
-  const pending = invoices.filter(i => i.status === "Pending").reduce((s, i) => s + i.amount, 0);
-  const writtenOff = invoices.filter(i => i.status === "Written Off").reduce((s, i) => s + i.amount, 0);
+  const completed = rows.filter(i => i.status === "Completed").reduce((s, i) => s + i.amount, 0);
+  const pending = rows.filter(i => i.status === "Pending").reduce((s, i) => s + i.amount, 0);
+  const writtenOff = rows.filter(i => i.status === "Written Off").reduce((s, i) => s + i.amount, 0);
 
   function addLine() { setLines(l => [...l, { description: "", quantity: 1, unit_price: 0 }]); }
   function removeLine(i: number) { setLines(l => l.filter((_, idx) => idx !== i)); }
@@ -152,19 +153,11 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
 
   async function handleDelete(id: number) {
     if (!await confirm("Archive this invoice?", "The invoice will be hidden from the list.")) return;
-    setBusy(true);
-    try {
-      await deleteInvoice(id);
-      toast.undoable("Invoice archived", () => restoreInvoice(id));
-    } catch { toast.error("Failed to archive invoice"); }
-    finally { setBusy(false); }
+    void remove(id, () => deleteInvoice(id), { success: "Invoice archived", error: "Failed to archive invoice" });
   }
 
-  async function handleStatusChange(id: number, newStatus: string, oldStatus: string) {
-    try {
-      await updateInvoiceStatus(id, newStatus);
-      toast.undoable("Status updated", () => updateInvoiceStatus(id, oldStatus));
-    } catch { toast.error("Failed to update status"); }
+  function handleStatusChange(id: number, newStatus: string) {
+    void update(id, { status: newStatus }, () => updateInvoiceStatus(id, newStatus), { success: "Status updated", error: "Failed to update status" });
   }
 
   function toggleSelect(id: number) {
@@ -203,17 +196,10 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
 
   async function deleteBulk() {
     if (!await confirm(`Delete ${selectedIds.size} invoice${selectedIds.size > 1 ? "s" : ""}?`, "These invoices will be permanently archived.")) return;
-    setBulkBusy(true);
     const ids = Array.from(selectedIds);
-    try {
-      await bulkDeleteInvoices(ids);
-      const n = ids.length;
-      toast.undoable(`Archived ${n} invoice${n > 1 ? "s" : ""}`, async () => {
-        await Promise.all(ids.map(id => restoreInvoice(id)));
-      });
-      setSelectedIds(new Set());
-    } catch { toast.error("Bulk delete failed"); }
-    finally { setBulkBusy(false); }
+    const n = ids.length;
+    setSelectedIds(new Set());
+    void removeMany(ids, () => bulkDeleteInvoices(ids), { success: `Archived ${n} invoice${n > 1 ? "s" : ""}`, error: "Bulk delete failed" });
   }
 
   const inputCss = "w-full px-3 py-2 rounded border text-sm outline-none focus:ring-1 focus:ring-[var(--accent)]";
@@ -226,7 +212,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Invoices</h1>
           <p className="text-sm mt-0.5" style={{ color: "var(--muted2)" }}>
-            {invoices.length} invoices · {cur} {fmt(completed)} collected
+            {rows.length} invoices · {cur} {fmt(completed)} collected
           </p>
         </div>
         <div className="flex gap-2">
@@ -310,7 +296,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
             <div key={inv.id} className="rounded-2xl p-4" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
               <div className="flex items-center justify-between mb-3">
                 <span className="font-bold text-base" style={{ color: "var(--accent)" }}>{inv.invoice_number || `#${inv.id}`}</span>
-                <select value={inv.status} onChange={e => handleStatusChange(inv.id, e.target.value, inv.status)}
+                <select value={inv.status} onChange={e => handleStatusChange(inv.id, e.target.value)}
                   className="px-3 py-1 rounded-full text-xs font-semibold border-0 outline-none cursor-pointer"
                   style={{ background: col + "33", color: col }}>
                   {invoiceStatuses.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
@@ -428,7 +414,7 @@ export function InvoicesClient({ invoices, customers, paymentTypes, products = [
                     <td className="px-3 py-2 font-mono font-semibold whitespace-nowrap">{cur} {fmt(inv.amount)}</td>
                     <td className="px-3 py-2 whitespace-nowrap" style={{ color: "var(--muted2)" }}>{inv.payment_type_name || "—"}</td>
                     <td className="px-3 py-2">
-                      <select value={inv.status} onChange={e => handleStatusChange(inv.id, e.target.value, inv.status)}
+                      <select value={inv.status} onChange={e => handleStatusChange(inv.id, e.target.value)}
                         className="px-2 py-0.5 rounded text-xs font-semibold border-0 outline-none cursor-pointer"
                         style={{ background: col + "33", color: col }}>
                         {invoiceStatuses.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}

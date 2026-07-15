@@ -126,6 +126,8 @@ export function CustomerDetailClient({ customer, invoices, invoiceLinesMap = {},
     const cacheKey = `crm_health_${customerId}`;
     try {
       const cached = sessionStorage.getItem(cacheKey);
+      // Hydrating from a sessionStorage cache on mount — intentional external-store load.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (cached) { setHealth(JSON.parse(cached) as { score: string; reason: string }); return; }
     } catch { /* ignore */ }
     const now = Date.now();

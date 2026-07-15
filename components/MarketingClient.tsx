@@ -7,7 +7,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/hooks/useConfirm";
-import { runAction } from "@/lib/action-utils";
+import { useOptimisticList } from "@/hooks/useOptimisticList";
 import { createCampaign, logCampaignUpdate, deleteCampaign, deleteCampaignUpdate, updateCampaignStatus } from "@/server-actions/marketing";
 
 type Campaign = {
@@ -78,17 +78,19 @@ function MktModal({ title, children, onClose }: { title: string; children: React
   );
 }
 
-export function MarketingClient({ campaigns, updates, currency }: Props) {
+export function MarketingClient({ campaigns: initialCampaigns, updates: initialUpdates, currency }: Props) {
   const cur = currency === "ZAR" ? "R" : "$";
   const toast = useToast();
   const { confirm, dialogProps } = useConfirm();
+  // Optimistic mirrors of the two server-fetched lists.
+  const { items: campaigns, add: addCampaign, update: updateCampaign, remove: removeCampaign } = useOptimisticList(initialCampaigns, toast);
+  const { items: updates, add: addUpdate, remove: removeUpdate } = useOptimisticList(initialUpdates, toast);
   const [tab, setTab] = useState<"dashboard" | "campaigns" | "log">("dashboard");
   const [campModal, setCampModal] = useState(false);
   const [campStartDate, setCampStartDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [campEndDate, setCampEndDate] = useState("");
   const [logModal, setLogModal] = useState<number | null>(null);
   const [logDate, setLogDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [busy, setBusy] = useState(false);
 
   const allAgg = useMemo(() => {
     const spend = updates.reduce((s, u) => s + u.spend, 0);
@@ -112,42 +114,57 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
   const inputCss = "w-full px-3 py-2 rounded border text-sm outline-none focus:ring-1 focus:ring-[var(--accent)]";
   const inputStyle = { background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" };
 
-  async function handleCreateCampaign(e: React.FormEvent<HTMLFormElement>) {
+  function handleCreateCampaign(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setBusy(true);
-    await runAction(() => createCampaign(new FormData(e.currentTarget)), toast, "Campaign created");
-    setBusy(false);
+    const fd = new FormData(e.currentTarget);
+    const num = (k: string) => { const v = fd.get(k); return v ? Number(v) : null; };
+    const temp: Campaign = {
+      id: -new Date().getTime(),
+      name: (fd.get("name") as string) || "",
+      platform: (fd.get("platform") as string) || null,
+      objective: (fd.get("objective") as string) || null,
+      status: (fd.get("status") as string) || "Draft",
+      total_budget: num("total_budget"),
+      start_date: (fd.get("start_date") as string) || null,
+      end_date: (fd.get("end_date") as string) || null,
+      notes: (fd.get("notes") as string) || null,
+    };
     setCampModal(false);
+    void addCampaign(temp, () => createCampaign(fd), { success: "Campaign created" });
   }
 
-  async function handleLogUpdate(e: React.FormEvent<HTMLFormElement>, cid: number) {
+  function handleLogUpdate(e: React.FormEvent<HTMLFormElement>, cid: number) {
     e.preventDefault();
-    setBusy(true);
     const fd = new FormData(e.currentTarget);
     fd.set("campaign_id", String(cid));
-    await runAction(() => logCampaignUpdate(fd), toast, "Results logged");
-    setBusy(false);
+    const num = (k: string) => Number(fd.get(k) || 0);
+    const temp: CampaignUpdate = {
+      id: -new Date().getTime(),
+      campaign_id: cid,
+      date: (fd.get("date") as string) || null,
+      spend: num("spend"),
+      impressions: num("impressions"),
+      clicks: num("clicks"),
+      conversions: num("conversions"),
+      revenue: num("revenue"),
+      notes: (fd.get("notes") as string) || null,
+    };
     setLogModal(null);
+    void addUpdate(temp, () => logCampaignUpdate(fd), { success: "Results logged" });
   }
 
   async function handleDeleteCampaign(id: number) {
     if (!await confirm("Delete this campaign?", "All associated log entries will also be removed.")) return;
-    setBusy(true);
-    await runAction(() => deleteCampaign(id), toast, "Campaign deleted");
-    setBusy(false);
+    void removeCampaign(id, () => deleteCampaign(id), { success: "Campaign deleted" });
   }
 
   async function handleDeleteUpdate(id: number) {
     if (!await confirm("Delete this log entry?", "This performance record will be permanently removed.")) return;
-    setBusy(true);
-    await runAction(() => deleteCampaignUpdate(id), toast, "Log entry deleted");
-    setBusy(false);
+    void removeUpdate(id, () => deleteCampaignUpdate(id), { success: "Log entry deleted" });
   }
 
-  async function handleStatusChange(id: number, status: string) {
-    setBusy(true);
-    await runAction(() => updateCampaignStatus(id, status), toast, "Status updated");
-    setBusy(false);
+  function handleStatusChange(id: number, status: string) {
+    void updateCampaign(id, { status }, () => updateCampaignStatus(id, status), { success: "Status updated" });
   }
 
   const tabBtn = (t: typeof tab, label: string) => (
@@ -385,10 +402,10 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
             <div className="flex justify-end gap-3 px-5 py-4 border-t" style={{ borderColor: "var(--border)" }}>
               <button type="button" onClick={() => setCampModal(false)}
                 className="px-4 py-2 rounded text-sm" style={{ background: "var(--card3)", color: "var(--muted)", border: "1px solid var(--border)" }}>Cancel</button>
-              <button type="submit" disabled={busy}
+              <button type="submit"
                 className="px-5 py-2 rounded text-sm font-semibold"
-                style={{ background: "var(--accent)", color: "#fff", opacity: busy ? .6 : 1 }}>
-                {busy ? "Saving…" : "Create Campaign"}
+                style={{ background: "var(--accent)", color: "#fff" }}>
+                Create Campaign
               </button>
             </div>
           </form>
@@ -420,10 +437,10 @@ export function MarketingClient({ campaigns, updates, currency }: Props) {
             <div className="flex justify-end gap-3 px-5 py-4 border-t" style={{ borderColor: "var(--border)" }}>
               <button type="button" onClick={() => setLogModal(null)}
                 className="px-4 py-2 rounded text-sm" style={{ background: "var(--card3)", color: "var(--muted)", border: "1px solid var(--border)" }}>Cancel</button>
-              <button type="submit" disabled={busy}
+              <button type="submit"
                 className="px-5 py-2 rounded text-sm font-semibold"
-                style={{ background: "var(--accent)", color: "#fff", opacity: busy ? .6 : 1 }}>
-                {busy ? "Saving…" : "Log Results"}
+                style={{ background: "var(--accent)", color: "#fff" }}>
+                Log Results
               </button>
             </div>
           </form>

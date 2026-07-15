@@ -1,18 +1,25 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useSyncExternalStore } from "react";
 import { Moon, Sun } from "lucide-react";
 
-export function ThemeToggle({ collapsed = false }: { collapsed?: boolean }) {
-  const [dark, setDark] = useState(false);
+// The dark class lives on <html>, mutated here and by the inline theme script.
+// Subscribing to it (rather than mirroring into state via an effect) keeps the
+// toggle in sync with the actual DOM and is SSR-safe via the server snapshot.
+function subscribeDark(onChange: () => void) {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+  return () => observer.disconnect();
+}
+function getDarkSnapshot() {
+  return document.documentElement.classList.contains("dark");
+}
 
-  useEffect(() => {
-    setDark(document.documentElement.classList.contains("dark"));
-  }, []);
+export function ThemeToggle({ collapsed = false }: { collapsed?: boolean }) {
+  const dark = useSyncExternalStore(subscribeDark, getDarkSnapshot, () => false);
 
   const toggle = () => {
     const next = !dark;
-    setDark(next);
     if (next) {
       document.documentElement.classList.add("dark");
       localStorage.setItem("theme", "dark");

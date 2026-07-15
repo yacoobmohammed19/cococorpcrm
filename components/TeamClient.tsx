@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { UserPlus, Trash2, RefreshCw, Mail, ShieldCheck, KeyRound, Copy, Check, Building2, Plus } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import {
   inviteUser, revokeInvite, removeMember, updateMemberRole,
   createUserWithPassword, addUserToOrg,
 } from "@/server-actions/invites";
+import { useOptimisticList } from "@/hooks/useOptimisticList";
 import { runAction } from "@/lib/action-utils";
 
 type Member = { user_id: string; email: string; role: string };
@@ -122,14 +123,13 @@ function CredentialsModal({ email, password, onClose }: { email: string; passwor
 }
 
 function AddToOrgPanel({
-  userId, adminOrgs, onAdd, onClose, pending,
+  userId, adminOrgs, onAdd, onClose,
   rowBg, borderBottom,
 }: {
   userId: string;
   adminOrgs: AdminOrg[];
   onAdd: (userId: string, orgId: string, role: string) => void;
   onClose: () => void;
-  pending: boolean;
   rowBg: string;
   borderBottom?: string;
 }) {
@@ -165,9 +165,9 @@ function AddToOrgPanel({
       </select>
       <button
         onClick={() => onAdd(userId, selectedOrg, selectedRole)}
-        disabled={!selectedOrg || pending}
+        disabled={!selectedOrg}
         className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold"
-        style={{ background: "var(--accent)", color: "#fff", opacity: pending ? 0.6 : 1 }}
+        style={{ background: "var(--accent)", color: "#fff" }}
       >
         <Plus size={12} />
         Add
@@ -179,9 +179,11 @@ function AddToOrgPanel({
   );
 }
 
-export function TeamClient({ members, invites, currentUserId, currentRole, adminOrgs }: Props) {
+export function TeamClient({ members: initialMembers, invites: initialInvites, currentUserId, currentRole, adminOrgs }: Props) {
   const toast = useToast();
-  const [pending, startTransition] = useTransition();
+  // Optimistic mirrors. Members are keyed by user_id (not id), so pass a key selector.
+  const { items: members, update: updateMemberRow, remove: removeMemberRow } = useOptimisticList(initialMembers, toast, m => m.user_id);
+  const { items: invites, remove: removeInviteRow } = useOptimisticList(initialInvites, toast);
   const [panel, setPanel] = useState<null | "invite" | "create">(null);
   const [createdCreds, setCreatedCreds] = useState<{ email: string; password: string } | null>(null);
   const [createEmail, setCreateEmail] = useState("");
@@ -208,17 +210,17 @@ export function TeamClient({ members, invites, currentUserId, currentRole, admin
     }
   }
 
-  async function handleRevoke(tokenId: string) {
-    await runAction(() => revokeInvite(tokenId), toast, "Invite revoked");
+  function handleRevoke(tokenId: string) {
+    void removeInviteRow(tokenId, () => revokeInvite(tokenId), { success: "Invite revoked" });
   }
 
-  async function handleRemove(userId: string, email: string) {
+  function handleRemove(userId: string, email: string) {
     if (!confirm(`Remove ${email} from this organisation?`)) return;
-    await runAction(() => removeMember(userId), toast, "Member removed");
+    void removeMemberRow(userId, () => removeMember(userId), { success: "Member removed" });
   }
 
-  async function handleRoleChange(userId: string, newRole: string) {
-    await runAction(() => updateMemberRole(userId, newRole), toast, "Role updated");
+  function handleRoleChange(userId: string, newRole: string) {
+    void updateMemberRow(userId, { role: newRole }, () => updateMemberRole(userId, newRole), { success: "Role updated" });
   }
 
   async function handleAddToOrg(userId: string, orgId: string, role: string) {
@@ -314,9 +316,9 @@ export function TeamClient({ members, invites, currentUserId, currentRole, admin
                   style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
                   Cancel
                 </button>
-                <button type="submit" disabled={pending}
+                <button type="submit"
                   className="flex-1 py-2 text-sm font-semibold rounded-lg flex items-center justify-center gap-2"
-                  style={{ background: "var(--accent)", color: "#fff", opacity: pending ? 0.6 : 1 }}>
+                  style={{ background: "var(--accent)", color: "#fff" }}>
                   <Mail size={14} />
                   Send invite
                 </button>
@@ -384,9 +386,9 @@ export function TeamClient({ members, invites, currentUserId, currentRole, admin
                 >
                   Cancel
                 </button>
-                <button type="submit" disabled={pending}
+                <button type="submit"
                   className="flex-1 py-2 text-sm font-semibold rounded-lg flex items-center justify-center gap-2"
-                  style={{ background: "var(--purple-c)", color: "#fff", opacity: pending ? 0.6 : 1 }}>
+                  style={{ background: "var(--purple-c)", color: "#fff" }}>
                   <UserPlus size={14} />
                   Create &amp; show credentials
                 </button>
@@ -461,7 +463,7 @@ export function TeamClient({ members, invites, currentUserId, currentRole, admin
                     {isAdmin && m.role !== "owner" && m.user_id !== currentUserId ? (
                       <select
                         defaultValue={m.role}
-                        onChange={e => startTransition(() => { void handleRoleChange(m.user_id, e.target.value); })}
+                        onChange={e => handleRoleChange(m.user_id, e.target.value)}
                         className="text-xs rounded-lg border px-2 py-1"
                         style={inputCss}
                       >
@@ -474,7 +476,7 @@ export function TeamClient({ members, invites, currentUserId, currentRole, admin
                     )}
                     {isAdmin && m.user_id !== currentUserId && m.role !== "owner" && (
                       <button
-                        onClick={() => startTransition(() => { void handleRemove(m.user_id, m.email); })}
+                        onClick={() => handleRemove(m.user_id, m.email)}
                         className="p-1.5 rounded-lg transition-colors hover:bg-red-500/10"
                         style={{ color: "var(--red-c)" }}
                         title="Remove member"
@@ -490,7 +492,6 @@ export function TeamClient({ members, invites, currentUserId, currentRole, admin
                     adminOrgs={adminOrgs}
                     onAdd={handleAddToOrg}
                     onClose={() => setAddToOrgOpen(null)}
-                    pending={pending}
                     rowBg={i % 2 === 0 ? "var(--card)" : "var(--card2)"}
                     borderBottom={i < members.length - 1 ? "1px solid var(--border)" : undefined}
                   />
@@ -533,7 +534,7 @@ export function TeamClient({ members, invites, currentUserId, currentRole, admin
                   <div className="flex items-center gap-2 shrink-0">
                     <RoleBadge role={inv.role} />
                     <button
-                      onClick={() => startTransition(() => { void handleRevoke(inv.id); })}
+                      onClick={() => handleRevoke(inv.id)}
                       className="p-1.5 rounded-lg transition-colors hover:bg-red-500/10"
                       style={{ color: "var(--muted2)" }}
                       title="Revoke invite"

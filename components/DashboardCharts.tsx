@@ -1090,7 +1090,7 @@ export function DashboardCharts({
     setKpiOrder(prev => {
       const newIds = kpis.map(k => k.id);
       const oldIds = customKpis.map(k => k.id);
-      let next = prev.filter(key => !oldIds.includes(key) || newIds.includes(key));
+      const next = prev.filter(key => !oldIds.includes(key) || newIds.includes(key));
       newIds.forEach(id => { if (!next.includes(id)) next.push(id); });
       try { localStorage.setItem(LS_KPI_ORDER, JSON.stringify(next)); } catch { /* ignore */ }
       return next;
@@ -1423,7 +1423,7 @@ export function DashboardCharts({
 
   const dueThisWeek = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
-    const in7 = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+    const in7 = new Date(new Date().getTime() + 7 * 86400000).toISOString().slice(0, 10);
     return rawInvoices.filter(i => isPending(i.status) && i.due_date && i.due_date >= today && i.due_date <= in7).length;
   }, [rawInvoices]);
 

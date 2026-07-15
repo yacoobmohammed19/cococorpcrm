@@ -9,7 +9,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/hooks/useConfirm";
-import { runAction } from "@/lib/action-utils";
+import { useOptimisticList } from "@/hooks/useOptimisticList";
 import { createQuote, updateQuoteStatus, deleteQuote, convertQuoteToInvoice } from "@/server-actions/quotes";
 
 type Quote = {
@@ -40,6 +40,7 @@ export function QuotesClient({ quotes, customers, products, currency }: {
 }) {
   const cur = currency === "ZAR" ? "R" : "$";
   const toast = useToast();
+  const { items: rows, update, remove } = useOptimisticList(quotes, toast);
   const { confirm, dialogProps } = useConfirm();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
@@ -48,7 +49,7 @@ export function QuotesClient({ quotes, customers, products, currency }: {
   const [busy, setBusy] = useState(false);
   const [lines, setLines] = useState<Line[]>([{ description: "", quantity: 1, unit_price: 0 }]);
 
-  const filtered = quotes.filter(q => {
+  const filtered = rows.filter(q => {
     if (statusFilter.length > 0 && !statusFilter.includes(q.status)) return false;
     if (search) {
       const q2 = search.toLowerCase();
@@ -59,9 +60,9 @@ export function QuotesClient({ quotes, customers, products, currency }: {
   });
 
   const totals = {
-    total: quotes.reduce((s, q) => s + q.amount, 0),
-    accepted: quotes.filter(q => q.status === "Accepted").reduce((s, q) => s + q.amount, 0),
-    pending: quotes.filter(q => q.status === "Draft" || q.status === "Sent").reduce((s, q) => s + q.amount, 0),
+    total: rows.reduce((s, q) => s + q.amount, 0),
+    accepted: rows.filter(q => q.status === "Accepted").reduce((s, q) => s + q.amount, 0),
+    pending: rows.filter(q => q.status === "Draft" || q.status === "Sent").reduce((s, q) => s + q.amount, 0),
   };
 
   function addLine() { setLines(l => [...l, { description: "", quantity: 1, unit_price: 0 }]); }
@@ -89,21 +90,18 @@ export function QuotesClient({ quotes, customers, products, currency }: {
     finally { setBusy(false); }
   }
 
-  async function handleStatusChange(id: number, status: string) {
-    try { await updateQuoteStatus(id, status); toast.success("Status updated"); }
-    catch { toast.error("Failed to update status"); }
+  function handleStatusChange(id: number, status: string) {
+    void update(id, { status }, () => updateQuoteStatus(id, status), { success: "Status updated" });
   }
 
   async function handleDelete(id: number) {
     if (!await confirm("Archive this quote?", "The quote will be hidden from the list.")) return;
-    await runAction(() => deleteQuote(id), toast, "Quote archived");
+    void remove(id, () => deleteQuote(id), { success: "Quote archived" });
   }
 
   async function handleConvert(id: number, quoteNum: string) {
     if (!await confirm(`Convert ${quoteNum} to an invoice?`, "A new invoice will be created from this quote.")) return;
-    setBusy(true);
-    await runAction(() => convertQuoteToInvoice(id), toast, "Invoice created from quote");
-    setBusy(false);
+    void update(id, { status: "Invoiced" }, () => convertQuoteToInvoice(id), { success: "Invoice created from quote" });
   }
 
   return (
@@ -113,7 +111,7 @@ export function QuotesClient({ quotes, customers, products, currency }: {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Quotes</h1>
           <p className="text-sm mt-0.5" style={{ color: "var(--muted2)" }}>
-            {quotes.length} quotes · {cur} {fmt(totals.accepted)} accepted
+            {rows.length} quotes · {cur} {fmt(totals.accepted)} accepted
           </p>
         </div>
         <button
@@ -190,7 +188,7 @@ export function QuotesClient({ quotes, customers, products, currency }: {
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       <div className="flex gap-1">
                         {q.status === "Accepted" && (
-                          <button onClick={() => handleConvert(q.id, q.quote_number)} disabled={busy}
+                          <button onClick={() => handleConvert(q.id, q.quote_number)}
                             className="px-2 py-1 rounded text-xs font-semibold"
                             style={{ background: "rgba(236,72,153,.15)", color: "var(--accent)", border: "1px solid var(--accent)" }}>
                             → Invoice
