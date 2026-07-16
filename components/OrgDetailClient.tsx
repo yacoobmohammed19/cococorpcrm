@@ -6,6 +6,7 @@ import {
   Copy, Check, ArrowLeftRight,
 } from "lucide-react";
 import { useToast } from "@/components/Toast";
+import { Spinner } from "@/components/Spinner";
 import {
   removeOrgMember, updateOrgMemberRole, createOrgUser, inviteOrgUser,
 } from "@/server-actions/invites";
@@ -130,6 +131,7 @@ export function OrgDetailClient({
   const [createdCreds, setCreatedCreds] = useState<{ email: string; password: string } | null>(null);
   const [createEmail, setCreateEmail] = useState("");
   const [createPassword, setCreatePassword] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const isAdmin = ["owner", "admin"].includes(callerRole);
   const isOwner = callerRole === "owner";
@@ -139,7 +141,9 @@ export function OrgDetailClient({
     const fd = new FormData(e.currentTarget);
     const email = String(fd.get("email") ?? "");
     const role = String(fd.get("role") ?? "member");
+    setBusy(true);
     const ok = await runAction(() => inviteOrgUser(orgId, email, role), toast, "Invite sent!");
+    setBusy(false);
     if (ok) setPanel(null);
   }
 
@@ -151,7 +155,9 @@ export function OrgDetailClient({
     const role = String(fd.get("role") ?? "member");
     const emailSnap = email;
     const passSnap = password;
+    setBusy(true);
     const ok = await runAction(() => createOrgUser(orgId, email, password, role), toast, "User created!");
+    setBusy(false);
     if (ok) {
       setCreatedCreds({ email: emailSnap, password: passSnap });
       setCreateEmail(""); setCreatePassword(""); setPanel(null);
@@ -278,11 +284,11 @@ export function OrgDetailClient({
                   style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
                   Cancel
                 </button>
-                <button type="submit" disabled={pending}
+                <button type="submit" disabled={busy}
                   className="flex-1 py-2 text-sm font-semibold rounded-lg flex items-center justify-center gap-2"
-                  style={{ background: "var(--accent)", color: "#fff", opacity: pending ? 0.6 : 1 }}>
-                  <Mail size={14} />
-                  Send invite
+                  style={{ background: "var(--accent)", color: "#fff", opacity: busy ? 0.6 : 1 }}>
+                  {busy ? <Spinner size={14} /> : <Mail size={14} />}
+                  {busy ? "Sending…" : "Send invite"}
                 </button>
               </div>
             </form>
@@ -348,11 +354,11 @@ export function OrgDetailClient({
                 >
                   Cancel
                 </button>
-                <button type="submit" disabled={pending}
+                <button type="submit" disabled={busy}
                   className="flex-1 py-2 text-sm font-semibold rounded-lg flex items-center justify-center gap-2"
-                  style={{ background: "var(--purple-c)", color: "#fff", opacity: pending ? 0.6 : 1 }}>
-                  <UserPlus size={14} />
-                  Create &amp; show credentials
+                  style={{ background: "var(--purple-c)", color: "#fff", opacity: busy ? 0.6 : 1 }}>
+                  {busy ? <Spinner size={14} /> : <UserPlus size={14} />}
+                  {busy ? "Creating…" : "Create & show credentials"}
                 </button>
               </div>
             </form>

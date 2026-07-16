@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ChevronDown, Settings, LogOut, Building2, Check, Radar } from "lucide-react";
+import { SubmitButton } from "@/components/Spinner";
 
 type Org = { org_id: string; name: string };
 
@@ -16,8 +18,14 @@ export function UserProfileMenu({ orgs, activeOrgId, userEmail, userName, isSupe
   signout: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
   const activeOrg = orgs.find(o => o.org_id === activeOrgId) ?? orgs[0];
   const initial = (userName || userEmail).slice(0, 1).toUpperCase();
+
+  // Close the menu when navigation completes (e.g. after switching org or
+  // signing out). We must NOT close it in the submit button's onClick — that
+  // unmounts the <form> mid-click and cancels the server action before it runs.
+  useEffect(() => { setOpen(false); }, [pathname]);
 
   return (
     <div className="relative">
@@ -88,7 +96,7 @@ export function UserProfileMenu({ orgs, activeOrgId, userEmail, userName, isSupe
                   ) : (
                     <form key={o.org_id} action={setActiveOrganization}>
                       <input type="hidden" name="org_id" value={o.org_id} />
-                      <button type="submit" onClick={() => setOpen(false)}
+                      <SubmitButton
                         className="w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors hover:bg-[var(--card3)]"
                         style={{ color: "var(--foreground)" }}>
                         <div className="w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0"
@@ -96,7 +104,7 @@ export function UserProfileMenu({ orgs, activeOrgId, userEmail, userName, isSupe
                           {o.name.slice(0, 1).toUpperCase()}
                         </div>
                         <span className="flex-1 text-left truncate">{o.name}</span>
-                      </button>
+                      </SubmitButton>
                     </form>
                   );
                 })}
@@ -126,12 +134,12 @@ export function UserProfileMenu({ orgs, activeOrgId, userEmail, userName, isSupe
                 Settings
               </Link>
               <form action={signout}>
-                <button type="submit" onClick={() => setOpen(false)}
+                <SubmitButton
                   className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs transition-colors hover:bg-[var(--card3)]"
                   style={{ color: "var(--foreground)" }}>
                   <LogOut size={14} style={{ color: "var(--muted2)" }} />
                   Sign out
-                </button>
+                </SubmitButton>
               </form>
             </div>
           </div>

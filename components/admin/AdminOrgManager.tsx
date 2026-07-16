@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, UserPlus, Trash2, Save, AlertTriangle, KeyRound, Copy, Check } from "lucide-react";
 import { useToast } from "@/components/Toast";
+import { Spinner } from "@/components/Spinner";
 import { runAction } from "@/lib/action-utils";
 import {
   adminUpdateOrg, adminDeleteOrg, adminAllocateUser, adminRemoveMember, adminSetMemberRole,
@@ -119,6 +120,7 @@ export function AdminOrgManager({ orgId, orgName, currency, members }: Props) {
   const [pending, startTransition] = useTransition();
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [allocating, setAllocating] = useState(false);
   const [allocEmail, setAllocEmail] = useState("");
   const [allocPassword, setAllocPassword] = useState("");
   const [createdCreds, setCreatedCreds] = useState<{ email: string; password: string } | null>(null);
@@ -144,6 +146,7 @@ export function AdminOrgManager({ orgId, orgName, currency, members }: Props) {
     const email = String(fd.get("email") ?? "").trim();
     const role = String(fd.get("role") ?? "member");
     const password = String(fd.get("password") ?? "");
+    setAllocating(true);
     try {
       const { created } = await adminAllocateUser(orgId, email, role, password || undefined);
       toast.success(created ? "Account created & allocated" : "User allocated");
@@ -153,6 +156,8 @@ export function AdminOrgManager({ orgId, orgName, currency, members }: Props) {
       router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not allocate user");
+    } finally {
+      setAllocating(false);
     }
   }
 
@@ -171,8 +176,10 @@ export function AdminOrgManager({ orgId, orgName, currency, members }: Props) {
     try {
       await adminDeleteOrg(orgId);
       toast.success("Organisation deleted");
-      router.push("/admin/organisations");
-      router.refresh();
+      // Navigate away only — the server action already revalidated the list.
+      // Do NOT router.refresh() here: it would re-render this now-deleted
+      // [id] route server-side and throw during that render.
+      router.replace("/admin/organisations");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not delete organisation");
       setDeleting(false);
@@ -238,7 +245,7 @@ export function AdminOrgManager({ orgId, orgName, currency, members }: Props) {
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-opacity active:opacity-80"
           style={{ background: "var(--accent)", color: "#fff", opacity: saving ? 0.6 : 1 }}
         >
-          <Save size={14} />
+          {saving ? <Spinner size={14} /> : <Save size={14} />}
           {saving ? "Saving…" : "Save changes"}
         </button>
       </form>
@@ -293,11 +300,12 @@ export function AdminOrgManager({ orgId, orgName, currency, members }: Props) {
         </div>
         <button
           type="submit"
+          disabled={allocating}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-opacity active:opacity-80"
-          style={{ background: "var(--primary)", color: "var(--primary-fg)" }}
+          style={{ background: "var(--primary)", color: "var(--primary-fg)", opacity: allocating ? 0.6 : 1 }}
         >
-          <UserPlus size={14} />
-          Allocate user
+          {allocating ? <Spinner size={14} /> : <UserPlus size={14} />}
+          {allocating ? "Allocating…" : "Allocate user"}
         </button>
       </form>
 
@@ -378,7 +386,7 @@ export function AdminOrgManager({ orgId, orgName, currency, members }: Props) {
             className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold shrink-0 transition-opacity hover:opacity-80"
             style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.4)", color: "var(--red-c)", opacity: deleting ? 0.5 : 1 }}
           >
-            <Trash2 size={13} />
+            {deleting ? <Spinner size={13} /> : <Trash2 size={13} />}
             {deleting ? "Deleting…" : "Delete organisation"}
           </button>
         </div>

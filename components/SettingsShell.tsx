@@ -12,6 +12,7 @@ import {
 } from "@/server-actions/settings";
 import { SettingsDimensions } from "@/components/SettingsDimensions";
 import { SettingsAppearance } from "@/components/SettingsAppearance";
+import { Spinner, SubmitButton } from "@/components/Spinner";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -279,10 +280,11 @@ function GeneralTab({ org, orgId }: { org: Org | null; orgId: string }) {
           </div>
 
           <div className="flex justify-end pt-2">
-            <button type="submit" className="px-5 py-2 rounded-lg text-sm font-semibold"
+            <SubmitButton pendingLabel="Saving…"
+              className="inline-flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold"
               style={{ background: "var(--accent)", color: "#fff" }}>
               Save Changes
-            </button>
+            </SubmitButton>
           </div>
         </form>
       </div>
@@ -294,10 +296,11 @@ function GeneralTab({ org, orgId }: { org: Org | null; orgId: string }) {
           <p className="text-xs mt-0.5" style={{ color: "var(--muted2)" }}>Populate default statuses, payment types, cost categories, and accounts if empty</p>
         </div>
         <form action={seedDefaults}>
-          <button className="px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap"
+          <SubmitButton pendingLabel="Seeding…"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap"
             style={{ background: "var(--card2)", border: "1px solid var(--border)", color: "var(--foreground)" }}>
             Seed Defaults
-          </button>
+          </SubmitButton>
         </form>
       </div>
     </div>
@@ -355,8 +358,9 @@ function ModulesTab({ flags }: { flags: Record<string, boolean> }) {
         </div>
         <div className="px-5 py-3.5 border-t flex justify-end" style={{ borderColor: "var(--border)" }}>
           <button onClick={save} disabled={busy}
-            className="px-5 py-2 text-sm font-semibold rounded-lg"
+            className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold rounded-lg"
             style={{ background: "var(--accent)", color: "#fff", opacity: busy ? 0.6 : 1 }}>
+            {busy && <Spinner size={14} />}
             {busy ? "Saving…" : "Save"}
           </button>
         </div>
@@ -402,8 +406,9 @@ function AiTab({ aiPrompt }: { aiPrompt: string | null }) {
           Reset to default
         </button>
         <button onClick={save} disabled={busy}
-          className="px-5 py-2 text-sm font-semibold rounded-lg"
+          className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold rounded-lg"
           style={{ background: "var(--accent)", color: "#fff", opacity: busy ? 0.6 : 1 }}>
+          {busy && <Spinner size={14} />}
           {busy ? "Saving…" : "Save Prompt"}
         </button>
       </div>

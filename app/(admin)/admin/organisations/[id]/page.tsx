@@ -14,7 +14,7 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
     .from("organizations")
     .select("id, name, currency")
     .eq("id", orgId)
-    .single();
+    .maybeSingle();
   if (!org) notFound();
 
   const [{ data: memberships }, usersRes] = await Promise.all([

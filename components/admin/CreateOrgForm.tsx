@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { useToast } from "@/components/Toast";
+import { Spinner } from "@/components/Spinner";
 import { adminCreateOrg } from "@/server-actions/admin";
 
 const inputCss = {
@@ -77,9 +78,10 @@ export function CreateOrgForm() {
         <button
           type="submit"
           disabled={busy}
-          className="px-5 py-2.5 rounded-lg text-sm font-semibold transition-opacity active:opacity-80"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-opacity active:opacity-80"
           style={{ background: "var(--accent)", color: "#fff", opacity: busy ? 0.6 : 1 }}
         >
+          {busy && <Spinner size={14} />}
           {busy ? "Creating…" : "Create organisation"}
         </button>
       </form>

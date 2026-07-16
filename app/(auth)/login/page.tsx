@@ -7,6 +7,7 @@ import {
 import { login, setActiveOrganization, signout } from "@/server-actions/auth";
 import { createServerClient } from "@/lib/supabase/server";
 import { getCurrentOrgId } from "@/lib/supabase/org";
+import { SubmitButton } from "@/components/Spinner";
 
 // The four product surfaces CocoCorp ships — real content, not decoration.
 const MODULES = [
@@ -239,8 +240,8 @@ export default async function LoginPage({
             {orgs.map((org) => (
               <form key={org.id} action={setActiveOrganization}>
                 <input type="hidden" name="org_id" value={org.id} />
-                <button
-                  type="submit"
+                <SubmitButton
+                  spinnerSize={16}
                   className="group w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-left transition-all hover:-translate-y-0.5"
                   style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}
                 >
@@ -275,7 +276,7 @@ export default async function LoginPage({
                     style={{ color: "var(--muted2)" }}
                     className="shrink-0 transition-transform group-hover:translate-x-0.5"
                   />
-                </button>
+                </SubmitButton>
               </form>
             ))}
           </div>
@@ -298,14 +299,14 @@ export default async function LoginPage({
         </Link>
 
         <form action={signout} className="mt-4 text-center">
-          <button
-            type="submit"
+          <SubmitButton
+            spinnerSize={13}
             className="inline-flex items-center gap-2 text-xs font-semibold transition-colors hover:opacity-80"
             style={{ color: "var(--muted2)" }}
           >
             <LogOut size={13} />
             Sign in with a different account
-          </button>
+          </SubmitButton>
         </form>
       </AuthLayout>
     );
@@ -366,13 +367,13 @@ export default async function LoginPage({
             style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
           />
         </div>
-        <button
-          type="submit"
-          className="w-full py-3 rounded-xl text-sm font-bold tracking-wide mt-1 transition-transform active:scale-[0.98]"
+        <SubmitButton
+          pendingLabel="Signing in…"
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold tracking-wide mt-1 transition-transform active:scale-[0.98]"
           style={{ background: "linear-gradient(90deg, var(--pink) 0%, var(--accent-hover) 100%)", color: "#fff", boxShadow: "0 8px 24px var(--accent-glow)" }}
         >
           Sign in →
-        </button>
+        </SubmitButton>
       </form>
 
       <div className="flex items-center gap-3 my-5">
