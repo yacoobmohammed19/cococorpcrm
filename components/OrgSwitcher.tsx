@@ -2,15 +2,16 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronDown, Settings, LogOut, Building2, Check } from "lucide-react";
+import { ChevronDown, Settings, LogOut, Building2, Check, Radar } from "lucide-react";
 
 type Org = { org_id: string; name: string };
 
-export function UserProfileMenu({ orgs, activeOrgId, userEmail, userName, setActiveOrganization, signout }: {
+export function UserProfileMenu({ orgs, activeOrgId, userEmail, userName, isSuperAdmin = false, setActiveOrganization, signout }: {
   orgs: Org[];
   activeOrgId: string;
   userEmail: string;
   userName: string;
+  isSuperAdmin?: boolean;
   setActiveOrganization: (fd: FormData) => Promise<void>;
   signout: () => Promise<void>;
 }) {
@@ -110,6 +111,14 @@ export function UserProfileMenu({ orgs, activeOrgId, userEmail, userName, setAct
 
             {/* Actions */}
             <div className="py-1">
+              {isSuperAdmin && (
+                <Link href="/admin" onClick={() => setOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2.5 text-xs font-semibold transition-colors hover:bg-[var(--card3)]"
+                  style={{ color: "var(--accent)" }}>
+                  <Radar size={14} style={{ color: "var(--accent)" }} />
+                  Control Tower
+                </Link>
+              )}
               <Link href="/settings" onClick={() => setOpen(false)}
                 className="flex items-center gap-2.5 px-3 py-2.5 text-xs transition-colors hover:bg-[var(--card3)]"
                 style={{ color: "var(--foreground)" }}>

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createServerClient } from "@/lib/supabase/server";
+import { isSuperAdminUser } from "@/lib/supabase/platform";
 
 // Cookie that carries the active org — bypasses Supabase JWT refresh latency
 const ORG_COOKIE = "coco_active_org";
@@ -48,6 +49,12 @@ export async function login(formData: FormData) {
     .eq("user_id", user.id);
 
   if (!memberships || memberships.length === 0) {
+    // Platform super admins don't need an org — send them to the control tower.
+    if (isSuperAdminUser(user)) {
+      revalidatePath("/", "layout");
+      redirect("/admin");
+    }
+
     // Check if there is a pending invite for this email before giving up
     const { createAdminClient } = await import("@/lib/supabase/admin");
     const adminClient = createAdminClient();
@@ -85,6 +92,9 @@ export async function login(formData: FormData) {
 
   revalidatePath("/", "layout");
   if (inviteToken) redirect(`/invite/${inviteToken}`);
+  // Multiple workspaces — let the user pick which one to enter. The login page
+  // renders a workspace picker once a session exists.
+  if (memberships.length > 1) redirect("/login?select=1");
   redirect("/dashboard");
 }
 
@@ -167,65 +177,6 @@ export async function setActiveOrganization(formData: FormData) {
   redirect("/dashboard");
 }
 
-export async function deleteOrganization(orgId: string) {
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: membership } = await supabase
-    .from("memberships").select("role").eq("user_id", user.id).eq("org_id", orgId).single();
-  if (!membership || membership.role !== "owner") {
-    throw new Error("Only the org owner can delete this organisation");
-  }
-
-  const { data: otherMemberships } = await supabase
-    .from("memberships").select("org_id").eq("user_id", user.id).neq("org_id", orgId);
-
-  const { createAdminClient } = await import("@/lib/supabase/admin");
-  const admin = createAdminClient();
-
-  const { error } = await admin.from("organizations").delete().eq("id", orgId);
-  if (error) throw new Error(error.message);
-
-  if (otherMemberships && otherMemberships.length > 0) {
-    const nextOrgId = String(otherMemberships[0].org_id);
-    await setOrgCookie(nextOrgId);
-    await supabase.auth.updateUser({ data: { active_org_id: nextOrgId } }).catch(() => {});
-    redirect("/dashboard");
-  } else {
-    await clearOrgCookie();
-    await supabase.auth.updateUser({ data: { active_org_id: null } }).catch(() => {});
-    redirect("/onboarding");
-  }
-}
-
-export async function createOrganization(formData: FormData) {
-  const name = String(formData.get("name") ?? "").trim();
-  const currency = String(formData.get("currency") ?? "ZAR");
-
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { createAdminClient } = await import("@/lib/supabase/admin");
-  const admin = createAdminClient();
-
-  const { data: org, error: orgError } = await admin
-    .from("organizations")
-    .insert({ name, currency })
-    .select("id")
-    .single();
-  if (orgError) throw new Error(orgError.message);
-
-  const { error: memberError } = await admin.from("memberships").insert({
-    user_id: user.id,
-    org_id: org.id,
-    role: "owner",
-  });
-  if (memberError) throw new Error(memberError.message);
-
-  await setOrgCookie(String(org.id));
-  await supabase.auth.updateUser({ data: { active_org_id: org.id } }).catch(() => {});
-
-  redirect("/dashboard");
-}
+// Org creation & deletion are platform operations — see server-actions/admin.ts
+// (adminCreateOrg / adminDeleteOrg), gated to super admins. They are deliberately
+// NOT exposed here as self-serve actions.

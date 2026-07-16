@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createServerClient } from "@/lib/supabase/server";
 import { getServerUser } from "@/lib/supabase/org";
+import { isSuperAdminUser } from "@/lib/supabase/platform";
 import { getCachedDimensions } from "@/lib/supabase/cache";
 import { setActiveOrganization, signout } from "@/server-actions/auth";
 import { CollapsibleSidebar } from "@/components/CollapsibleSidebar";
@@ -17,13 +18,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await getServerUser();
   if (!user) redirect("/login");
 
+  const superAdmin = isSuperAdminUser(user);
+
   const supabase = await createServerClient();
   const { data: memberships } = await supabase
     .from("memberships")
     .select("org_id, role, organizations(name)")
     .eq("user_id", user.id);
 
-  if (!memberships || memberships.length === 0) redirect("/onboarding");
+  if (!memberships || memberships.length === 0) {
+    // Super admins without an org belong in the control tower, not onboarding.
+    redirect(superAdmin ? "/admin" : "/onboarding");
+  }
 
   // Cookie is the authoritative source — updated immediately on org switch
   const jar = await cookies();
@@ -56,6 +62,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         userEmail={user.email ?? ""}
         userName={userName}
         role={currentRole}
+        isSuperAdmin={superAdmin}
         signout={signout}
       />
 
@@ -70,6 +77,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               activeOrgId={activeOrgId}
               userEmail={user.email ?? ""}
               userName={userName}
+              isSuperAdmin={superAdmin}
               setActiveOrganization={setActiveOrganization}
               signout={signout}
             />

@@ -9,6 +9,7 @@ type Props = {
   userEmail: string;
   userName: string;
   role: string | null;
+  isSuperAdmin?: boolean;
   signout: () => Promise<void>;
 };
 
@@ -17,7 +18,7 @@ function readCollapsed(): boolean {
   try { return localStorage.getItem("sidebar_collapsed") === "true"; } catch { return false; }
 }
 
-export function CollapsibleSidebar({ userEmail, userName, role, signout }: Props) {
+export function CollapsibleSidebar({ userEmail, userName, role, isSuperAdmin = false, signout }: Props) {
   const [collapsed, setCollapsed] = useState(() => readCollapsed());
 
   const toggle = () => {
@@ -79,7 +80,7 @@ export function CollapsibleSidebar({ userEmail, userName, role, signout }: Props
       </div>
 
       {/* ── Nav ── */}
-      <SideNav collapsed={collapsed} role={role} />
+      <SideNav collapsed={collapsed} role={role} isSuperAdmin={isSuperAdmin} />
 
       {/* ── Footer ── */}
       <div

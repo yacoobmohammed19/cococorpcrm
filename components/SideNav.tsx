@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LucideIcon, LayoutDashboard, Target, Users, FileText, Package, Receipt, CalendarDays, TrendingDown, Megaphone, BookOpen, BarChart2, Settings, Sparkles, ShieldCheck, FlaskConical, TableProperties } from "lucide-react";
+import { LucideIcon, LayoutDashboard, Target, Users, FileText, Package, Receipt, CalendarDays, TrendingDown, Megaphone, BookOpen, BarChart2, Settings, Sparkles, Building2, FlaskConical, TableProperties, Radar } from "lucide-react";
 
 type NavItem = { href: string; label: string; Icon: LucideIcon; group: string };
 
@@ -20,22 +20,25 @@ const sideNav: NavItem[] = [
   { href: "/accounting",  label: "Accounting",  Icon: BookOpen,           group: "Analytics"  },
   { href: "/performance", label: "Snapshots",   Icon: BarChart2,          group: "Analytics"  },
   { href: "/reports",     label: "Reports",     Icon: TableProperties,    group: "Analytics"  },
-  { href: "/settings",             label: "Settings",    Icon: Settings,    group: "Config" },
-  { href: "/settings/management", label: "Management",  Icon: ShieldCheck, group: "Config" },
-  { href: "/chat",                 label: "Coco AI",     Icon: Sparkles,    group: "Config" },
+  { href: "/settings",             label: "Settings",     Icon: Settings,    group: "Config" },
+  { href: "/settings/organisations", label: "Organisations", Icon: Building2, group: "Config" },
+  { href: "/chat",                 label: "Coco AI",      Icon: Sparkles,    group: "Config" },
 ];
+
+const controlTowerItem: NavItem = { href: "/admin", label: "Control Tower", Icon: Radar, group: "Platform" };
 
 // Paths operators are allowed to access
 const OPERATOR_ALLOWED = new Set(["/dashboard", "/leads", "/chat"]);
 
-const groups = ["Overview", "CRM", "Catalog", "Finance", "Marketing", "Analytics", "Config"];
+const groups = ["Overview", "CRM", "Catalog", "Finance", "Marketing", "Analytics", "Config", "Platform"];
 
-export function SideNav({ collapsed = false, role }: { collapsed?: boolean; role?: string | null }) {
+export function SideNav({ collapsed = false, role, isSuperAdmin = false }: { collapsed?: boolean; role?: string | null; isSuperAdmin?: boolean }) {
   const pathname = usePathname();
 
+  const baseNav = isSuperAdmin ? [...sideNav, controlTowerItem] : sideNav;
   const visibleNav = role === "operator"
-    ? sideNav.filter(n => OPERATOR_ALLOWED.has(n.href))
-    : sideNav;
+    ? baseNav.filter(n => OPERATOR_ALLOWED.has(n.href))
+    : baseNav;
 
   return (
     <nav

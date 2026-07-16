@@ -3,13 +3,13 @@
 import { useState, useTransition } from "react";
 import {
   UserPlus, Trash2, RefreshCw, Mail, ShieldCheck, KeyRound,
-  Copy, Check, ArrowLeftRight, AlertTriangle,
+  Copy, Check, ArrowLeftRight,
 } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import {
   removeOrgMember, updateOrgMemberRole, createOrgUser, inviteOrgUser,
 } from "@/server-actions/invites";
-import { setActiveOrganization, deleteOrganization } from "@/server-actions/auth";
+import { setActiveOrganization } from "@/server-actions/auth";
 import { runAction } from "@/lib/action-utils";
 
 type Member = { user_id: string; email: string; role: string };
@@ -133,14 +133,6 @@ export function OrgDetailClient({
 
   const isAdmin = ["owner", "admin"].includes(callerRole);
   const isOwner = callerRole === "owner";
-  const [deletePending, setDeletePending] = useState(false);
-
-  async function handleDeleteOrg() {
-    if (!confirm(`Delete "${orgName}"?\n\nThis permanently removes all data for this organisation — invoices, customers, leads, and all users. This cannot be undone.`)) return;
-    setDeletePending(true);
-    await runAction(() => deleteOrganization(orgId), toast, "Organisation deleted");
-    setDeletePending(false);
-  }
 
   async function handleInvite(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -445,41 +437,6 @@ export function OrgDetailClient({
             ))}
           </div>
         </div>
-
-        {/* Danger zone — owner only */}
-        {isOwner && (
-          <div
-            className="rounded-xl p-4 space-y-3"
-            style={{ border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.04)" }}
-          >
-            <div className="flex items-center gap-2">
-              <AlertTriangle size={14} style={{ color: "var(--red-c)" }} />
-              <p className="text-sm font-semibold" style={{ color: "var(--red-c)" }}>Danger Zone</p>
-            </div>
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <p className="text-xs font-medium">Delete this organisation</p>
-                <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
-                  Permanently removes all data — invoices, customers, leads, and all users. Cannot be undone.
-                </p>
-              </div>
-              <button
-                onClick={handleDeleteOrg}
-                disabled={deletePending}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold shrink-0 transition-opacity hover:opacity-80"
-                style={{
-                  background: "rgba(239,68,68,0.1)",
-                  border: "1px solid rgba(239,68,68,0.4)",
-                  color: "var(--red-c)",
-                  opacity: deletePending ? 0.5 : 1,
-                }}
-              >
-                <Trash2 size={13} />
-                Delete Organisation
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Pending invites */}
         {isAdmin && invites.length > 0 && (

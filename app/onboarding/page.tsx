@@ -1,73 +1,61 @@
 import { redirect } from "next/navigation";
+import { Building2, Mail } from "lucide-react";
 import { createServerClient } from "@/lib/supabase/server";
-import { createOrganization } from "@/server-actions/auth";
+import { isSuperAdminUser } from "@/lib/supabase/platform";
+import { signout } from "@/server-actions/auth";
 
 export default async function OnboardingPage() {
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   if (user) {
-    // If they already have orgs, send them to the app — they shouldn't be here
+    // Super admins run the platform — send them to the control tower.
+    if (isSuperAdminUser(user)) redirect("/admin");
+
+    // Already in an org? Off to the app.
     const { data: memberships } = await supabase
       .from("memberships").select("org_id").eq("user_id", user.id).limit(1);
     if (memberships && memberships.length > 0) redirect("/dashboard");
   }
 
+  // No org and not a super admin — organisations are provisioned centrally now,
+  // so there's nothing to self-create here. Point them at their administrator.
   return (
     <main className="flex min-h-screen w-full items-center justify-center p-4" style={{ background: "var(--background)" }}>
       <div
-        className="w-full max-w-sm rounded-2xl p-6 space-y-5"
+        className="w-full max-w-sm rounded-2xl p-6 space-y-5 text-center"
         style={{ background: "var(--card)", border: "1px solid var(--border)" }}
       >
+        <div
+          className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto"
+          style={{ background: "var(--accent-subtle)" }}
+        >
+          <Building2 size={22} style={{ color: "var(--accent)" }} />
+        </div>
         <div>
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
-            style={{ background: "linear-gradient(135deg, #EC4899 0%, #DB2777 100%)" }}
-          >
-            <span className="text-white font-black text-sm">C</span>
-          </div>
-          <h1 className="text-xl font-bold">Set up your organisation</h1>
-          <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
-            Create your workspace to get started
+          <h1 className="text-xl font-bold">No workspace yet</h1>
+          <p className="text-sm mt-2" style={{ color: "var(--muted)" }}>
+            Your account isn&apos;t linked to an organisation. Organisations are set up by
+            your CocoCorp administrator — ask them to invite you or allocate your account.
           </p>
         </div>
 
-        <form action={createOrganization} className="space-y-3">
-          <div>
-            <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>
-              Organisation name *
-            </label>
-            <input
-              name="name"
-              required
-              placeholder="e.g. Acme Corp"
-              className="w-full rounded-lg border text-sm px-3 py-2.5 outline-none focus:ring-1 focus:ring-[var(--accent)]"
-              style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }}
-            />
-          </div>
-          <div>
-            <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>
-              Currency
-            </label>
-            <select
-              name="currency"
-              defaultValue="ZAR"
-              className="w-full rounded-lg border text-sm px-3 py-2.5 outline-none"
-              style={{ background: "var(--card2)", borderColor: "var(--border)", color: "var(--foreground)" }}
-            >
-              <option value="ZAR">ZAR — South African Rand</option>
-              <option value="USD">USD — US Dollar</option>
-              <option value="EUR">EUR — Euro</option>
-              <option value="GBP">GBP — British Pound</option>
-              <option value="AUD">AUD — Australian Dollar</option>
-            </select>
-          </div>
+        <a
+          href="mailto:corpCoco70@gmail.com?subject=CocoCorp%20access%20request"
+          className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-semibold transition-opacity hover:opacity-80"
+          style={{ background: "var(--accent)", color: "#fff" }}
+        >
+          <Mail size={15} />
+          Request access
+        </a>
+
+        <form action={signout}>
           <button
             type="submit"
-            className="w-full py-2.5 rounded-xl font-semibold text-sm mt-2"
-            style={{ background: "var(--accent)", color: "#fff" }}
+            className="text-xs font-semibold transition-colors hover:opacity-80"
+            style={{ color: "var(--muted2)" }}
           >
-            Create &amp; continue
+            Sign in with a different account
           </button>
         </form>
       </div>
