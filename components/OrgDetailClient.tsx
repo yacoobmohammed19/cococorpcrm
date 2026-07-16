@@ -126,7 +126,7 @@ export function OrgDetailClient({
   orgId, orgName, isActive, callerRole, currentUserId, members, invites,
 }: Props) {
   const toast = useToast();
-  const [pending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const [panel, setPanel] = useState<null | "invite" | "create">(null);
   const [createdCreds, setCreatedCreds] = useState<{ email: string; password: string } | null>(null);
   const [createEmail, setCreateEmail] = useState("");

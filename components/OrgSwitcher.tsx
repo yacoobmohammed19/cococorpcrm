@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, Settings, LogOut, Building2, Check, Radar } from "lucide-react";
@@ -23,9 +23,14 @@ export function UserProfileMenu({ orgs, activeOrgId, userEmail, userName, isSupe
   const initial = (userName || userEmail).slice(0, 1).toUpperCase();
 
   // Close the menu when navigation completes (e.g. after switching org or
-  // signing out). We must NOT close it in the submit button's onClick — that
-  // unmounts the <form> mid-click and cancels the server action before it runs.
-  useEffect(() => { setOpen(false); }, [pathname]);
+  // signing out) using the render-phase "adjust state on change" pattern —
+  // NOT an effect (that trips the set-state-in-effect rule), and NOT the submit
+  // button's onClick (that unmounts the <form> mid-click and cancels the action).
+  const [lastPath, setLastPath] = useState(pathname);
+  if (pathname !== lastPath) {
+    setLastPath(pathname);
+    setOpen(false);
+  }
 
   return (
     <div className="relative">
