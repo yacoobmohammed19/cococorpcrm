@@ -1,6 +1,7 @@
 import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentOrgId, getCurrentOrgRole } from "@/lib/supabase/org";
+import { resolveLeadStages } from "@/lib/lead-stages";
 import { LeadsClient } from "@/components/LeadsClient";
 
 export default async function LeadsPage() {
@@ -18,7 +19,7 @@ export default async function LeadsPage() {
     supabase.from("dim_statuses").select("id, name").eq("org_id", orgId).order("id"),
     supabase.from("dim_customers").select("id, name").eq("org_id", orgId).is("deleted_at", null).order("name"),
     supabase.from("dim_products").select("id, name, unit_price, is_active").eq("org_id", orgId).is("deleted_at", null).eq("is_active", true).order("name"),
-    supabase.from("organizations").select("currency").eq("id", orgId).single(),
+    supabase.from("organizations").select("currency, feature_flags").eq("id", orgId).single(),
     supabase.from("memberships").select("user_id").eq("org_id", orgId).eq("role", "operator"),
   ]);
 
@@ -43,6 +44,7 @@ export default async function LeadsPage() {
         currency={org?.currency || "ZAR"}
         operators={operators}
         currentRole={currentRole ?? "member"}
+        stages={resolveLeadStages(org?.feature_flags)}
       />
     </section>
   );

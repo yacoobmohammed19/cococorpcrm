@@ -2,14 +2,15 @@
 
 import { useState, useRef, useTransition } from "react";
 import {
-  Building2, Palette, Layers, Database, Sparkles, Upload, X,
+  Building2, Palette, Layers, Database, Sparkles, Upload, X, Target,
 } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { createClient } from "@/lib/supabase/client";
 import {
   updateOrgSettings, seedDefaults, updateLogoUrl,
-  updateFeatureFlags, updateAiSystemPrompt,
+  updateFeatureFlags, updateAiSystemPrompt, updateLeadStages,
 } from "@/server-actions/settings";
+import { resolveLeadStages, type LeadStage } from "@/lib/lead-stages";
 import { SettingsDimensions } from "@/components/SettingsDimensions";
 import { SettingsAppearance } from "@/components/SettingsAppearance";
 import { Spinner, SubmitButton } from "@/components/Spinner";
@@ -45,6 +46,7 @@ const TABS = [
   { key: "general",    label: "General",    Icon: Building2 },
   { key: "appearance", label: "Appearance", Icon: Palette   },
   { key: "modules",    label: "Modules",    Icon: Layers    },
+  { key: "leads",      label: "Leads",      Icon: Target    },
   { key: "data",       label: "Data",       Icon: Database  },
   { key: "ai",         label: "AI",         Icon: Sparkles  },
 ] as const;
@@ -122,6 +124,7 @@ export function SettingsShell({ org, orgId, statuses, payTypes, costCats, accoun
       {tab === "general"    && <GeneralTab org={org} orgId={orgId} />}
       {tab === "appearance" && <SettingsAppearance />}
       {tab === "modules"    && <ModulesTab flags={(org?.feature_flags as Record<string, boolean>) ?? {}} />}
+      {tab === "leads"      && <LeadsTab stages={resolveLeadStages(org?.feature_flags)} />}
       {tab === "data"       && <SettingsDimensions statuses={statuses} payTypes={payTypes} costCats={costCats} accounts={accounts} invoiceStatuses={invoiceStatuses} />}
       {tab === "ai"         && <AiTab aiPrompt={(org?.feature_flags as Record<string, unknown>)?.ai_system_prompt as string ?? null} />}
     </section>
@@ -357,6 +360,87 @@ function ModulesTab({ flags }: { flags: Record<string, boolean> }) {
           })}
         </div>
         <div className="px-5 py-3.5 border-t flex justify-end" style={{ borderColor: "var(--border)" }}>
+          <button onClick={save} disabled={busy}
+            className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold rounded-lg"
+            style={{ background: "var(--accent)", color: "#fff", opacity: busy ? 0.6 : 1 }}>
+            {busy && <Spinner size={14} />}
+            {busy ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Leads tab ───────────────────────────────────────────────────────────────
+
+function LeadsTab({ stages: initial }: { stages: LeadStage[] }) {
+  const toast = useToast();
+  const [stages, setStages] = useState<LeadStage[]>(initial);
+  const [busy, setBusy] = useState(false);
+
+  function setField(i: number, patch: Partial<LeadStage>) {
+    setStages(prev => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
+  }
+
+  async function save() {
+    setBusy(true);
+    try {
+      await updateLeadStages(stages.map(s => ({ key: s.key, label: s.label, weight: s.weight })));
+      toast.success("Lead stages saved");
+    } catch { toast.error("Failed to save"); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div style={card}>
+        <div className="p-5 border-b" style={{ borderColor: "var(--border)" }}>
+          <p className="text-sm font-semibold">Activity Stages &amp; Pipeline Weighting</p>
+          <p className="text-xs mt-0.5" style={{ color: "var(--muted2)" }}>
+            Rename the lead progress stages and set the default pipeline weight applied when a lead
+            reaches each stage. Weight drives the weighted pipeline value (opportunity × weight%);
+            it&apos;s pre-filled from the stage but can still be overridden per lead.
+          </p>
+        </div>
+
+        <div className="divide-y" style={{ borderColor: "var(--border)" }}>
+          {/* Header row */}
+          <div className="hidden sm:grid grid-cols-[2rem_1fr_7rem] gap-3 px-5 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>
+            <span>#</span>
+            <span>Stage label</span>
+            <span>Weight&nbsp;%</span>
+          </div>
+          {stages.map((s, i) => (
+            <div key={s.key} className="grid grid-cols-[2rem_1fr_7rem] gap-3 items-center px-5 py-3">
+              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
+                style={{ background: "var(--accent-subtle)", color: "var(--accent)" }}>
+                {i + 1}
+              </div>
+              <input
+                value={s.label}
+                maxLength={40}
+                onChange={e => setField(i, { label: e.target.value })}
+                className={inputCls}
+                style={inputSty}
+                aria-label={`Stage ${i + 1} label`}
+              />
+              <input
+                type="number" min={0} max={100} step={1}
+                value={s.weight}
+                onChange={e => setField(i, { weight: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })}
+                className={inputCls}
+                style={inputSty}
+                aria-label={`Stage ${i + 1} weight`}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="px-5 py-3.5 border-t flex items-center justify-between gap-3" style={{ borderColor: "var(--border)" }}>
+          <p className="text-[11px]" style={{ color: "var(--muted2)" }}>
+            Weights usually increase across stages (e.g. 10 → 20 → 50 → 99).
+          </p>
           <button onClick={save} disabled={busy}
             className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold rounded-lg"
             style={{ background: "var(--accent)", color: "#fff", opacity: busy ? 0.6 : 1 }}>

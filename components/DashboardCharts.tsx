@@ -33,6 +33,7 @@ type Props = {
   currency: string; orgName: string; orgId?: string; bankBalance: number; bankLastDate: string | null;
   fiscalYearStart?: number;
   savedDashboardSettings: Record<string, unknown>;
+  leadStageLabels?: string[];
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -984,6 +985,7 @@ export function DashboardCharts({
   customers, statuses, paymentTypes, costCategories, accounts,
   currency, orgName, orgId, bankBalance, bankLastDate, fiscalYearStart,
   savedDashboardSettings,
+  leadStageLabels = ["Contacted", "Responded", "Developed", "Completed"],
 }: Props) {
   const cur = currency === "ZAR" ? "R" : currency === "USD" ? "$" : currency === "EUR" ? "€" : "R";
 
@@ -1347,12 +1349,12 @@ export function DashboardCharts({
 
 
   const funnel = useMemo(() => [
-    { name: "Contacted", value: fLeads.filter(l => l.contacted).length },
-    { name: "Responded", value: fLeads.filter(l => l.responded).length },
-    { name: "Developed", value: fLeads.filter(l => l.developed).length },
-    { name: "Completed", value: fLeads.filter(l => l.completed).length },
+    { name: leadStageLabels[0], value: fLeads.filter(l => l.contacted).length },
+    { name: leadStageLabels[1], value: fLeads.filter(l => l.responded).length },
+    { name: leadStageLabels[2], value: fLeads.filter(l => l.developed).length },
+    { name: leadStageLabels[3], value: fLeads.filter(l => l.completed).length },
     { name: "Won", value: metrics.won_leads },
-  ], [fLeads, metrics.won_leads]);
+  ], [fLeads, metrics.won_leads, leadStageLabels]);
   const funnelMax = Math.max(1, ...funnel.map(f => f.value));
 
   // ── Alerts ───────────────────────────────────────────────────────────────

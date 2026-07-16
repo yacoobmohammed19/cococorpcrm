@@ -248,6 +248,37 @@ export async function updateAiSystemPrompt(prompt: string) {
   revalidatePath("/settings");
 }
 
+export async function updateLeadStages(
+  stages: { key: string; label: string; weight: number }[],
+) {
+  const orgId = await getCurrentOrgId();
+  const supabase = await createServerClient();
+
+  const allowed = new Set(["contacted", "responded", "developed", "completed"]);
+  const lead_stages: Record<string, { label: string; weight: number }> = {};
+  for (const s of stages) {
+    if (!allowed.has(s.key)) continue;
+    const label = String(s.label ?? "").trim();
+    const w = Number(s.weight);
+    lead_stages[s.key] = {
+      label: label.slice(0, 40) || s.key,
+      weight: Number.isFinite(w) ? Math.min(100, Math.max(0, Math.round(w))) : 0,
+    };
+  }
+
+  const { data: org } = await supabase.from("organizations").select("feature_flags").eq("id", orgId).single();
+  const existing = (org?.feature_flags as Record<string, unknown>) ?? {};
+  const { error } = await supabase.from("organizations")
+    .update({ feature_flags: { ...existing, lead_stages } })
+    .eq("id", orgId);
+  if (error) throw new Error(error.message);
+
+  revalidateTag(orgMetaCacheTag(orgId), "default");
+  revalidatePath("/settings");
+  revalidatePath("/leads");
+  revalidatePath("/dashboard");
+}
+
 export async function seedDefaults() {
   const orgId = await getCurrentOrgId();
   const supabase = await createServerClient();
