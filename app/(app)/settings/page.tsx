@@ -1,5 +1,6 @@
 import { createServerClient } from "@/lib/supabase/server";
 import { getCurrentOrgId } from "@/lib/supabase/org";
+import { resolveStatusWeights } from "@/lib/lead-weights";
 import { SettingsShell } from "@/components/SettingsShell";
 
 export default async function SettingsPage() {
@@ -15,11 +16,14 @@ export default async function SettingsPage() {
     supabase.from("dim_invoice_statuses").select("id, name, color, position").eq("org_id", orgId).order("position"),
   ]);
 
+  const statusWeights = resolveStatusWeights(org?.feature_flags);
+  const statusesWithWeight = (statuses || []).map(s => ({ ...s, weight: statusWeights[String(s.id)] ?? 0 }));
+
   return (
     <SettingsShell
       org={org}
       orgId={orgId}
-      statuses={statuses || []}
+      statuses={statusesWithWeight}
       payTypes={payTypes || []}
       costCats={costCats || []}
       accounts={accounts || []}

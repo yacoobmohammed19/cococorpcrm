@@ -1,7 +1,6 @@
 import { createServerClient } from "@/lib/supabase/server";
 import { getCurrentOrgId } from "@/lib/supabase/org";
 import { getCachedDimensions, getCachedOrgMeta } from "@/lib/supabase/cache";
-import { resolveLeadStages } from "@/lib/lead-stages";
 import { DashboardCharts } from "@/components/DashboardCharts";
 
 export default async function DashboardPage() {
@@ -22,7 +21,7 @@ export default async function DashboardPage() {
     supabase.from("fact_invoices").select("id, amount, status, transaction_date, customer_id, payment_type_id, due_date").eq("org_id", orgId).is("deleted_at", null),
     supabase.from("fact_costs").select("id, amount, transaction_date, cost_category_id, include_in_pnl").eq("org_id", orgId).is("deleted_at", null),
     supabase.from("fact_cashflow").select("id, balance, record_date, account_id").eq("org_id", orgId).order("record_date", { ascending: false }),
-    supabase.from("organizations").select("dashboard_settings, feature_flags").eq("id", orgId).single(),
+    supabase.from("organizations").select("dashboard_settings").eq("id", orgId).single(),
     getCachedDimensions(orgId),
     getCachedOrgMeta(orgId),
   ]);
@@ -62,7 +61,6 @@ export default async function DashboardPage() {
         bankLastDate={bankLastDate}
         fiscalYearStart={orgMeta?.fiscal_year_start ?? 3}
         savedDashboardSettings={(orgSettings?.dashboard_settings as Record<string, unknown>) ?? {}}
-        leadStageLabels={resolveLeadStages(orgSettings?.feature_flags).map(s => s.label)}
       />
     </section>
   );

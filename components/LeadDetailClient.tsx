@@ -7,7 +7,6 @@ import { DateInput } from "@/components/ui/DateInput";
 import { useConfirm } from "@/hooks/useConfirm";
 import { runAction } from "@/lib/action-utils";
 import { createActivity, toggleActivity, deleteActivity } from "@/server-actions/activities";
-import { DEFAULT_LEAD_STAGES, type LeadStage } from "@/lib/lead-stages";
 
 type Activity = { id: number; type: string; subject: string; notes: string | null; due_date: string | null; done: boolean; created_at: string };
 type Lead = {
@@ -34,8 +33,8 @@ const dot = (v: boolean, label: string) => (
   </div>
 );
 
-export function LeadDetailClient({ lead, activities, currency, leadId, stages = DEFAULT_LEAD_STAGES }: {
-  lead: Lead; activities: Activity[]; currency: string; leadId: number; stages?: LeadStage[];
+export function LeadDetailClient({ lead, activities, currency, leadId }: {
+  lead: Lead; activities: Activity[]; currency: string; leadId: number;
 }) {
   const toast = useToast();
   const { confirm, dialogProps } = useConfirm();
@@ -72,7 +71,10 @@ export function LeadDetailClient({ lead, activities, currency, leadId, stages = 
 
         {/* Funnel indicators */}
         <div className="flex gap-6 justify-center py-2 border-t" style={{ borderColor: "var(--border)" }}>
-          {stages.map(s => <div key={s.key}>{dot(lead[s.key], s.label)}</div>)}
+          {dot(lead.contacted, "Contacted")}
+          {dot(lead.responded, "Responded")}
+          {dot(lead.developed, "Developed")}
+          {dot(lead.completed, "Completed")}
         </div>
       </div>
 

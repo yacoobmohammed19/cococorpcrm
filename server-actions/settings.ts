@@ -4,6 +4,25 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { getCurrentOrgId } from "@/lib/supabase/org";
 import { createServerClient } from "@/lib/supabase/server";
 import { dimCacheTag, orgMetaCacheTag } from "@/lib/supabase/cache";
+import { resolveStatusWeights, weightForStatus } from "@/lib/lead-weights";
+
+// Read → merge → write the org's status-weight map (feature_flags.status_weights).
+async function mergeStatusWeight(
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  orgId: string,
+  statusId: number,
+  weightRaw: FormDataEntryValue | null | undefined,
+) {
+  if (weightRaw == null || weightRaw === "") return;
+  const w = Math.min(100, Math.max(0, Math.round(Number(weightRaw) || 0)));
+  const { data: org } = await supabase.from("organizations").select("feature_flags").eq("id", orgId).single();
+  const existing = (org?.feature_flags as Record<string, unknown>) ?? {};
+  const weights = resolveStatusWeights(existing);
+  weights[String(statusId)] = w;
+  await supabase.from("organizations")
+    .update({ feature_flags: { ...existing, status_weights: weights } })
+    .eq("id", orgId);
+}
 
 export async function updateOrgSettings(formData: FormData) {
   const orgId = await getCurrentOrgId();
@@ -100,14 +119,16 @@ export async function updateInvoiceStatus(id: number, formData: FormData) {
 export async function createStatus(formData: FormData) {
   const orgId = await getCurrentOrgId();
   const supabase = await createServerClient();
-  const { error } = await supabase.from("dim_statuses").insert({
+  const { data: created, error } = await supabase.from("dim_statuses").insert({
     org_id: orgId,
     name: formData.get("name"),
     category: formData.get("category") || null,
     is_active: true,
-  });
+  }).select("id").single();
   if (error) throw new Error(error.message);
+  if (created) await mergeStatusWeight(supabase, orgId, created.id as number, formData.get("weight"));
   revalidateTag(dimCacheTag(orgId), "default");
+  revalidateTag(orgMetaCacheTag(orgId), "default");
   revalidatePath("/settings");
 }
 
@@ -128,8 +149,47 @@ export async function updateStatus(id: number, formData: FormData) {
     category: formData.get("category") || null,
   }).eq("id", id);
   if (error) throw new Error(error.message);
+  await mergeStatusWeight(supabase, orgId, id, formData.get("weight"));
   revalidateTag(dimCacheTag(orgId), "default");
+  revalidateTag(orgMetaCacheTag(orgId), "default");
   revalidatePath("/settings");
+  revalidatePath("/leads");
+}
+
+/**
+ * Re-apply each lead's weight from its status's configured weight, across all
+ * leads in the org. `opportunity_weighted` is a generated column, so it updates
+ * automatically once `weight` changes.
+ */
+export async function recalcLeadWeights() {
+  const orgId = await getCurrentOrgId();
+  const supabase = await createServerClient();
+
+  const { data: org } = await supabase.from("organizations").select("feature_flags").eq("id", orgId).single();
+  const weights = resolveStatusWeights(org?.feature_flags);
+
+  const { data: leads, error } = await supabase
+    .from("fact_leads")
+    .select("id, status_id, weight")
+    .eq("org_id", orgId)
+    .is("deleted_at", null);
+  if (error) throw new Error(error.message);
+
+  // Only write leads whose weight actually changes.
+  const updates = (leads ?? [])
+    .map(l => ({ id: l.id as number, next: weightForStatus(weights, l.status_id as number | null), current: Number(l.weight ?? 0) }))
+    .filter(u => u.next !== u.current);
+
+  let updated = 0;
+  for (const u of updates) {
+    const { error: uErr } = await supabase.from("fact_leads").update({ weight: u.next }).eq("id", u.id);
+    if (uErr) throw new Error(uErr.message);
+    updated++;
+  }
+
+  revalidatePath("/leads");
+  revalidatePath("/dashboard");
+  return { updated };
 }
 
 export async function createPaymentType(formData: FormData) {
@@ -246,37 +306,6 @@ export async function updateAiSystemPrompt(prompt: string) {
     .eq("id", orgId);
   if (error) throw new Error(error.message);
   revalidatePath("/settings");
-}
-
-export async function updateLeadStages(
-  stages: { key: string; label: string; weight: number }[],
-) {
-  const orgId = await getCurrentOrgId();
-  const supabase = await createServerClient();
-
-  const allowed = new Set(["contacted", "responded", "developed", "completed"]);
-  const lead_stages: Record<string, { label: string; weight: number }> = {};
-  for (const s of stages) {
-    if (!allowed.has(s.key)) continue;
-    const label = String(s.label ?? "").trim();
-    const w = Number(s.weight);
-    lead_stages[s.key] = {
-      label: label.slice(0, 40) || s.key,
-      weight: Number.isFinite(w) ? Math.min(100, Math.max(0, Math.round(w))) : 0,
-    };
-  }
-
-  const { data: org } = await supabase.from("organizations").select("feature_flags").eq("id", orgId).single();
-  const existing = (org?.feature_flags as Record<string, unknown>) ?? {};
-  const { error } = await supabase.from("organizations")
-    .update({ feature_flags: { ...existing, lead_stages } })
-    .eq("id", orgId);
-  if (error) throw new Error(error.message);
-
-  revalidateTag(orgMetaCacheTag(orgId), "default");
-  revalidatePath("/settings");
-  revalidatePath("/leads");
-  revalidatePath("/dashboard");
 }
 
 export async function seedDefaults() {

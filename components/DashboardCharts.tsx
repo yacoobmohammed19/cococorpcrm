@@ -33,7 +33,6 @@ type Props = {
   currency: string; orgName: string; orgId?: string; bankBalance: number; bankLastDate: string | null;
   fiscalYearStart?: number;
   savedDashboardSettings: Record<string, unknown>;
-  leadStageLabels?: string[];
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -985,7 +984,6 @@ export function DashboardCharts({
   customers, statuses, paymentTypes, costCategories, accounts,
   currency, orgName, orgId, bankBalance, bankLastDate, fiscalYearStart,
   savedDashboardSettings,
-  leadStageLabels = ["Contacted", "Responded", "Developed", "Completed"],
 }: Props) {
   const cur = currency === "ZAR" ? "R" : currency === "USD" ? "$" : currency === "EUR" ? "€" : "R";
 
@@ -1222,8 +1220,10 @@ export function DashboardCharts({
     const pendingInv = fInvoices.filter(i => isPending(i.status));
     const revenue = completedInv.reduce((s, i) => s + Number(i.amount || 0), 0);
     const pending = pendingInv.reduce((s, i) => s + Number(i.amount || 0), 0);
-    // opex = costs flagged include_in_pnl (true or null defaults to true) — used for gross margin
-    const opex = fCosts.filter(c => c.include_in_pnl !== false).reduce((s, c) => s + Number(c.amount || 0), 0);
+    // Cost lens follows the app-wide P&L toggle: "pnl" counts only include_in_pnl
+    // costs, "total" counts everything — same rule the cost/profit charts use, so
+    // the KPI tiles stay consistent with them.
+    const opex = fCosts.filter(c => includeAll || c.include_in_pnl !== false).reduce((s, c) => s + Number(c.amount || 0), 0);
     const all_costs = fCosts.reduce((s, c) => s + Number(c.amount || 0), 0);
     const profit = revenue - opex;
     const net_profit = revenue - all_costs;
@@ -1256,7 +1256,7 @@ export function DashboardCharts({
       bank_balance_filtered,
       completedInv, pendingInv, openLeads, wonLeads,
     };
-  }, [fLeads, fInvoices, fCosts, fCashflow, wonStatusId, lostStatusId, customers, bankBalance, filters]);
+  }, [fLeads, fInvoices, fCosts, fCashflow, wonStatusId, lostStatusId, customers, bankBalance, filters, includeAll]);
 
   // ── Custom KPI evaluation (table-based, matches index.html calcMetric) ───
   const tableMap = useMemo<Record<TableKey, Record<string, unknown>[]>>(() => ({
@@ -1349,12 +1349,12 @@ export function DashboardCharts({
 
 
   const funnel = useMemo(() => [
-    { name: leadStageLabels[0], value: fLeads.filter(l => l.contacted).length },
-    { name: leadStageLabels[1], value: fLeads.filter(l => l.responded).length },
-    { name: leadStageLabels[2], value: fLeads.filter(l => l.developed).length },
-    { name: leadStageLabels[3], value: fLeads.filter(l => l.completed).length },
+    { name: "Contacted", value: fLeads.filter(l => l.contacted).length },
+    { name: "Responded", value: fLeads.filter(l => l.responded).length },
+    { name: "Developed", value: fLeads.filter(l => l.developed).length },
+    { name: "Completed", value: fLeads.filter(l => l.completed).length },
     { name: "Won", value: metrics.won_leads },
-  ], [fLeads, metrics.won_leads, leadStageLabels]);
+  ], [fLeads, metrics.won_leads]);
   const funnelMax = Math.max(1, ...funnel.map(f => f.value));
 
   // ── Alerts ───────────────────────────────────────────────────────────────
@@ -1401,7 +1401,7 @@ export function DashboardCharts({
     const prevCosts = rawCosts.filter(c => dateInRange(c.transaction_date, prevPeriodDates.from, prevPeriodDates.to));
     const completedInv = prevInv.filter(i => isCompleted(i.status));
     const revenue = completedInv.reduce((s, i) => s + Number(i.amount || 0), 0);
-    const opex = prevCosts.filter(c => c.include_in_pnl !== false).reduce((s, c) => s + Number(c.amount || 0), 0);
+    const opex = prevCosts.filter(c => includeAll || c.include_in_pnl !== false).reduce((s, c) => s + Number(c.amount || 0), 0);
     const all_costs = prevCosts.reduce((s, c) => s + Number(c.amount || 0), 0);
     const wonLeads = prevLeads.filter(l => l.status_id === wonStatusId);
     const openLeads = prevLeads.filter(l => l.status_id !== wonStatusId && l.status_id !== lostStatusId && l.status_id !== 5);
@@ -1415,7 +1415,7 @@ export function DashboardCharts({
       pending: prevInv.filter(i => isPending(i.status)).reduce((s, i) => s + Number(i.amount || 0), 0),
       avg_deal: wonLeads.length > 0 ? totalRev / wonLeads.length : 0,
     };
-  }, [rawLeads, rawInvoices, rawCosts, prevPeriodDates, wonStatusId, lostStatusId]);
+  }, [rawLeads, rawInvoices, rawCosts, prevPeriodDates, wonStatusId, lostStatusId, includeAll]);
 
   const lyPeriodDates = useMemo(() => {
     const shiftYear = (d: string) => d ? `${String(parseInt(d.slice(0, 4)) - 1)}${d.slice(4)}` : "";
@@ -1434,7 +1434,7 @@ export function DashboardCharts({
     const lyCosts = rawCosts.filter(c => dateInRange(c.transaction_date, lyPeriodDates.from, lyPeriodDates.to));
     const completedInv = lyInv.filter(i => isCompleted(i.status));
     const revenue = completedInv.reduce((s, i) => s + Number(i.amount || 0), 0);
-    const opex = lyCosts.filter(c => c.include_in_pnl !== false).reduce((s, c) => s + Number(c.amount || 0), 0);
+    const opex = lyCosts.filter(c => includeAll || c.include_in_pnl !== false).reduce((s, c) => s + Number(c.amount || 0), 0);
     const all_costs = lyCosts.reduce((s, c) => s + Number(c.amount || 0), 0);
     const wonLeads = lyLeads.filter(l => l.status_id === wonStatusId);
     const openLeads = lyLeads.filter(l => l.status_id !== wonStatusId && l.status_id !== lostStatusId && l.status_id !== 5);
@@ -1448,7 +1448,7 @@ export function DashboardCharts({
       pending: lyInv.filter(i => isPending(i.status)).reduce((s, i) => s + Number(i.amount || 0), 0),
       avg_deal: wonLeads.length > 0 ? totalRev / wonLeads.length : 0,
     };
-  }, [rawLeads, rawInvoices, rawCosts, lyPeriodDates, wonStatusId, lostStatusId]);
+  }, [rawLeads, rawInvoices, rawCosts, lyPeriodDates, wonStatusId, lostStatusId, includeAll]);
 
   const dueThisWeek = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -1473,7 +1473,7 @@ export function DashboardCharts({
     { key: "won_leads", label: "Won", value: String(metrics.won_leads), sub: `of ${metrics.total_leads}`, color: "var(--accent)" },
     { key: "conversion_pct", label: "Conversion", value: `${metrics.conversion_pct.toFixed(1)}%`, sub: `${metrics.won_leads}/${metrics.total_leads}`, color: convColor },
     { key: "revenue", label: "Revenue", value: `${cur} ${fmt(metrics.revenue)}`, sub: `${cur} ${fmt(metrics.pending)} pending`, color: "var(--accent)" },
-    { key: "opex", label: "OPEX (P&L)", value: `${cur} ${fmt(metrics.opex)}`, sub: "include_in_pnl costs", color: "var(--red-c)" },
+    { key: "opex", label: pnlMode === "total" ? "Total Costs" : "OPEX (P&L)", value: `${cur} ${fmt(metrics.opex)}`, sub: pnlMode === "total" ? "all costs" : "P&L costs only", color: "var(--red-c)" },
     { key: "profit", label: "Gross Profit", value: `${cur} ${fmt(metrics.profit)}`, sub: `Gross Margin: ${metrics.margin_pct.toFixed(1)}%`, color: profitColor },
     { key: "net_profit", label: "Net Profit", value: `${cur} ${fmt(metrics.net_profit)}`, sub: `Net Margin: ${metrics.net_margin_pct.toFixed(1)}%`, color: metrics.net_profit >= 0 ? "var(--accent)" : "var(--red-c)" },
     { key: "pipeline", label: "Pipeline", value: `${cur} ${fmt(metrics.pipeline)}`, sub: `Wtd: ${cur} ${fmt(metrics.pipeline_weighted)} · ${metrics.open_leads} open`, color: "var(--purple-c)" },

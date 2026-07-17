@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { createServerClient } from "@/lib/supabase/server";
 import { getCurrentOrgId } from "@/lib/supabase/org";
-import { resolveLeadStages } from "@/lib/lead-stages";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { LeadDetailClient } from "@/components/LeadDetailClient";
 
@@ -14,7 +13,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const [{ data: lead }, { data: statuses }, { data: org }] = await Promise.all([
     supabase.from("fact_leads").select("*").eq("id", leadId).single(),
     supabase.from("dim_statuses").select("id, name").eq("org_id", orgId).order("id"),
-    supabase.from("organizations").select("currency, feature_flags").eq("id", orgId).single(),
+    supabase.from("organizations").select("currency").eq("id", orgId).single(),
   ]);
 
   if (!lead) notFound();
@@ -47,7 +46,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         </div>
       </div>
 
-      <LeadDetailClient lead={lead} activities={activities} currency={cur} leadId={leadId} stages={resolveLeadStages(org?.feature_flags)} />
+      <LeadDetailClient lead={lead} activities={activities} currency={cur} leadId={leadId} />
     </section>
   );
 }

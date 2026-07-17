@@ -1,16 +1,18 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Pencil, Trash2, Check, X } from "lucide-react";
+import { Pencil, Trash2, Check, X, RefreshCw } from "lucide-react";
+import { useToast } from "@/components/Toast";
+import { Spinner } from "@/components/Spinner";
 import {
-  createStatus, deleteStatus, updateStatus,
+  createStatus, deleteStatus, updateStatus, recalcLeadWeights,
   createPaymentType, deletePaymentType, updatePaymentType,
   createCostCategory, deleteCostCategory, updateCostCategory,
   createAccount, deleteAccount, updateAccount,
   createInvoiceStatus, deleteInvoiceStatus, updateInvoiceStatus,
 } from "@/server-actions/settings";
 
-type Status = { id: number; name: string; category: string | null };
+type Status = { id: number; name: string; category: string | null; weight: number };
 type PayType = { id: number; name: string; description: string | null };
 type CostCat = { id: number; name: string; description: string | null };
 type Account = { id: number; name: string; account_type: string | null };
@@ -27,7 +29,7 @@ interface Props {
 const inputCss = "px-2 py-1 rounded border outline-none text-sm focus:ring-1 focus:ring-[var(--accent)] flex-1 min-w-0";
 const inputStyle = { background: "var(--background)", borderColor: "var(--border)", color: "var(--foreground)" };
 
-type Field = { key: string; value: string; placeholder: string; type?: "text" | "color" };
+type Field = { key: string; value: string; placeholder: string; type?: "text" | "color" | "number"; suffix?: string };
 
 function EditableRow({
   fields,
@@ -56,9 +58,11 @@ function EditableRow({
             <span className="w-3 h-3 rounded-full shrink-0 inline-block" style={{ background: colorField.value }} />
           )}
           <span className="text-sm font-medium truncate">{fields[0].value}</span>
-          {fields[1]?.type !== "color" && fields[1]?.value && (
-            <span className="text-xs shrink-0" style={{ color: "var(--muted2)" }}>{fields[1].value}</span>
-          )}
+          {fields.slice(1).filter(f => f.type !== "color" && f.value !== "").map(f => (
+            <span key={f.key} className="text-xs shrink-0" style={{ color: "var(--muted2)" }}>
+              {f.value}{f.suffix ?? ""}
+            </span>
+          ))}
         </div>
         <div className="flex items-center gap-1 ml-2 shrink-0">
           <button type="button" onClick={onEdit} className="p-1 rounded hover:bg-[var(--card2)]" style={{ color: "var(--muted2)" }}>
@@ -90,6 +94,20 @@ function EditableRow({
             defaultValue={f.value || "#6b7280"}
             className="w-8 h-8 rounded cursor-pointer border-0 p-0.5 shrink-0"
             style={{ background: "var(--card2)" }}
+          />
+        ) : f.type === "number" ? (
+          <input
+            key={f.key}
+            type="number"
+            name={f.key}
+            min={0}
+            max={100}
+            step={1}
+            defaultValue={f.value}
+            placeholder={f.placeholder}
+            title="Pipeline weight %"
+            className="px-2 py-1 rounded border outline-none text-sm focus:ring-1 focus:ring-[var(--accent)] w-16 shrink-0"
+            style={inputStyle}
           />
         ) : (
           <input
@@ -126,8 +144,22 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export function SettingsDimensions({ statuses, payTypes, costCats, accounts, invoiceStatuses }: Props) {
+  const toast = useToast();
   const [editing, setEditing] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [recalcing, setRecalcing] = useState(false);
+
+  async function handleRecalc() {
+    setRecalcing(true);
+    try {
+      const { updated } = await recalcLeadWeights();
+      toast.success(updated === 0 ? "All leads already up to date" : `Recalculated ${updated} lead${updated === 1 ? "" : "s"}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not recalculate");
+    } finally {
+      setRecalcing(false);
+    }
+  }
 
   function saveWith(updateFn: (id: number, fd: FormData) => Promise<void>, id: number) {
     return (fd: FormData) => {
@@ -173,12 +205,16 @@ export function SettingsDimensions({ statuses, payTypes, costCats, accounts, inv
       </Section>
 
       <Section title="Lead Statuses">
+        <p className="text-xs -mt-1 mb-1" style={{ color: "var(--muted2)" }}>
+          Weight % is the pipeline probability applied to a lead in this status (drives weighted pipeline value).
+        </p>
         {statuses.map(s => (
           <EditableRow
             key={s.id}
             fields={[
               { key: "name", value: s.name, placeholder: "Status name" },
               { key: "category", value: s.category || "", placeholder: "Category" },
+              { key: "weight", value: String(s.weight ?? 0), placeholder: "0", type: "number", suffix: "%" },
             ]}
             editing={editing === `status-${s.id}`}
             onEdit={() => setEditing(`status-${s.id}`)}
@@ -191,8 +227,21 @@ export function SettingsDimensions({ statuses, payTypes, costCats, accounts, inv
         <form action={createStatus} className="flex gap-2 mt-3 pt-3 border-t" style={borderTop}>
           <input name="name" placeholder="Status name" required className={addInputCss} style={inputStyle} />
           <input name="category" placeholder="Category (e.g. Active)" className={addInputCss} style={inputStyle} />
+          <input name="weight" type="number" min={0} max={100} step={1} defaultValue={0} title="Weight %"
+            className="px-3 py-2 rounded border outline-none text-sm focus:ring-1 focus:ring-[var(--accent)] w-20 shrink-0" style={inputStyle} />
           <button className="px-4 py-2 rounded text-sm font-semibold whitespace-nowrap" style={{ background: "var(--accent)", color: "#fff" }}>+ Add</button>
         </form>
+        <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t flex-wrap" style={borderTop}>
+          <p className="text-xs" style={{ color: "var(--muted2)" }}>
+            Applied to new/edited leads automatically. Recalculate to re-apply weights to every existing lead.
+          </p>
+          <button type="button" onClick={handleRecalc} disabled={recalcing}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded text-sm font-semibold whitespace-nowrap"
+            style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--foreground)", opacity: recalcing ? 0.6 : 1 }}>
+            {recalcing ? <Spinner size={14} /> : <RefreshCw size={14} />}
+            {recalcing ? "Recalculating…" : "Recalculate weighted pipeline"}
+          </button>
+        </div>
       </Section>
 
       <Section title="Payment Types">

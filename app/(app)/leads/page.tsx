@@ -1,7 +1,7 @@
 import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentOrgId, getCurrentOrgRole } from "@/lib/supabase/org";
-import { resolveLeadStages } from "@/lib/lead-stages";
+import { resolveStatusWeights } from "@/lib/lead-weights";
 import { LeadsClient } from "@/components/LeadsClient";
 
 export default async function LeadsPage() {
@@ -34,17 +34,19 @@ export default async function LeadsPage() {
       .map(u => ({ user_id: u.id, email: u.email ?? u.id }));
   }
 
+  const statusWeights = resolveStatusWeights(org?.feature_flags);
+  const statusesWithWeight = (statuses || []).map(s => ({ ...s, weight: statusWeights[String(s.id)] ?? 0 }));
+
   return (
     <section>
       <LeadsClient
         leads={(leads || []).map(l => ({ ...l, product_id: null, assigned_to: l.assigned_to ?? null }))}
-        statuses={statuses || []}
+        statuses={statusesWithWeight}
         customers={customers || []}
         products={(products || []).map(p => ({ id: p.id, name: p.name, unit_price: Number(p.unit_price) }))}
         currency={org?.currency || "ZAR"}
         operators={operators}
         currentRole={currentRole ?? "member"}
-        stages={resolveLeadStages(org?.feature_flags)}
       />
     </section>
   );

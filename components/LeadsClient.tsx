@@ -11,15 +11,13 @@ import { useConfirm } from "@/hooks/useConfirm";
 import { useOptimisticList } from "@/hooks/useOptimisticList";
 import { runAction } from "@/lib/action-utils";
 import { updateLeadStatus, deleteLead, createLead, updateLead, convertLeadToCustomer } from "@/server-actions/leads";
-import { DEFAULT_LEAD_STAGES, defaultWeightForStages, type LeadStage } from "@/lib/lead-stages";
 
 type Operator = { user_id: string; email: string };
 
 // ─── Tinder-style swipe card view ────────────────────────────────────────────
-function SwipeView({ leads, statuses, cur, onStatusChange, labels }: {
+function SwipeView({ leads, statuses, cur, onStatusChange }: {
   leads: Lead[]; statuses: Status[]; cur: string;
   onStatusChange: (id: number, newStatusId: number) => Promise<void>;
-  labels: string[];
 }) {
   const [idx, setIdx] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -154,13 +152,13 @@ function SwipeView({ leads, statuses, cur, onStatusChange, labels }: {
 
           {/* Funnel indicators */}
           <div className="mx-6 mt-4 flex gap-4 justify-around">
-            {(["contacted", "responded", "developed", "completed"] as const).map((f, i) => (
+            {(["contacted", "responded", "developed", "completed"] as const).map(f => (
               <div key={f} className="flex flex-col items-center gap-1">
                 <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
                   style={{ background: lead[f] ? "rgba(236,72,153,.2)" : "var(--card)", color: lead[f] ? "var(--accent)" : "var(--muted2)", border: `1px solid ${lead[f] ? "var(--accent)" : "var(--border)"}` }}>
                   {lead[f] ? "✓" : "○"}
                 </div>
-                <span className="text-xs" style={{ color: "var(--muted2)" }}>{labels[i]}</span>
+                <span className="text-xs capitalize" style={{ color: "var(--muted2)" }}>{f.slice(0, 4)}</span>
               </div>
             ))}
           </div>
@@ -207,8 +205,9 @@ function SwipeView({ leads, statuses, cur, onStatusChange, labels }: {
 
 type FunnelState = { contacted: boolean; responded: boolean; developed: boolean; completed: boolean };
 const FUNNEL_STEPS = ["contacted", "responded", "developed", "completed"] as const;
+const FUNNEL_LABELS = ["Called", "Responded", "Developed", "Closed"];
 
-function FunnelStepper({ state, onChange, labels }: { state: FunnelState; onChange: (s: FunnelState) => void; labels: string[] }) {
+function FunnelStepper({ state, onChange }: { state: FunnelState; onChange: (s: FunnelState) => void }) {
   const activeCount = FUNNEL_STEPS.reduce((n, s, i) => state[s] ? i + 1 : n, 0);
   function clickStep(idx: number) {
     const newCount = activeCount === idx + 1 ? idx : idx + 1;
@@ -225,7 +224,7 @@ function FunnelStepper({ state, onChange, labels }: { state: FunnelState; onChan
               style={{ background: state[step] ? "var(--accent)" : "var(--card3)", color: state[step] ? "#fff" : "var(--muted2)", border: `2px solid ${state[step] ? "var(--accent)" : "var(--border)"}` }}>
               {state[step] ? "✓" : i + 1}
             </div>
-            <span className="text-[10px] font-semibold" style={{ color: state[step] ? "var(--accent)" : "var(--muted2)" }}>{labels[i]}</span>
+            <span className="text-[10px] font-semibold" style={{ color: state[step] ? "var(--accent)" : "var(--muted2)" }}>{FUNNEL_LABELS[i]}</span>
           </button>
           {i < FUNNEL_STEPS.length - 1 && (
             <div className="h-0.5 flex-1 mx-1 -mt-4 rounded-full" style={{ background: state[FUNNEL_STEPS[i + 1]] ? "var(--accent)" : "var(--border)" }} />
@@ -247,7 +246,7 @@ function MiniStepper({ lead }: { lead: { contacted: boolean; responded: boolean;
   );
 }
 
-type Status = { id: number; name: string };
+type Status = { id: number; name: string; weight?: number };
 type Lead = {
   id: number; name: string; phone: string | null; contact: string | null;
   lead_date: string | null; status_id: number | null; last_follow_up: string | null;
@@ -268,7 +267,6 @@ type Props = {
   currency: string;
   operators?: Operator[];
   currentRole?: string;
-  stages?: LeadStage[];
 };
 
 const STATUS_COLORS: Record<number, string> = { 1: "var(--pink)", 2: "var(--amber-c)", 3: "var(--accent)", 4: "var(--red-c)", 5: "var(--muted2)" };
@@ -285,9 +283,8 @@ function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
   a.click(); URL.revokeObjectURL(a.href);
 }
 
-export function LeadsClient({ leads: initialLeads, statuses, customers, products = [], currency, operators = [], currentRole = "member", stages = DEFAULT_LEAD_STAGES }: Props) {
+export function LeadsClient({ leads: initialLeads, statuses, customers, products = [], currency, operators = [], currentRole = "member" }: Props) {
   const cur = currency === "ZAR" ? "R" : "$";
-  const funnelLabels = stages.map(s => s.label);
   const toast = useToast();
   const { confirm, dialogProps } = useConfirm();
   // Optimistic mirror of the server-fetched leads — create/edit/delete/status-change
@@ -332,14 +329,11 @@ export function LeadsClient({ leads: initialLeads, statuses, customers, products
     setInitedFor(undefined);
   }
 
-  function computeDefaultWeight(f: FunnelState): number {
-    return defaultWeightForStages(f, stages);
-  }
-
-  function handleFunnelChange(stage: keyof FunnelState, value: boolean) {
-    const next = { ...funnelState, [stage]: value };
-    setFunnelState(next);
-    setModalWeight(computeDefaultWeight(next));
+  // Weight is driven by the lead's status (configured in Settings > Data > Lead
+  // Statuses). Selecting a status pre-fills the weight; it stays editable.
+  function statusWeight(statusId: number | null): number {
+    if (statusId == null) return 0;
+    return Number(statuses.find(s => s.id === statusId)?.weight ?? 0);
   }
 
   const filtered = leads.filter(l => {
@@ -443,7 +437,12 @@ export function LeadsClient({ leads: initialLeads, statuses, customers, products
         />
         <MultiSelect
           label="Funnel Stage"
-          options={stages.map(s => ({ label: s.label, value: s.key }))}
+          options={[
+            { label: "Called", value: "contacted" },
+            { label: "Responded", value: "responded" },
+            { label: "Developed", value: "developed" },
+            { label: "Closed", value: "completed" },
+          ]}
           value={funnelFilter ? [funnelFilter] : []}
           onChange={vals => setFunnelFilter((vals[vals.length - 1] ?? "") as typeof funnelFilter)}
           minWidth={160}
@@ -766,13 +765,13 @@ export function LeadsClient({ leads: initialLeads, statuses, customers, products
                               </div>
                             </div>
                             <div className="flex gap-1">
-                              {(["contacted", "responded", "developed", "completed"] as const).map((f, fi) => (
+                              {(["contacted", "responded", "developed", "completed"] as const).map(f => (
                                 <div key={f} className="flex-1 text-center">
                                   <div className="w-5 h-5 mx-auto rounded-full flex items-center justify-center text-[9px] font-bold"
                                     style={{ background: l[f] ? "rgba(236,72,153,.2)" : "var(--card)", color: l[f] ? "var(--accent)" : "var(--muted2)", border: `1px solid ${l[f] ? "var(--accent)" : "var(--border)"}` }}>
                                     {l[f] ? "✓" : "○"}
                                   </div>
-                                  <p className="text-[9px] mt-0.5 truncate" style={{ color: "var(--muted2)" }}>{funnelLabels[fi]}</p>
+                                  <p className="text-[9px] mt-0.5 capitalize" style={{ color: "var(--muted2)" }}>{f.slice(0, 4)}</p>
                                 </div>
                               ))}
                             </div>
@@ -797,7 +796,6 @@ export function LeadsClient({ leads: initialLeads, statuses, customers, products
           leads={filtered}
           statuses={statuses}
           cur={cur}
-          labels={funnelLabels}
           onStatusChange={async (id, newStatusId) => {
             await update(id, { status_id: newStatusId }, () => updateLeadStatus(id, newStatusId), { success: "Status updated" });
           }}
@@ -870,7 +868,8 @@ export function LeadsClient({ leads: initialLeads, statuses, customers, products
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Status</label>
-                  <select name="status_id" defaultValue={modal.lead?.status_id ?? ""} className={inputStyle} style={inputCss}>
+                  <select name="status_id" defaultValue={modal.lead?.status_id ?? ""} className={inputStyle} style={inputCss}
+                    onChange={e => setModalWeight(statusWeight(e.target.value ? Number(e.target.value) : null))}>
                     <option value="">— Select —</option>
                     {statuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
@@ -922,7 +921,7 @@ export function LeadsClient({ leads: initialLeads, statuses, customers, products
               </div>
               <div className="rounded-lg p-3" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                 <label className="text-xs font-semibold uppercase tracking-wider block mb-3" style={{ color: "var(--muted2)" }}>Activity Progress</label>
-                <FunnelStepper state={funnelState} onChange={next => { setFunnelState(next); setModalWeight(computeDefaultWeight(next)); }} labels={funnelLabels} />
+                <FunnelStepper state={funnelState} onChange={next => setFunnelState(next)} />
                 {FUNNEL_STEPS.map(f => (
                   <input key={f} type="hidden" name={f} value={String(funnelState[f])} />
                 ))}
