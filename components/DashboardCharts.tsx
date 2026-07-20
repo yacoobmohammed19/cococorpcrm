@@ -33,6 +33,9 @@ type Props = {
   currency: string; orgName: string; orgId?: string; bankBalance: number; bankLastDate: string | null;
   fiscalYearStart?: number;
   savedDashboardSettings: Record<string, unknown>;
+  /** Current-month range computed on the server so the default filter is
+   *  identical during SSR and client hydration (no hydration mismatch). */
+  defaultPeriod: { from: string; to: string };
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -658,10 +661,11 @@ const EMPTY_FILTERS: Filters = {
   costCategoryIds: [], accountIds: [], invoiceStatuses: [], paymentTypeIds: [],
 };
 
-function CompactFilterBar({ filters, setFilters, statuses, customers, costCategories, accounts, paymentTypes, fiscalYearStart }: {
+function CompactFilterBar({ filters, setFilters, statuses, customers, costCategories, accounts, paymentTypes, fiscalYearStart, defaultPeriod }: {
   filters: Filters; setFilters: (f: Filters) => void;
   statuses: Dim[]; customers: Dim[]; costCategories: Dim[]; accounts: Dim[]; paymentTypes: Dim[];
   fiscalYearStart?: number;
+  defaultPeriod: { from: string; to: string };
 }) {
   const [panelOpen, setPanelOpen] = useState(false);
   const set = (partial: Partial<Filters>) => setFilters({ ...filters, ...partial });
@@ -678,6 +682,7 @@ function CompactFilterBar({ filters, setFilters, statuses, customers, costCatego
     return new Date(y, fyMonth, 1).toISOString().slice(0, 10);
   };
   const presets = [
+    { key: "MTD", label: "Month", from: defaultPeriod.from, to: defaultPeriod.to },
     { key: "30d", label: "30D", from: off(-30), to: "" },
     { key: "90d", label: "90D", from: off(-90), to: "" },
     { key: "12M", label: "12M", from: off(-365), to: "" },
@@ -983,12 +988,18 @@ export function DashboardCharts({
   rawLeads, rawInvoices, rawCosts, rawCashflow,
   customers, statuses, paymentTypes, costCategories, accounts,
   currency, orgName, orgId, bankBalance, bankLastDate, fiscalYearStart,
-  savedDashboardSettings,
+  savedDashboardSettings, defaultPeriod,
 }: Props) {
   const cur = currency === "ZAR" ? "R" : currency === "USD" ? "$" : currency === "EUR" ? "€" : "R";
 
   // ── Persisted state — DB is source of truth for customKpis ───────────────
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  // Default the dashboard to the current calendar month so KPI cards and the
+  // Growth comparison are period-scoped (this month vs last month / last year)
+  // out of the box. Trend charts are decoupled from this date filter below, so
+  // they still show a rolling 12 months. Users can switch to "All" any time.
+  const [filters, setFilters] = useState<Filters>(
+    () => ({ ...EMPTY_FILTERS, dateFrom: defaultPeriod.from, dateTo: defaultPeriod.to }),
+  );
   const [compareMode, setCompareMode] = useState<"prev" | "yoy">("prev");
   const [customKpis, setCustomKpis] = useState<CustomKpi[]>(() => {
     const fromDb = savedDashboardSettings?.customKpis;
@@ -1209,6 +1220,22 @@ export function DashboardCharts({
     return true;
   }), [rawCosts, filters]);
 
+  // Trend charts (the rolling 12-month series) must NOT collapse when the date
+  // filter is narrowed (e.g. the default "this month"). These sets apply every
+  // filter EXCEPT the date range, so month-over-month trends stay intact while
+  // the KPI tiles above reflect the selected period.
+  const trendInvoices = useMemo(() => rawInvoices.filter(inv => {
+    if (filters.customerIds.length > 0 && !filters.customerIds.includes(inv.customer_id!)) return false;
+    if (filters.invoiceStatuses.length > 0 && !filters.invoiceStatuses.includes(inv.status!)) return false;
+    if (filters.paymentTypeIds.length > 0 && !filters.paymentTypeIds.includes(inv.payment_type_id!)) return false;
+    return true;
+  }), [rawInvoices, filters.customerIds, filters.invoiceStatuses, filters.paymentTypeIds]);
+
+  const trendCosts = useMemo(() => rawCosts.filter(c => {
+    if (filters.costCategoryIds.length > 0 && !filters.costCategoryIds.includes(c.cost_category_id!)) return false;
+    return true;
+  }), [rawCosts, filters.costCategoryIds]);
+
   const fCashflow = useMemo(() => {
     if (filters.accountIds.length === 0) return rawCashflow;
     return rawCashflow.filter(e => filters.accountIds.includes(e.account_id!));
@@ -1282,11 +1309,13 @@ export function DashboardCharts({
     const rev: Record<string, number> = {};
     const cost: Record<string, number> = {};
     months12.forEach(m => { rev[m] = 0; cost[m] = 0; });
-    metrics.completedInv.forEach(inv => {
+    // Use the date-decoupled trend sets so the 12-month series is unaffected by
+    // the KPI date filter (which defaults to the current month).
+    trendInvoices.filter(i => isCompleted(i.status)).forEach(inv => {
       const m = inv.transaction_date?.slice(0, 7);
       if (m && rev[m] !== undefined) rev[m] += Number(inv.amount || 0);
     });
-    fCosts.forEach(c => {
+    trendCosts.forEach(c => {
       const m = c.transaction_date?.slice(0, 7);
       // Honour the P&L lens: in "Business P&L" mode, non-P&L costs (owner draws,
       // zakat, personal…) are excluded from the monthly Costs/Profit series.
@@ -1296,7 +1325,7 @@ export function DashboardCharts({
       month: monthLabel(m), fullMonth: m,
       Revenue: rev[m], Costs: cost[m], Profit: rev[m] - cost[m],
     }));
-  }, [metrics.completedInv, fCosts, months12, includeAll]);
+  }, [trendInvoices, trendCosts, months12, includeAll]);
 
   // Averages across the displayed months (Profit follows the P&L lens via monthlyData).
   const monthlyAverages = useMemo(() => {
@@ -1492,9 +1521,10 @@ export function DashboardCharts({
   }, [currentPeriodDates, metrics, rawLeads, rawInvoices, rawCosts, wonStatusId, lostStatusId, includeAll]);
 
   const currentLabel = useMemo(() => {
-    if (!currentPeriodDates) return "Selected";
-    return new Date(currentPeriodDates.from).toLocaleDateString("en-ZA", { month: "short", year: "2-digit" });
-  }, [currentPeriodDates]);
+    const from = currentPeriodDates?.from || filters.dateFrom;
+    if (!from) return "All time";
+    return new Date(from).toLocaleDateString("en-ZA", { month: "short", year: "2-digit" });
+  }, [currentPeriodDates, filters.dateFrom]);
 
   const dueThisWeek = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -1667,7 +1697,8 @@ export function DashboardCharts({
 
       {/* Compact global filter bar */}
       <CompactFilterBar filters={filters} setFilters={setFilters} statuses={statuses} customers={customers}
-        costCategories={costCategories} accounts={accounts} paymentTypes={paymentTypes} fiscalYearStart={fiscalYearStart} />
+        costCategories={costCategories} accounts={accounts} paymentTypes={paymentTypes} fiscalYearStart={fiscalYearStart}
+        defaultPeriod={defaultPeriod} />
 
       {/* Hero KPI cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">

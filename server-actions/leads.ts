@@ -49,7 +49,7 @@ export async function updateLead(id: number, formData: FormData) {
 
   const productId = formData.get("product_id");
   const assignedTo = formData.get("assigned_to");
-  const { error } = await supabase.from("fact_leads").update({
+  const { data, error } = await supabase.from("fact_leads").update({
     name: formData.get("name"),
     phone: formData.get("phone") || null,
     contact: formData.get("contact") || null,
@@ -67,9 +67,14 @@ export async function updateLead(id: number, formData: FormData) {
     product_id: productId ? Number(productId) : null,
     assigned_to: assignedTo || null,
     updated_at: new Date().toISOString(),
-  }).eq("id", id);
+  }).eq("id", id).select("id");
 
   if (error) throw new Error(error.message);
+  // A row-level-security mismatch updates 0 rows WITHOUT an error, which silently
+  // reverts the optimistic UI. Surface it instead of failing quietly.
+  if (!data || data.length === 0) {
+    throw new Error("Lead wasn't updated — it may have been removed, or you don't have permission to edit it.");
+  }
   revalidatePath("/leads");
   revalidatePath("/dashboard");
 }
@@ -77,20 +82,26 @@ export async function updateLead(id: number, formData: FormData) {
 /** Quickly assign a lead to a user (operator). Called from the leads list. */
 export async function assignLead(leadId: number, userId: string | null) {
   const supabase = await createServerClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("fact_leads")
     .update({ assigned_to: userId, updated_at: new Date().toISOString() })
-    .eq("id", leadId);
+    .eq("id", leadId).select("id");
   if (error) throw new Error(error.message);
+  if (!data || data.length === 0) {
+    throw new Error("Assignment wasn't saved — the lead may have been removed, or you don't have permission to edit it.");
+  }
   revalidatePath("/leads");
 }
 
 export async function updateLeadStatus(id: number, statusId: number) {
   const supabase = await createServerClient();
-  const { error } = await supabase.from("fact_leads")
+  const { data, error } = await supabase.from("fact_leads")
     .update({ status_id: statusId, updated_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id).select("id");
   if (error) throw new Error(error.message);
+  if (!data || data.length === 0) {
+    throw new Error("Status wasn't updated — the lead may have been removed, or you don't have permission to edit it.");
+  }
   revalidatePath("/leads");
   revalidatePath("/dashboard");
 }

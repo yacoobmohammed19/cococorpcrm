@@ -69,6 +69,14 @@ export default async function DashboardPage() {
     ? acctValues.map(e => e.record_date).sort().reverse()[0]
     : null;
 
+  // Current-month range computed once on the server, so the dashboard's default
+  // period filter is identical during SSR and client hydration.
+  const nowDate = new Date();
+  const defaultPeriod = {
+    from: new Date(nowDate.getFullYear(), nowDate.getMonth(), 1).toISOString().slice(0, 10),
+    to: nowDate.toISOString().slice(0, 10),
+  };
+
   return (
     <section>
       <DashboardCharts
@@ -88,6 +96,7 @@ export default async function DashboardPage() {
         bankLastDate={bankLastDate}
         fiscalYearStart={orgMeta?.fiscal_year_start ?? 3}
         savedDashboardSettings={(orgSettings?.dashboard_settings as Record<string, unknown>) ?? {}}
+        defaultPeriod={defaultPeriod}
       />
       <DashboardTimeSummary
         leadMinutes={leadMinutes}
