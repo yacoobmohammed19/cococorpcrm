@@ -237,10 +237,10 @@ type CompareMetrics = {
   pipeline: number; pipeline_weighted: number; pending: number; avg_deal: number;
 };
 
-function GrowthPanel({ metrics, compareMetrics, compareMode, setCompareMode, cur, prevLabel, lyLabel }: {
+function GrowthPanel({ metrics, compareMetrics, compareMode, setCompareMode, cur, currentLabel = "Current", prevLabel, lyLabel }: {
   metrics: CompareMetrics; compareMetrics: CompareMetrics;
   compareMode: "prev" | "yoy"; setCompareMode: (m: "prev" | "yoy") => void;
-  cur: string; prevLabel: string; lyLabel: string;
+  cur: string; currentLabel?: string; prevLabel: string; lyLabel: string;
 }) {
   const fc = (v: number) => `${cur} ${fmt(v)}`;
   const rows = [
@@ -260,7 +260,7 @@ function GrowthPanel({ metrics, compareMetrics, compareMode, setCompareMode, cur
       <div className="flex items-center justify-between px-5 py-3.5 border-b" style={{ borderColor: "var(--border)" }}>
         <div>
           <h2 className="text-sm font-semibold">Growth Analysis</h2>
-          <p className="text-[10px] mt-0.5" style={{ color: "var(--muted2)" }}>Current period vs comparison</p>
+          <p className="text-[10px] mt-0.5" style={{ color: "var(--muted2)" }}>{currentLabel} vs {compareMode === "prev" ? prevLabel.replace(/^vs /, "") : lyLabel.replace(/^vs /, "")} · equal-length periods</p>
         </div>
         <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: "var(--border)" }}>
           {([["prev", prevLabel], ["yoy", lyLabel]] as const).map(([mode, lbl]) => (
@@ -276,7 +276,7 @@ function GrowthPanel({ metrics, compareMetrics, compareMode, setCompareMode, cur
         <table className="w-full text-xs border-collapse">
           <thead>
             <tr style={{ background: "var(--card2)", borderBottom: "1px solid var(--border)" }}>
-              {["Metric", "Current", "Prior", "Change", "Trend"].map(h => (
+              {["Metric", currentLabel, "Prior", "Change", "Trend"].map(h => (
                 <th key={h} className="px-4 py-2.5 text-left font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap" style={{ color: "var(--muted2)" }}>{h}</th>
               ))}
             </tr>
@@ -1450,6 +1450,52 @@ export function DashboardCharts({
     };
   }, [rawLeads, rawInvoices, rawCosts, lyPeriodDates, wonStatusId, lostStatusId, includeAll]);
 
+  // ── Current period for the Growth comparison ─────────────────────────────
+  // The Growth Analysis table (and its prev/YoY toggle) must compare like-for-
+  // like periods. When an explicit date range is selected, `metrics` is already
+  // scoped to it and `prevMetrics`/`lyMetrics` compute an equal-length prior — so
+  // the comparison is correct as-is. The bug is only the *unfiltered* default:
+  // `metrics` then spans all time, while prev/ly default to a single calendar
+  // month → all-time-vs-1-month. So when no filter is set, bound the comparison's
+  // "current" side to the current calendar month (matching prevPeriodDates'
+  // "this month vs last month" intent). Trend charts keep using all-time `metrics`.
+  const currentPeriodDates = useMemo(() => {
+    if (filters.dateFrom || filters.dateTo) return null; // filtered → use `metrics` as-is
+    const now = new Date();
+    const first = new Date(now.getFullYear(), now.getMonth(), 1);
+    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return { from: first.toISOString().slice(0, 10), to: last.toISOString().slice(0, 10) };
+  }, [filters.dateFrom, filters.dateTo]);
+
+  const curMetrics = useMemo(() => {
+    // Filtered: `metrics` is already the selected (bounded) range — reuse it.
+    if (!currentPeriodDates) return metrics;
+    const cLeads = rawLeads.filter(l => dateInRange(l.lead_date, currentPeriodDates.from, currentPeriodDates.to));
+    const cInv = rawInvoices.filter(i => dateInRange(i.transaction_date, currentPeriodDates.from, currentPeriodDates.to));
+    const cCosts = rawCosts.filter(c => dateInRange(c.transaction_date, currentPeriodDates.from, currentPeriodDates.to));
+    const completedInv = cInv.filter(i => isCompleted(i.status));
+    const revenue = completedInv.reduce((s, i) => s + Number(i.amount || 0), 0);
+    const opex = cCosts.filter(c => includeAll || c.include_in_pnl !== false).reduce((s, c) => s + Number(c.amount || 0), 0);
+    const all_costs = cCosts.reduce((s, c) => s + Number(c.amount || 0), 0);
+    const wonLeads = cLeads.filter(l => l.status_id === wonStatusId);
+    const openLeads = cLeads.filter(l => l.status_id !== wonStatusId && l.status_id !== lostStatusId && l.status_id !== 5);
+    const totalRev = cLeads.reduce((s, l) => s + Number(l.total_revenue || 0), 0);
+    return {
+      revenue, opex, profit: revenue - opex, net_profit: revenue - all_costs,
+      total_leads: cLeads.length, won_leads: wonLeads.length,
+      conversion_pct: cLeads.length > 0 ? wonLeads.length / cLeads.length * 100 : 0,
+      pipeline: openLeads.reduce((s, l) => s + Number(l.opportunity_value || 0), 0),
+      pipeline_weighted: openLeads.reduce((s, l) => s + Number(l.opportunity_weighted || 0), 0),
+      pending: cInv.filter(i => isPending(i.status)).reduce((s, i) => s + Number(i.amount || 0), 0),
+      avg_deal: wonLeads.length > 0 ? totalRev / wonLeads.length : 0,
+    };
+  }, [currentPeriodDates, metrics, rawLeads, rawInvoices, rawCosts, wonStatusId, lostStatusId, includeAll]);
+
+  const currentLabel = useMemo(() => {
+    if (!currentPeriodDates) return "Selected";
+    return new Date(currentPeriodDates.from).toLocaleDateString("en-ZA", { month: "short", year: "2-digit" });
+  }, [currentPeriodDates]);
+
   const dueThisWeek = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
     const in7 = new Date(new Date().getTime() + 7 * 86400000).toISOString().slice(0, 10);
@@ -1769,12 +1815,12 @@ export function DashboardCharts({
             ) : null;
             case "growth": return (
               <GrowthPanel
-                metrics={{ revenue: metrics.revenue, opex: metrics.opex, profit: metrics.profit, net_profit: metrics.net_profit,
-                  total_leads: metrics.total_leads, won_leads: metrics.won_leads, conversion_pct: metrics.conversion_pct,
-                  pipeline: metrics.pipeline, pipeline_weighted: metrics.pipeline_weighted, pending: metrics.pending, avg_deal: metrics.avg_deal }}
+                metrics={{ revenue: curMetrics.revenue, opex: curMetrics.opex, profit: curMetrics.profit, net_profit: curMetrics.net_profit,
+                  total_leads: curMetrics.total_leads, won_leads: curMetrics.won_leads, conversion_pct: curMetrics.conversion_pct,
+                  pipeline: curMetrics.pipeline, pipeline_weighted: curMetrics.pipeline_weighted, pending: curMetrics.pending, avg_deal: curMetrics.avg_deal }}
                 compareMetrics={compareMetrics}
                 compareMode={compareMode} setCompareMode={setCompareMode}
-                cur={cur} prevLabel={`vs ${prevLabel}`} lyLabel={`vs ${lyLabel}`}
+                cur={cur} currentLabel={currentLabel} prevLabel={`vs ${prevLabel}`} lyLabel={`vs ${lyLabel}`}
               />
             );
             case "avg_monthly": return (
