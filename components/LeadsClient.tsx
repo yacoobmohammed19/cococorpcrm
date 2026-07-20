@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, UserCheck } from "lucide-react";
 import { MultiSelect } from "@/components/ui/MultiSelect";
 import { useToast } from "@/components/Toast";
@@ -10,7 +10,12 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useOptimisticList } from "@/hooks/useOptimisticList";
 import { runAction } from "@/lib/action-utils";
-import { updateLeadStatus, deleteLead, createLead, updateLead, convertLeadToCustomer } from "@/server-actions/leads";
+import { updateLeadStatus, deleteLead, createLead, updateLead, convertLeadToCustomer, getLeadTimeline } from "@/server-actions/leads";
+
+type LeadTimelineEntry = {
+  id: number; action: string; author: string; createdAt: string;
+  changes: { label: string; from: string; to: string }[];
+};
 
 type Operator = { user_id: string; email: string };
 
@@ -309,6 +314,22 @@ export function LeadsClient({ leads: initialLeads, statuses, customers, products
   const [modalWeight, setModalWeight] = useState(0);
   const [modalLeadDate, setModalLeadDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [modalFollowUp, setModalFollowUp] = useState("");
+
+  // Timestamped change history for the lead being edited (fetched on open).
+  const [modalTimeline, setModalTimeline] = useState<LeadTimelineEntry[] | null>(null);
+  const editingLeadId = modal.open ? modal.lead?.id ?? null : null;
+  const loadTimeline = useCallback(async (leadId: number) => {
+    setModalTimeline(null); // reset to "Loading…" for the new lead
+    try {
+      const rows = await getLeadTimeline(leadId);
+      setModalTimeline(rows as LeadTimelineEntry[]);
+    } catch {
+      setModalTimeline([]);
+    }
+  }, []);
+  // Genuine external-store fetch on open / lead change — same allowance as TimeTracker.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { if (editingLeadId != null) void loadTimeline(editingLeadId); }, [editingLeadId, loadTimeline]);
 
   // Initialize the modal form each time it opens (or switches to a different lead).
   // Done during render — React's sanctioned "adjust state on prop change" pattern —
@@ -940,6 +961,51 @@ export function LeadsClient({ leads: initialLeads, statuses, customers, products
                   style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
                   🔄 Convert to Customer
                 </button>
+              </div>
+            )}
+            {modal.lead && (
+              <div className="px-5 pb-5 pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+                <div className="flex items-center justify-between mt-3 mb-2">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Timeline</h4>
+                  <a href={`/leads/${modal.lead.id}`} className="text-[11px] font-semibold hover:underline" style={{ color: "var(--accent)" }}>Open full detail →</a>
+                </div>
+                {modalTimeline === null ? (
+                  <p className="text-xs py-3 text-center" style={{ color: "var(--muted2)" }}>Loading…</p>
+                ) : modalTimeline.length === 0 ? (
+                  <p className="text-xs py-3 text-center rounded-lg" style={{ color: "var(--muted2)", background: "var(--card)", border: "1px solid var(--border)" }}>
+                    No history recorded yet
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    {modalTimeline.map(row => {
+                      const isCreate = row.action === "insert";
+                      const isDelete = row.action === "delete";
+                      const label = isCreate ? "Created" : isDelete ? "Deleted" : "Updated";
+                      const color = isCreate ? "var(--accent)" : isDelete ? "var(--red-c)" : "var(--amber-c)";
+                      const when = (() => { const d = new Date(row.createdAt); return isNaN(d.getTime()) ? "" : d.toLocaleString("en-ZA", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }); })();
+                      return (
+                        <div key={row.id} className="rounded-lg p-2.5 flex gap-2.5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                          <span className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ background: color }} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-semibold">{label}</span>
+                              <span className="text-[10px] shrink-0" style={{ color: "var(--muted2)" }}>@{row.author} · {when}</span>
+                            </div>
+                            {row.changes.length > 0 && (
+                              <ul className="text-[11px] mt-0.5 space-y-0.5" style={{ color: "var(--muted2)" }}>
+                                {row.changes.map((c, i) => (
+                                  <li key={i}>
+                                    <span className="font-medium" style={{ color: "var(--foreground)" }}>{c.label}</span>: {c.from} → <span style={{ color: "var(--foreground)" }}>{c.to}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>

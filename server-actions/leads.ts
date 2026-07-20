@@ -4,6 +4,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { LeadSchema } from "@/lib/schemas/leads";
 import { getCurrentOrgId } from "@/lib/supabase/org";
 import { createServerClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { dimCacheTag } from "@/lib/supabase/cache";
 
 export async function createLead(formData: FormData) {
@@ -133,4 +134,76 @@ export async function restoreLead(id: number) {
   const { error } = await supabase.from("fact_leads").update({ deleted_at: null }).eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/leads");
+}
+
+// Fields worth surfacing in the lead history feed, with friendly labels.
+const LEAD_HISTORY_FIELDS: Record<string, string> = {
+  name: "Name", status_id: "Status", opportunity_value: "Opportunity", weight: "Weight",
+  lead_date: "Lead date", last_follow_up: "Follow-up", phone: "Phone", contact: "Contact",
+  contacted: "Contacted", responded: "Responded", developed: "Developed", completed: "Completed",
+  total_revenue: "Total revenue", secured_revenue: "Secured revenue",
+};
+
+/**
+ * Timestamped change history for a single lead — the same audit feed shown on
+ * the lead detail page's History tab, used inline by the leads list edit modal.
+ * Returns newest-first; empty if the audit log is unreadable or has no rows.
+ */
+export async function getLeadTimeline(leadId: number) {
+  const orgId = await getCurrentOrgId();
+  const supabase = await createServerClient();
+
+  const [{ data: logData }, { data: statusesData }, { data: membershipsData }] = await Promise.all([
+    supabase.from("activity_log")
+      .select("id, action, before_state, after_state, user_id, created_at")
+      .eq("org_id", orgId).eq("entity_type", "fact_leads").eq("entity_id", leadId)
+      .order("created_at", { ascending: false }).limit(50),
+    supabase.from("dim_statuses").select("id, name").eq("org_id", orgId),
+    supabase.from("memberships").select("user_id").eq("org_id", orgId),
+  ]);
+
+  const statusName = new Map((statusesData ?? []).map(s => [Number(s.id), String(s.name)]));
+
+  // Resolve author emails, scoped to org members (same pattern as the detail page).
+  let emailById = new Map<string, string>();
+  const memberships = membershipsData ?? [];
+  if (memberships.length > 0) {
+    try {
+      const admin = createAdminClient();
+      const { data: authData } = await admin.auth.admin.listUsers({ perPage: 1000 });
+      const ids = new Set(memberships.map(m => String(m.user_id)));
+      emailById = new Map(
+        (authData?.users ?? [])
+          .filter(u => ids.has(u.id))
+          .map(u => [u.id, (u.email ?? u.id).split("@")[0]]),
+      );
+    } catch { /* admin unavailable → fall back to "Someone" */ }
+  }
+
+  const render = (key: string, val: unknown): string => {
+    if (val === null || val === undefined || val === "") return "—";
+    if (key === "status_id") return statusName.get(Number(val)) ?? String(val);
+    if (typeof val === "boolean") return val ? "Yes" : "No";
+    return String(val);
+  };
+
+  return (logData ?? []).map(r => {
+    const before = (r.before_state ?? {}) as Record<string, unknown>;
+    const after = (r.after_state ?? {}) as Record<string, unknown>;
+    const changes: { label: string; from: string; to: string }[] = [];
+    if (r.action === "update") {
+      for (const [key, label] of Object.entries(LEAD_HISTORY_FIELDS)) {
+        if (String(before[key] ?? "") !== String(after[key] ?? "")) {
+          changes.push({ label, from: render(key, before[key]), to: render(key, after[key]) });
+        }
+      }
+    }
+    return {
+      id: r.id as number,
+      action: String(r.action),
+      author: r.user_id ? (emailById.get(r.user_id) ?? "Someone") : "System",
+      createdAt: String(r.created_at),
+      changes,
+    };
+  });
 }
