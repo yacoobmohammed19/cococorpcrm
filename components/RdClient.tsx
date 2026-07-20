@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { GripVertical, MessageSquare } from "lucide-react";
+import { GripVertical, MessageSquare, Clock } from "lucide-react";
 import { useToast } from "@/components/Toast";
+import { TimeTracker } from "@/components/TimeTracker";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -121,7 +122,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
 
   // ── Project modal ─────────────────────────────────────────────────────────
   const [projectModal, setProjectModal] = useState<{ open: boolean; project: RdProject | null }>({ open: false, project: null });
-  const [modalTab, setModalTab] = useState<"details" | "updates">("details");
+  const [modalTab, setModalTab] = useState<"details" | "updates" | "time">("details");
   const [pName, setPName] = useState("");
   const [pDesc, setPDesc] = useState("");
   const [pStatus, setPStatus] = useState<number | null>(null);
@@ -608,7 +609,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
             {/* Tabs — only show for existing projects */}
             {projectModal.project && (
               <div className="flex border-b px-5" style={{ borderColor: "var(--border)" }}>
-                {(["details", "updates"] as const).map(t => (
+                {(["details", "updates", "time"] as const).map(t => (
                   <button
                     key={t}
                     onClick={() => {
@@ -625,6 +626,11 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                       <span className="flex items-center gap-1.5">
                         <MessageSquare size={12} />
                         Updates
+                      </span>
+                    ) : t === "time" ? (
+                      <span className="flex items-center gap-1.5">
+                        <Clock size={12} />
+                        Time
                       </span>
                     ) : "Details"}
                   </button>
@@ -767,6 +773,19 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                     })}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Time tab */}
+            {modalTab === "time" && projectModal.project && (
+              <div className="p-5">
+                <TimeTracker
+                  entityType="rd_project"
+                  entityId={projectModal.project.id}
+                  members={members}
+                  canEdit={canEdit}
+                  canDelete={canDelete}
+                />
               </div>
             )}
           </div>

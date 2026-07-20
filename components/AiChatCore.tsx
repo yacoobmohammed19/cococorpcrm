@@ -103,6 +103,8 @@ const TOOL_FIELD_LABELS: Record<string, string> = {
   cost_details: "Description", balance: "Balance", account_id: "Account ID",
   cost_category_id: "Category ID", estimated_value: "Est. Value",
   source: "Source", notes: "Notes", subject: "Subject", type: "Type",
+  entity_type: "Attach to", entity_id: "Record ID", minutes: "Minutes",
+  content: "Comment", note: "Note", spent_on: "Date",
 };
 
 function formatFieldKey(key: string) {

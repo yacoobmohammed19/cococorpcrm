@@ -8,6 +8,7 @@ const ALLOWED_WRITE_TOOLS = new Set([
   "create_lead",
   "log_activity",
   "create_cost", "record_cashflow",
+  "log_time", "add_comment",
 ]);
 
 export async function POST(req: NextRequest) {
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Tool not allowed" }, { status: 400 });
     }
 
-    const result = await executeWrite(tool, args, supabase, orgId);
+    const result = await executeWrite(tool, args, supabase, orgId, user.id);
     return NextResponse.json({ success: true, result });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -36,7 +37,8 @@ async function executeWrite(
   args: Record<string, unknown>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
-  orgId: string | number
+  orgId: string | number,
+  userId: string
 ): Promise<unknown> {
   switch (tool) {
     case "create_customer": {
@@ -160,6 +162,54 @@ async function executeWrite(
         .single();
       if (error) throw new Error(error.message);
       return { cashflow: data };
+    }
+
+    case "log_time": {
+      const entityType = args.entity_type;
+      if (entityType !== "lead" && entityType !== "rd_project") {
+        throw new Error("entity_type must be 'lead' or 'rd_project'");
+      }
+      const minutes = Math.round(Number(args.minutes));
+      if (!Number.isFinite(minutes) || minutes <= 0) {
+        throw new Error("minutes must be greater than zero");
+      }
+      const { data, error } = await supabase
+        .from("time_entries")
+        .insert({
+          org_id: orgId,
+          entity_type: entityType,
+          entity_id: args.entity_id,
+          minutes,
+          note: args.note || null,
+          spent_on: args.spent_on || new Date().toISOString().slice(0, 10),
+          author_id: userId,
+        })
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      return { timeEntry: data };
+    }
+
+    case "add_comment": {
+      const entityType = args.entity_type;
+      if (entityType !== "lead" && entityType !== "rd_project") {
+        throw new Error("entity_type must be 'lead' or 'rd_project'");
+      }
+      const content = String(args.content || "").trim();
+      if (!content) throw new Error("content is required");
+      const { data, error } = await supabase
+        .from("entity_comments")
+        .insert({
+          org_id: orgId,
+          entity_type: entityType,
+          entity_id: args.entity_id,
+          content,
+          author_id: userId,
+        })
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      return { comment: data };
     }
 
     default:

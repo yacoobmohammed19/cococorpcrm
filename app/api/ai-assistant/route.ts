@@ -45,6 +45,7 @@ const WRITE_TOOLS = new Set([
   "create_lead",
   "log_activity",
   "create_cost", "record_cashflow",
+  "log_time", "add_comment",
 ]);
 
 const TOOL_LABELS: Record<string, string> = {
@@ -56,6 +57,8 @@ const TOOL_LABELS: Record<string, string> = {
   log_activity: "Log Activity",
   create_cost: "Record Cost",
   record_cashflow: "Record Bank Balance",
+  log_time: "Log Time",
+  add_comment: "Add Comment",
 };
 
 const BASE_SYSTEM_PROMPT = `You are Coco, a smart AI assistant built into CocoCRM. You help users manage their business through natural conversation.
@@ -64,8 +67,16 @@ const BASE_SYSTEM_PROMPT = `You are Coco, a smart AI assistant built into CocoCR
 - Search and manage customers, invoices, leads, and costs
 - Create and update invoices, leads, customers, and costs
 - Log activities (calls, emails, meetings)
+- Track time invested against a lead or an R&D project, and add comments/notes to them
 - Answer financial questions and give business insights
 - Remember things the user asks you to keep in mind (persistent across conversations)
+
+## Time tracking & comments
+- When the user tells you what they did (e.g. "spent 45 min on the Acme lead sending a quote", "2 hours on the new packaging R&D project"), capture it with log_time.
+- First resolve which entity they mean: call search_leads or search_rd_projects with the name. If exactly one match, use it. If several match, ask which one. If none, ask whether they meant a lead or an R&D project.
+- log_time needs: entity_type ('lead' or 'rd_project'), entity_id, and minutes (ALWAYS convert their phrasing to whole minutes — "1.5 hours" → 90, "45 min" → 45, "an hour" → 60). Put what they did in the note field. Only set spent_on (YYYY-MM-DD) if they mention a specific day; otherwise leave it out and it defaults to today.
+- Use add_comment to attach a note/update to a lead or R&D project when they aren't logging time (entity_type, entity_id, content).
+- Before saving, summarise it (e.g. "Logging 45 min on lead 'Acme Corp': sent a quote."). The user confirms on a card before anything is written — same as every other write action.
 
 ## Conversation rules
 - Be concise and friendly.
@@ -174,7 +185,19 @@ Data mapping from get_customer_balances.customers:
 - notes TEXT
 - customer_id BIGINT — optional
 - lead_id BIGINT — optional
-- due_date DATE — YYYY-MM-DD optional`;
+- due_date DATE — YYYY-MM-DD optional
+
+### time_entries (required: entity_type, entity_id, minutes)
+- entity_type TEXT — exactly 'lead' or 'rd_project'
+- entity_id BIGINT — the lead or R&D project id (resolve with search_leads / search_rd_projects first)
+- minutes INTEGER — whole minutes of time invested (convert hours to minutes)
+- note TEXT — what was done
+- spent_on DATE — YYYY-MM-DD, defaults to today if omitted
+
+### entity_comments (required: entity_type, entity_id, content)
+- entity_type TEXT — exactly 'lead' or 'rd_project'
+- entity_id BIGINT — the lead or R&D project id (resolve first)
+- content TEXT — the comment/note text`;
 
 const crmTools: Tool[] = [
   {
@@ -381,6 +404,52 @@ const crmTools: Tool[] = [
             notes: { type: S.STRING },
           },
           required: ["balance", "record_date", "account_id"],
+        },
+      },
+      {
+        name: "search_leads",
+        description: "Search leads by name to find a lead id. Use before log_time / add_comment when the user names a lead.",
+        parameters: {
+          type: S.OBJECT,
+          properties: { query: { type: S.STRING, description: "Lead name to search for" } },
+          required: ["query"],
+        },
+      },
+      {
+        name: "search_rd_projects",
+        description: "Search R&D projects by name to find a project id. Use before log_time / add_comment when the user names an R&D project.",
+        parameters: {
+          type: S.OBJECT,
+          properties: { query: { type: S.STRING, description: "R&D project name to search for" } },
+          required: ["query"],
+        },
+      },
+      {
+        name: "log_time",
+        description: "Log time invested against a lead or R&D project. Resolve the entity id first with search_leads / search_rd_projects.",
+        parameters: {
+          type: S.OBJECT,
+          properties: {
+            entity_type: { type: S.STRING, description: "'lead' or 'rd_project'" },
+            entity_id: { type: S.NUMBER, description: "The lead or R&D project id" },
+            minutes: { type: S.NUMBER, description: "Whole minutes of time spent (convert hours to minutes)" },
+            note: { type: S.STRING, description: "What was done" },
+            spent_on: { type: S.STRING, description: "YYYY-MM-DD — omit for today" },
+          },
+          required: ["entity_type", "entity_id", "minutes"],
+        },
+      },
+      {
+        name: "add_comment",
+        description: "Add a comment / note to a lead or R&D project. Resolve the entity id first with search_leads / search_rd_projects.",
+        parameters: {
+          type: S.OBJECT,
+          properties: {
+            entity_type: { type: S.STRING, description: "'lead' or 'rd_project'" },
+            entity_id: { type: S.NUMBER, description: "The lead or R&D project id" },
+            content: { type: S.STRING, description: "The comment text" },
+          },
+          required: ["entity_type", "entity_id", "content"],
         },
       },
       {
@@ -697,6 +766,26 @@ async function executeTool(
       const totalRevenue = balances.reduce((s, c) => s + c.paid, 0);
       const avgInvoice = inv.length > 0 ? inv.reduce((s, i) => s + Number(i.amount), 0) / inv.length : 0;
       return { customers: top, summary: { totalOutstanding, totalRevenue, avgInvoiceValue: Math.round(avgInvoice), totalCustomersWithInvoices: balances.length } };
+    }
+
+    case "search_leads": {
+      const { data } = await supabase
+        .from("fact_leads")
+        .select("id, name, phone, contact")
+        .ilike("name", `%${args.query}%`)
+        .is("deleted_at", null)
+        .limit(8);
+      return data || [];
+    }
+
+    case "search_rd_projects": {
+      const { data } = await supabase
+        .from("rd_projects")
+        .select("id, name, priority")
+        .ilike("name", `%${args.query}%`)
+        .is("deleted_at", null)
+        .limit(8);
+      return data || [];
     }
 
     case "save_memory": {
