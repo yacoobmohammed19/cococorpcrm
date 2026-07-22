@@ -17,6 +17,9 @@ import {
 } from "@/server-actions/banking";
 import { createIncome, deleteIncome } from "@/server-actions/income";
 import { INCOME_TYPES, INCOME_TYPE_LABELS } from "@/lib/schemas/income";
+import { AfsStatements } from "@/components/AfsStatements";
+import type { SavedAfsRow } from "@/lib/afs/merge";
+import type { AutoFigures } from "@/lib/afs/compute";
 
 type Invoice = { id: number; amount: number; status: string; transaction_date: string; customer_id: number };
 type Cost = { id: number; amount: number; transaction_date: string; cost_category_id: number | null; category_name: string; cost_type: string; include_in_pnl: boolean };
@@ -35,8 +38,16 @@ type Props = {
   income: Income[];
   cashflow: Cashflow[];
   accounts: Account[];
+  afsLines: SavedAfsRow[];
+  autoByYear: Record<number, AutoFigures>;
+  finYears: number[];
+  currentFinYear: number;
+  fiscalYearStart: number;
+  taxRate: number;
   orgName: string;
   orgRegNo: string;
+  orgVatNo: string;
+  orgAddress: string;
   currency: string;
   intangibleAssets?: number;
   defaultStart: string;
@@ -149,7 +160,7 @@ function calcSystemBalance(invoices: Invoice[], costs: Cost[], income: Income[],
 }
 
 // ── Main component ───────────────────────────────────────────────────────────
-export function AccountingClient({ invoices, costs, income: initialIncome, cashflow: initialCashflow, accounts, orgName, orgRegNo, currency, intangibleAssets = 0, defaultStart, defaultEnd }: Props) {
+export function AccountingClient({ invoices, costs, income: initialIncome, cashflow: initialCashflow, accounts, afsLines, autoByYear, finYears, currentFinYear, fiscalYearStart, taxRate, orgName, orgRegNo, orgVatNo, orgAddress, currency, intangibleAssets = 0, defaultStart, defaultEnd }: Props) {
   const toast = useToast();
   const { confirm, dialogProps } = useConfirm();
   const router = useRouter();
@@ -160,14 +171,15 @@ export function AccountingClient({ invoices, costs, income: initialIncome, cashf
   // P&L lens: in "total" mode the income statement counts non-P&L costs too.
   const pnlMode = usePnlMode();
   const includeAll = includesAllCosts(pnlMode);
-  const [tab, setTab] = useState<"is" | "bs" | "bank" | "income">("is");
+  const [tab, setTab] = useState<"is" | "bs" | "isafs" | "coe" | "cf" | "notes" | "bank" | "income">("is");
+  // AFS financial-year selector (shared across statement tabs)
+  const [afsFinYear, setAfsFinYear] = useState(currentFinYear);
   // Other-income entry form
   const [incomeBusy, setIncomeBusy] = useState(false);
   const [incomeDate, setIncomeDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [start, setStart] = useState(defaultStart);
   const [end, setEnd] = useState(defaultEnd);
   const [isView, setIsView] = useState<"statement" | "monthly">("statement");
-  const [bsView, setBsView] = useState<"statement" | "monthly">("statement");
 
   // Bank recon state
   const [addBusy, setAddBusy] = useState(false);
@@ -212,22 +224,6 @@ export function AccountingClient({ invoices, costs, income: initialIncome, cashf
     return { revenue, pendingRev, otherIncome, byIncomeType, totalIncome, byCat, totalCosts: totalOpCosts, operatingProfit, byType, totalNonOp, netCashImpact };
   }, [invoices, costs, income, start, end]);
 
-  const bsData = useMemo(() => {
-    const latestByAcct: Record<string, number> = {};
-    cashflow.forEach(r => {
-      const key = String(r.account_id || "unknown");
-      if (!latestByAcct[key] || r.record_date > (cashflow.find(x => String(x.account_id || "unknown") === key)?.record_date || "")) {
-        latestByAcct[key] = r.balance;
-      }
-    });
-    const totalCash = Object.values(latestByAcct).reduce((s, b) => s + b, 0);
-    const totalRevenue = invoices.filter(i => i.status === "Completed").reduce((s, i) => s + i.amount, 0);
-    const totalOtherIncome = income.reduce((s, r) => s + r.amount, 0);
-    const totalCosts = costs.reduce((s, c) => s + c.amount, 0);
-    const totalPending = invoices.filter(i => i.status === "Pending").reduce((s, i) => s + i.amount, 0);
-    return { totalCash, retainedEarnings: totalRevenue + totalOtherIncome - totalCosts, totalPending };
-  }, [invoices, costs, income, cashflow]);
-
   // ── Monthly IS data ───────────────────────────────────────────────────────
   const isMonthly = useMemo(() => {
     const months = buildMonthRange(start, end);
@@ -250,22 +246,6 @@ export function AccountingClient({ invoices, costs, income: initialIncome, cashf
     isMonthly.forEach(m => Object.keys(m.byCat).forEach(c => s.add(c)));
     return [...s].sort();
   }, [isMonthly]);
-
-  // ── Monthly BS data ───────────────────────────────────────────────────────
-  const bsMonthly = useMemo(() => {
-    const months = buildMonthRange(start, end);
-    return months.map(mk => {
-      const me = monthEnd(mk);
-      const cumRevenue = invoices.filter(i => i.status === "Completed" && i.transaction_date <= me).reduce((s, i) => s + i.amount, 0);
-      const cumIncome = income.filter(r => r.transaction_date <= me).reduce((s, r) => s + r.amount, 0);
-      const cumCosts = costs.filter(c => c.transaction_date <= me).reduce((s, c) => s + c.amount, 0);
-      const latestByAcct: Record<string, number> = {};
-      [...cashflow].filter(r => r.record_date <= me).sort((a, b) => a.record_date.localeCompare(b.record_date))
-        .forEach(r => { latestByAcct[String(r.account_id ?? "unassigned")] = r.balance; });
-      const cash = Object.keys(latestByAcct).length > 0 ? Object.values(latestByAcct).reduce((s, b) => s + b, 0) : null;
-      return { mk, retainedEarnings: cumRevenue + cumIncome - cumCosts, cash };
-    });
-  }, [invoices, costs, income, cashflow, start, end]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   async function handleDeleteBalance(id: number) {
@@ -306,7 +286,11 @@ export function AccountingClient({ invoices, costs, income: initialIncome, cashf
       </div>
       <div className="flex gap-2 overflow-x-auto pb-0.5 mb-4 print:hidden">
         {tabBtn("is", "Income Statement")}
+        {tabBtn("isafs", "Income (SARS)")}
         {tabBtn("bs", "Balance Sheet")}
+        {tabBtn("coe", "Changes in Equity")}
+        {tabBtn("cf", "Cash Flow")}
+        {tabBtn("notes", "Notes")}
         {tabBtn("bank", "Bank Recon")}
         {tabBtn("income", "Other Income")}
       </div>
@@ -523,116 +507,23 @@ export function AccountingClient({ invoices, costs, income: initialIncome, cashf
       )}
 
       {/* ── Balance Sheet ────────────────────────────────────────────────── */}
-      {tab === "bs" && (
-        <>
-          <div className="flex flex-wrap gap-3 items-center justify-between mb-3 print:hidden">
-            {/* Statement / Monthly toggle */}
-            <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: "var(--border)" }}>
-              {(["statement", "monthly"] as const).map(v => (
-                <button key={v} onClick={() => setBsView(v)}
-                  className="px-3 py-1.5 text-xs font-semibold transition-colors"
-                  style={{ background: bsView === v ? "var(--accent)" : "var(--card3)", color: bsView === v ? "#fff" : "var(--muted)" }}>
-                  {v === "statement" ? "Statement" : "Monthly Trend"}
-                </button>
-              ))}
-            </div>
-            {bsView === "statement" && (
-              <button onClick={() => window.print()}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold"
-                style={{ background: "var(--card2)", border: "1px solid var(--border)", color: "var(--muted)" }}>
-                <Printer size={12} /> Print
-              </button>
-            )}
-          </div>
-
-          {/* ── BS Statement (current) ── */}
-          {bsView === "statement" && (
-            <div className="rounded-lg overflow-hidden" style={{ background: "#fff", color: "#111", boxShadow: "0 4px 20px rgba(0,0,0,.15)" }}>
-              <div className="px-8 py-6" style={{ background: "#1a1a2e", color: "#fff" }}>
-                <h2 className="text-lg font-bold">{orgName}</h2>
-                <p className="text-xs mt-1" style={{ color: "rgba(255,255,255,.6)" }}>BALANCE SHEET (SIMPLIFIED)</p>
-                <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,.6)" }}>As at {fdate(new Date().toISOString().slice(0, 10))}</p>
-              </div>
-              <SectionHdr label="ASSETS" />
-              <Row label="Cash and Cash Equivalents" value={bsData.totalCash} cur={currency} />
-              <Row label="Trade Receivables (Pending Invoices)" value={bsData.totalPending} cur={currency} />
-              {intangibleAssets > 0 && (
-                <Row label="Intangible Assets (Capitalised Development)" value={intangibleAssets} cur={currency} />
-              )}
-              <Subtotal label="TOTAL ASSETS" value={bsData.totalCash + bsData.totalPending + intangibleAssets} cur={currency} />
-              <SectionHdr label="EQUITY" />
-              <Row label="Retained Earnings (Revenue – Costs)" value={bsData.retainedEarnings} cur={currency} />
-              {intangibleAssets > 0 && (
-                <Row label="Capitalised Development (Owner Investment)" value={intangibleAssets} cur={currency} />
-              )}
-              <Total label="TOTAL EQUITY" value={bsData.retainedEarnings + intangibleAssets} cur={currency} />
-              <div className="px-8 py-3 text-xs italic" style={{ color: "#888", background: "#f9f9f9" }}>
-                Note: Simplified view. Use a dedicated accounting system for PPE, loans, and other adjustments.
-              </div>
-            </div>
-          )}
-
-          {/* ── BS Monthly Trend ── */}
-          {bsView === "monthly" && (
-            <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
-              <div className="px-5 py-3 border-b flex items-center justify-between" style={{ background: "var(--card2)", borderColor: "var(--border)" }}>
-                <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>
-                  Balance Sheet — Month-End Positions
-                </h3>
-                <span className="text-xs" style={{ color: "var(--muted2)" }}>{mLabel(start.slice(0,7))} → {mLabel(end.slice(0,7))}</span>
-              </div>
-              <div className="overflow-x-auto" style={{ background: "var(--card2)" }}>
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
-                      <th className="px-3 py-2.5 text-left font-semibold sticky left-0 z-10 min-w-[180px]" style={{ background: "var(--card)", color: "var(--muted2)" }}>Line Item</th>
-                      {bsMonthly.map(m => (
-                        <th key={m.mk} className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" style={{ color: "var(--muted2)", minWidth: 100 }}>
-                          {mLabel(m.mk)}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {/* Cash */}
-                    <tr className="border-b" style={{ borderColor: "var(--border)" }}>
-                      <td className="px-3 py-2 font-semibold sticky left-0 z-10" style={{ background: "var(--card2)", color: "var(--muted)" }}>Cash (Bank Snapshots)</td>
-                      {bsMonthly.map(m => (
-                        <td key={m.mk} className="px-3 py-2 text-right font-mono whitespace-nowrap"
-                          style={{ color: m.cash !== null ? "var(--accent)" : "var(--muted2)" }}>
-                          {m.cash !== null ? fmtZAR(m.cash) : "—"}
-                        </td>
-                      ))}
-                    </tr>
-                    {/* Retained Earnings */}
-                    <tr className="border-b" style={{ borderColor: "var(--border)" }}>
-                      <td className="px-3 py-2 font-semibold sticky left-0 z-10" style={{ background: "var(--card2)", color: "var(--muted)" }}>Retained Earnings</td>
-                      {bsMonthly.map(m => (
-                        <td key={m.mk} className="px-3 py-2 text-right font-mono whitespace-nowrap"
-                          style={{ color: m.retainedEarnings >= 0 ? "var(--foreground)" : "var(--red-c)" }}>
-                          {fmtZAR(m.retainedEarnings)}
-                        </td>
-                      ))}
-                    </tr>
-                    {/* Total Equity */}
-                    <tr style={{ background: "#1a1a2e" }}>
-                      <td className="px-3 py-2.5 font-bold sticky left-0 z-10" style={{ background: "#1a1a2e", color: "#fff" }}>Total Equity</td>
-                      {bsMonthly.map(m => (
-                        <td key={m.mk} className="px-3 py-2.5 text-right font-mono font-bold whitespace-nowrap"
-                          style={{ color: m.retainedEarnings >= 0 ? "#ec4899" : "#ef4444" }}>
-                          {fmtZAR(m.retainedEarnings)}
-                        </td>
-                      ))}
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div className="px-4 py-2.5 text-xs italic" style={{ background: "var(--card)", color: "var(--muted2)", borderTop: "1px solid var(--border)" }}>
-                Each column = position as at last day of that month. Cash shown only where a bank snapshot exists for the month. Retained Earnings = cumulative completed revenue − cumulative costs.
-              </div>
-            </div>
-          )}
-        </>
+      {(tab === "bs" || tab === "isafs" || tab === "coe" || tab === "cf" || tab === "notes") && (
+        <AfsStatements
+          statement={tab === "bs" ? "balance_sheet" : tab === "isafs" ? "income_statement" : tab === "coe" ? "changes_in_equity" : tab === "cf" ? "cash_flow" : "notes"}
+          afsLines={afsLines}
+          autoByYear={autoByYear}
+          finYear={afsFinYear}
+          finYears={finYears}
+          onFinYearChange={setAfsFinYear}
+          fiscalYearStart={fiscalYearStart}
+          taxRate={taxRate}
+          currency={currency}
+          canEdit={true}
+          orgName={orgName}
+          orgRegNo={orgRegNo}
+          orgVatNo={orgVatNo}
+          orgAddress={orgAddress}
+        />
       )}
 
       {/* ── Bank Reconciliation ──────────────────────────────────────────── */}
