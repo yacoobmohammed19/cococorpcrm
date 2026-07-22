@@ -71,6 +71,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {/* Mobile header — hamburger + profile menu in one bar */}
         <MobileHeader
           role={currentRole}
+          isSuperAdmin={superAdmin}
           profileMenu={
             <UserProfileMenu
               orgs={orgs}

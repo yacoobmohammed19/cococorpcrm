@@ -9,6 +9,7 @@ import {
   LayoutDashboard, Target, Users, FileText, Package,
   Receipt, CalendarDays, TrendingDown, Megaphone,
   BookOpen, BarChart2, Settings, Sparkles, UsersRound, Building2, TableProperties,
+  FlaskConical, History, Radar,
 } from "lucide-react";
 
 const allDrawerNav = [
@@ -17,10 +18,12 @@ const allDrawerNav = [
   { href: "/customers",  label: "Customers",   Icon: Users,           group: "CRM"        },
   { href: "/quotes",     label: "Quotes",      Icon: FileText,        group: "CRM"        },
   { href: "/products",   label: "Products",    Icon: Package,         group: "Catalog"    },
+  { href: "/rd",         label: "R&D",         Icon: FlaskConical,    group: "Catalog"    },
   { href: "/invoices",   label: "Invoices",    Icon: Receipt,         group: "Finance"    },
   { href: "/billing",    label: "Billing",     Icon: CalendarDays,    group: "Finance"    },
   { href: "/costs",      label: "Costs",       Icon: TrendingDown,    group: "Finance"    },
   { href: "/marketing",  label: "Marketing",   Icon: Megaphone,       group: "Marketing"  },
+  { href: "/timeline",   label: "Timeline",    Icon: History,         group: "Analytics"  },
   { href: "/accounting", label: "Accounting",  Icon: BookOpen,        group: "Analytics"  },
   { href: "/performance",label: "Snapshots",   Icon: BarChart2,       group: "Analytics"  },
   { href: "/reports",    label: "Reports",     Icon: TableProperties, group: "Analytics"  },
@@ -29,20 +32,23 @@ const allDrawerNav = [
   { href: "/settings/organisations",  label: "Orgs",      Icon: Building2,   group: "Config" },
   { href: "/chat",                    label: "Coco AI",   Icon: Sparkles,    group: "Config" },
 ];
+const controlTowerItem = { href: "/admin", label: "Control Tower", Icon: Radar, group: "Platform" };
 const OPERATOR_ALLOWED_MOBILE = new Set(["/dashboard", "/leads", "/chat"]);
-const groups = ["Overview", "CRM", "Catalog", "Finance", "Marketing", "Analytics", "Config"];
+const groups = ["Overview", "CRM", "Catalog", "Finance", "Marketing", "Analytics", "Config", "Platform"];
 
 type Props = {
   role: string | null;
+  isSuperAdmin?: boolean;
   profileMenu?: ReactNode;
 };
 
-export function MobileHeader({ role, profileMenu }: Props) {
+export function MobileHeader({ role, isSuperAdmin = false, profileMenu }: Props) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const baseNav = isSuperAdmin ? [...allDrawerNav, controlTowerItem] : allDrawerNav;
   const drawerNav = role === "operator"
-    ? allDrawerNav.filter(n => OPERATOR_ALLOWED_MOBILE.has(n.href))
-    : allDrawerNav;
+    ? baseNav.filter(n => OPERATOR_ALLOWED_MOBILE.has(n.href))
+    : baseNav;
 
   return (
     <>
