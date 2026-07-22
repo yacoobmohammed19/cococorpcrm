@@ -110,12 +110,19 @@ export function AfsStatements({
   // For the income statement, prepopulate the tax line with the suggested tax
   // (rate × profit before tax) whenever the user hasn't overridden it.
   const displayCurrent = useMemo(() => {
-    if (statement !== "income_statement") return currentLines;
-    const inc = currentLines.filter(l => l.section === "revenue").reduce((s, l) => s + l.amount, 0);
-    const exp = currentLines.filter(l => l.section === "expenses").reduce((s, l) => s + l.amount, 0);
-    const suggested = Math.round(Math.max(inc - exp, 0) * (taxRate / 100) * 100) / 100;
-    return currentLines.map(l => (l.line_key === "tax_expense" && !l.overridden ? { ...l, amount: suggested } : l));
-  }, [currentLines, statement, taxRate]);
+    if (statement === "income_statement") {
+      const inc = currentLines.filter(l => l.section === "revenue").reduce((s, l) => s + l.amount, 0);
+      const exp = currentLines.filter(l => l.section === "expenses").reduce((s, l) => s + l.amount, 0);
+      const suggested = Math.round(Math.max(inc - exp, 0) * (taxRate / 100) * 100) / 100;
+      return currentLines.map(l => (l.line_key === "tax_expense" && !l.overridden ? { ...l, amount: suggested } : l));
+    }
+    if (statement === "changes_in_equity") {
+      // Opening retained earnings = prior year-end retained earnings.
+      const opening = autoByYear[finYear - 1]?.retained_earnings ?? 0;
+      return currentLines.map(l => (l.line_key === "coe_opening" && !l.overridden ? { ...l, amount: opening } : l));
+    }
+    return currentLines;
+  }, [currentLines, statement, taxRate, autoByYear, finYear]);
 
   const shown = editing ? draft : displayCurrent;
   const inSection = (sec: string) => shown.filter(l => l.section === sec);
@@ -142,15 +149,23 @@ export function AfsStatements({
   const priorTax = priorTaxLine && priorTaxLine.overridden ? priorTaxLine.amount : Math.max(priorPbt, 0) * (taxRate / 100);
   const priorProfit = priorPbt - priorTax;
 
+  // Changes in Equity (retained-earnings reconciliation)
+  const isCoe = statement === "changes_in_equity";
+  const coeOpening = shown.find(l => l.line_key === "coe_opening")?.amount ?? 0;
+  const coeProfit = shown.find(l => l.line_key === "coe_profit")?.amount ?? 0;
+  const coeDraw = shown.find(l => l.line_key === "coe_dividends")?.amount ?? 0;
+  const coeClosing = coeOpening + coeProfit - coeDraw;
+  const coeTarget = autoByYear[finYear]?.retained_earnings ?? 0;
+  const coeDiff = coeClosing - coeTarget;
+  const priorOpening = autoByYear[finYear - 2]?.retained_earnings ?? 0;
+  const priorCoeProfit = priorLines.find(l => l.line_key === "coe_profit")?.amount ?? 0;
+  const priorCoeDraw = priorLines.find(l => l.line_key === "coe_dividends")?.amount ?? 0;
+  const priorClosing = priorOpening + priorCoeProfit - priorCoeDraw;
+
   function startEdit() {
-    let base = currentLines.map(l => ({ ...l }));
-    if (statement === "income_statement") {
-      const inc = base.filter(l => l.section === "revenue").reduce((s, l) => s + l.amount, 0);
-      const exp = base.filter(l => l.section === "expenses").reduce((s, l) => s + l.amount, 0);
-      const suggested = Math.round(Math.max(inc - exp, 0) * (taxRate / 100) * 100) / 100;
-      base = base.map(l => (l.line_key === "tax_expense" && !l.overridden ? { ...l, amount: suggested } : l));
-    }
-    setDraft(base);
+    // Base the draft on the display model so injected auto values (suggested
+    // tax, opening retained earnings) are the starting point.
+    setDraft(displayCurrent.map(l => ({ ...l })));
     setEditing(true);
   }
   function cancel() { setEditing(false); setDraft([]); }
@@ -256,6 +271,16 @@ export function AfsStatements({
     );
   }
 
+  function plainRow(label: string, value: number, prior: number) {
+    return (
+      <div className="flex items-center py-2 border-b" style={{ paddingLeft: 28, paddingRight: 20, borderColor: "#eee" }}>
+        <span className="flex-1 text-sm" style={{ color: "#333" }}>{label}</span>
+        <span className="font-mono text-sm" style={{ minWidth: 130, textAlign: "right", color: "#111" }}>{fmtMoney(value, currency)}</span>
+        <span className="font-mono text-sm" style={{ minWidth: 130, textAlign: "right", color: "#999" }}>{fmtMoney(prior, currency)}</span>
+      </div>
+    );
+  }
+
   const priorAssets = priorLines.filter(l => BS_SECTIONS.some(s => s.side === "assets" && s.key === l.section)).reduce((s, l) => s + l.amount, 0);
   const priorEqLiab = priorLines.filter(l => BS_SECTIONS.some(s => s.side === "eqliab" && s.key === l.section)).reduce((s, l) => s + l.amount, 0);
 
@@ -352,6 +377,19 @@ export function AfsStatements({
             {grandTotal("PROFIT BEFORE TAX", pbt, priorPbt)}
             {sectionBlock({ key: "tax", label: "Taxation" })}
             {grandTotal("PROFIT FOR THE YEAR", profitForYear, priorProfit)}
+          </>
+        ) : isCoe && !editing ? (
+          <>
+            {plainRow("Opening Retained Earnings", coeOpening, priorOpening)}
+            {plainRow("Add: Profit for the Year", coeProfit, priorCoeProfit)}
+            {plainRow("Less: Drawings / Distributions", -coeDraw, -priorCoeDraw)}
+            {grandTotal("CLOSING RETAINED EARNINGS", coeClosing, priorClosing)}
+            <div className="flex items-center py-3" style={{ paddingLeft: 20, paddingRight: 20, background: Math.abs(coeDiff) < 1 ? "#f0fdf4" : "#fef2f2" }}>
+              <span className="flex-1 text-sm font-bold" style={{ color: "#1a1a2e" }}>Reconciles to Balance Sheet retained earnings</span>
+              <span className="font-mono text-sm font-bold" style={{ minWidth: 130, textAlign: "right", color: Math.abs(coeDiff) < 1 ? "#16a34a" : "#ef4444" }}>
+                {Math.abs(coeDiff) < 1 ? "✓" : fmtMoney(coeDiff, currency)}
+              </span>
+            </div>
           </>
         ) : (
           sections.map(s => sectionBlock(s))

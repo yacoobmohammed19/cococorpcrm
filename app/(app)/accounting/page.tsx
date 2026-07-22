@@ -52,7 +52,7 @@ export default async function AccountingPage() {
   const finYears = Array.from({ length: 6 }, (_, i) => currentFinYear - 5 + i);
 
   const invRows = (invoices || []).map(i => ({ amount: Number(i.amount || 0), status: i.status || "", transaction_date: i.transaction_date || "" }));
-  const costRows = (costs || []).map(c => ({ amount: Number(c.amount || 0), transaction_date: c.transaction_date || "" }));
+  const costRows = (costs || []).map(c => ({ amount: Number(c.amount || 0), transaction_date: c.transaction_date || "", cost_type: ((c as Record<string, unknown>).cost_type as string) ?? "operational" }));
   const incRows = (income || []).map(r => ({ amount: Number(r.amount || 0), transaction_date: r.transaction_date || "" }));
   const cfRows = (cashflow || []).map(r => ({ balance: Number(r.balance || 0), account_id: r.account_id, record_date: r.record_date || "" }));
 

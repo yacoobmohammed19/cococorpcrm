@@ -16,7 +16,9 @@ export type AutoSource =
   | "retained_earnings"
   | "revenue"
   | "other_income"
-  | "total_expenses";
+  | "total_expenses"
+  | "drawings"
+  | "profit_for_year";
 
 export type CatalogLine = {
   statement: StatementKey;
@@ -67,11 +69,11 @@ export const CATALOG: CatalogLine[] = [
   { statement: "income_statement", section: "expenses", line_key: "finance_costs", label: "Finance Costs" },
   { statement: "income_statement", section: "tax", line_key: "tax_expense", label: "Taxation" },
 
-  // ── Statement of Changes in Equity (movements; sum = net movement) ───────
-  { statement: "changes_in_equity", section: "equity", line_key: "coe_opening", label: "Opening Balance" },
-  { statement: "changes_in_equity", section: "equity", line_key: "coe_profit", label: "Profit for the Year" },
-  { statement: "changes_in_equity", section: "equity", line_key: "coe_capital", label: "Share Capital Issued" },
-  { statement: "changes_in_equity", section: "equity", line_key: "coe_dividends", label: "Dividends / Drawings" },
+  // ── Statement of Changes in Equity (retained-earnings reconciliation) ────
+  // coe_opening is prepopulated from the prior year-end in the component.
+  { statement: "changes_in_equity", section: "equity", line_key: "coe_opening", label: "Opening Retained Earnings" },
+  { statement: "changes_in_equity", section: "equity", line_key: "coe_profit", label: "Profit for the Year", auto: "profit_for_year" },
+  { statement: "changes_in_equity", section: "equity", line_key: "coe_dividends", label: "Less: Drawings / Distributions", auto: "drawings" },
 
   // ── Statement of Cash Flows (indirect method; user-completed scaffold) ────
   { statement: "cash_flow", section: "operating", line_key: "cf_profit", label: "Profit Before Tax" },

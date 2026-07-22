@@ -5,11 +5,17 @@ import type { AutoSource } from "./catalog";
 export type AutoFigures = Record<AutoSource, number>;
 
 type Inv = { amount: number; status: string; transaction_date: string };
-type Cost = { amount: number; transaction_date: string };
+type Cost = { amount: number; transaction_date: string; cost_type?: string };
 type Income = { amount: number; transaction_date: string };
 type Cashflow = { balance: number; account_id: number | null; record_date: string };
 
 const isCompleted = (s: string) => s === "Completed" || s === "Paid";
+
+// Owner's draws / personal spend are distributions of equity, not business
+// expenses: they leave the Income Statement and appear as drawings in the
+// Statement of Changes in Equity.
+const DRAWING_TYPES = new Set(["owner_draw", "personal"]);
+const isDrawing = (c: Cost) => DRAWING_TYPES.has(c.cost_type ?? "operational");
 
 function pad(n: number) {
   return String(n).padStart(2, "0");
@@ -68,7 +74,11 @@ export function computeAutoFigures(opts: {
     .filter((i) => isCompleted(i.status) && inFy(i.transaction_date))
     .reduce((s, i) => s + i.amount, 0);
   const otherIncome = opts.income.filter((r) => inFy(r.transaction_date)).reduce((s, r) => s + r.amount, 0);
-  const totalExpenses = opts.costs.filter((c) => inFy(c.transaction_date)).reduce((s, c) => s + c.amount, 0);
+  const fyCosts = opts.costs.filter((c) => inFy(c.transaction_date));
+  // Operating expenses exclude drawings; drawings are an equity distribution.
+  const totalExpenses = fyCosts.filter((c) => !isDrawing(c)).reduce((s, c) => s + c.amount, 0);
+  const drawings = fyCosts.filter((c) => isDrawing(c)).reduce((s, c) => s + c.amount, 0);
+  const profitForYear = revenue + otherIncome - totalExpenses;
 
   return {
     cash,
@@ -78,5 +88,7 @@ export function computeAutoFigures(opts: {
     revenue,
     other_income: otherIncome,
     total_expenses: totalExpenses,
+    drawings,
+    profit_for_year: profitForYear,
   };
 }
