@@ -15,9 +15,12 @@ import {
   deleteBankBalance,
   createReconAdjustment,
 } from "@/server-actions/banking";
+import { createIncome, deleteIncome } from "@/server-actions/income";
+import { INCOME_TYPES, INCOME_TYPE_LABELS } from "@/lib/schemas/income";
 
 type Invoice = { id: number; amount: number; status: string; transaction_date: string; customer_id: number };
 type Cost = { id: number; amount: number; transaction_date: string; cost_category_id: number | null; category_name: string; cost_type: string; include_in_pnl: boolean };
+type Income = { id: number; amount: number; transaction_date: string; description: string | null; income_type: string; account_id: number | null };
 type Cashflow = { id: number; balance: number; account_id: number | null; record_date: string; notes: string | null };
 type BankTxn = {
   id: number; account_id: number | null; txn_date: string; description: string;
@@ -29,6 +32,7 @@ type Account = { id: number; name: string };
 type Props = {
   invoices: Invoice[];
   costs: Cost[];
+  income: Income[];
   cashflow: Cashflow[];
   accounts: Account[];
   orgName: string;
@@ -131,27 +135,35 @@ const inpS = { background: "var(--background)", borderColor: "var(--border)", co
 // ── System balance calculator ────────────────────────────────────────────────
 // asOfDate is used for per-row reconciliation. Pass null to get the all-time
 // cumulative figure (matches the dashboard's unfiltered "Calculated Rev−OPEX").
-function calcSystemBalance(invoices: Invoice[], costs: Cost[], asOfDate: string | null): number {
+function calcSystemBalance(invoices: Invoice[], costs: Cost[], income: Income[], asOfDate: string | null): number {
   const revenue = invoices
     .filter(i => (i.status === "Completed" || i.status === "Paid") && (!asOfDate || i.transaction_date <= asOfDate))
     .reduce((s, i) => s + i.amount, 0);
+  const otherIncome = income
+    .filter(r => !asOfDate || r.transaction_date <= asOfDate)
+    .reduce((s, r) => s + r.amount, 0);
   const totalCosts = costs
     .filter(c => !asOfDate || c.transaction_date <= asOfDate)
     .reduce((s, c) => s + c.amount, 0);
-  return revenue - totalCosts;
+  return revenue + otherIncome - totalCosts;
 }
 
 // ── Main component ───────────────────────────────────────────────────────────
-export function AccountingClient({ invoices, costs, cashflow: initialCashflow, accounts, orgName, orgRegNo, currency, intangibleAssets = 0, defaultStart, defaultEnd }: Props) {
+export function AccountingClient({ invoices, costs, income: initialIncome, cashflow: initialCashflow, accounts, orgName, orgRegNo, currency, intangibleAssets = 0, defaultStart, defaultEnd }: Props) {
   const toast = useToast();
   const { confirm, dialogProps } = useConfirm();
   const router = useRouter();
   // Optimistic mirror of bank-balance snapshots so deletes reflect instantly.
   const { items: cashflow, remove: removeBalance } = useOptimisticList(initialCashflow, toast);
+  // Optimistic mirror of other-income entries so deletes reflect instantly.
+  const { items: income, remove: removeIncome } = useOptimisticList(initialIncome, toast);
   // P&L lens: in "total" mode the income statement counts non-P&L costs too.
   const pnlMode = usePnlMode();
   const includeAll = includesAllCosts(pnlMode);
-  const [tab, setTab] = useState<"is" | "bs" | "bank">("is");
+  const [tab, setTab] = useState<"is" | "bs" | "bank" | "income">("is");
+  // Other-income entry form
+  const [incomeBusy, setIncomeBusy] = useState(false);
+  const [incomeDate, setIncomeDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [start, setStart] = useState(defaultStart);
   const [end, setEnd] = useState(defaultEnd);
   const [isView, setIsView] = useState<"statement" | "monthly">("statement");
@@ -174,6 +186,12 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
     const revenue = completed.reduce((s, i) => s + i.amount, 0);
     const pendingRev = pending.reduce((s, i) => s + i.amount, 0);
 
+    // Non-invoice income (asset sales, interest, refunds…) in period
+    const periodIncome = income.filter(r => inPeriod(r.transaction_date));
+    const byIncomeType: Record<string, number> = {};
+    periodIncome.forEach(r => { byIncomeType[r.income_type] = (byIncomeType[r.income_type] || 0) + r.amount; });
+    const otherIncome = periodIncome.reduce((s, r) => s + r.amount, 0);
+
     const periodCosts = costs.filter(c => inPeriod(c.transaction_date));
     const opCosts = periodCosts.filter(c => c.include_in_pnl);
     const nonOpCosts = periodCosts.filter(c => !c.include_in_pnl);
@@ -182,16 +200,17 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
     opCosts.forEach(c => { const cat = c.category_name || "Other"; byCat[cat] = (byCat[cat] || 0) + c.amount; });
 
     const totalOpCosts = opCosts.reduce((s, c) => s + c.amount, 0);
-    const operatingProfit = revenue - totalOpCosts;
+    const totalIncome = revenue + otherIncome;
+    const operatingProfit = totalIncome - totalOpCosts;
 
     // Non-operational breakdown by cost_type
     const byType: Record<string, number> = {};
     nonOpCosts.forEach(c => { byType[c.cost_type] = (byType[c.cost_type] || 0) + c.amount; });
     const totalNonOp = nonOpCosts.reduce((s, c) => s + c.amount, 0);
-    const netCashImpact = revenue - totalOpCosts - totalNonOp;
+    const netCashImpact = totalIncome - totalOpCosts - totalNonOp;
 
-    return { revenue, pendingRev, byCat, totalCosts: totalOpCosts, operatingProfit, byType, totalNonOp, netCashImpact };
-  }, [invoices, costs, start, end]);
+    return { revenue, pendingRev, otherIncome, byIncomeType, totalIncome, byCat, totalCosts: totalOpCosts, operatingProfit, byType, totalNonOp, netCashImpact };
+  }, [invoices, costs, income, start, end]);
 
   const bsData = useMemo(() => {
     const latestByAcct: Record<string, number> = {};
@@ -203,10 +222,11 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
     });
     const totalCash = Object.values(latestByAcct).reduce((s, b) => s + b, 0);
     const totalRevenue = invoices.filter(i => i.status === "Completed").reduce((s, i) => s + i.amount, 0);
+    const totalOtherIncome = income.reduce((s, r) => s + r.amount, 0);
     const totalCosts = costs.reduce((s, c) => s + c.amount, 0);
     const totalPending = invoices.filter(i => i.status === "Pending").reduce((s, i) => s + i.amount, 0);
-    return { totalCash, retainedEarnings: totalRevenue - totalCosts, totalPending };
-  }, [invoices, costs, cashflow]);
+    return { totalCash, retainedEarnings: totalRevenue + totalOtherIncome - totalCosts, totalPending };
+  }, [invoices, costs, income, cashflow]);
 
   // ── Monthly IS data ───────────────────────────────────────────────────────
   const isMonthly = useMemo(() => {
@@ -216,13 +236,14 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
       const ms = mk + "-01";
       const inMonth = (d: string) => d >= ms && d <= me;
       const revenue = invoices.filter(i => i.status === "Completed" && inMonth(i.transaction_date)).reduce((s, i) => s + i.amount, 0);
+      const otherIncome = income.filter(r => inMonth(r.transaction_date)).reduce((s, r) => s + r.amount, 0);
       const opCosts = costs.filter(c => inMonth(c.transaction_date) && (includeAll || c.include_in_pnl));
       const byCat: Record<string, number> = {};
       opCosts.forEach(c => { const cat = c.category_name || "Other"; byCat[cat] = (byCat[cat] || 0) + c.amount; });
       const totalCosts = opCosts.reduce((s, c) => s + c.amount, 0);
-      return { mk, revenue, byCat, totalCosts, profit: revenue - totalCosts };
+      return { mk, revenue, otherIncome, byCat, totalCosts, profit: revenue + otherIncome - totalCosts };
     });
-  }, [invoices, costs, start, end, includeAll]);
+  }, [invoices, costs, income, start, end, includeAll]);
 
   const isMonthlyAllCats = useMemo(() => {
     const s = new Set<string>();
@@ -236,14 +257,15 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
     return months.map(mk => {
       const me = monthEnd(mk);
       const cumRevenue = invoices.filter(i => i.status === "Completed" && i.transaction_date <= me).reduce((s, i) => s + i.amount, 0);
+      const cumIncome = income.filter(r => r.transaction_date <= me).reduce((s, r) => s + r.amount, 0);
       const cumCosts = costs.filter(c => c.transaction_date <= me).reduce((s, c) => s + c.amount, 0);
       const latestByAcct: Record<string, number> = {};
       [...cashflow].filter(r => r.record_date <= me).sort((a, b) => a.record_date.localeCompare(b.record_date))
         .forEach(r => { latestByAcct[String(r.account_id ?? "unassigned")] = r.balance; });
       const cash = Object.keys(latestByAcct).length > 0 ? Object.values(latestByAcct).reduce((s, b) => s + b, 0) : null;
-      return { mk, retainedEarnings: cumRevenue - cumCosts, cash };
+      return { mk, retainedEarnings: cumRevenue + cumIncome - cumCosts, cash };
     });
-  }, [invoices, costs, cashflow, start, end]);
+  }, [invoices, costs, income, cashflow, start, end]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   async function handleDeleteBalance(id: number) {
@@ -252,8 +274,14 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
     if (ok) router.refresh();
   }
 
+  async function handleDeleteIncome(id: number) {
+    if (!await confirm("Delete this income entry?", "The entry and its auto-created bank credit will be removed.")) return;
+    const ok = await removeIncome(id, () => deleteIncome(id), { success: "Income entry deleted" });
+    if (ok) router.refresh();
+  }
+
   function handleResolveClick(entry: Cashflow) {
-    const sysBal = calcSystemBalance(invoices, costs, entry.record_date);
+    const sysBal = calcSystemBalance(invoices, costs, income, entry.record_date);
     const variance = entry.balance - sysBal;
     setResolveType(variance > 0 ? "income" : "cost");
     setResolveDate(entry.record_date);
@@ -280,6 +308,7 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
         {tabBtn("is", "Income Statement")}
         {tabBtn("bs", "Balance Sheet")}
         {tabBtn("bank", "Bank Recon")}
+        {tabBtn("income", "Other Income")}
       </div>
 
       {/* ── Income Statement ─────────────────────────────────────────────── */}
@@ -350,6 +379,20 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
                         {fmtZAR(isMonthly.reduce((s, m) => s + m.revenue, 0))}
                       </td>
                     </tr>
+                    {/* Other Income */}
+                    {isMonthly.some(m => m.otherIncome > 0) && (
+                      <tr className="border-b" style={{ borderColor: "var(--border)", background: "rgba(236,72,153,.02)" }}>
+                        <td className="px-3 py-2 pl-5 sticky left-0 z-10" style={{ background: "var(--card2)", color: "var(--accent)" }}>Other Income</td>
+                        {isMonthly.map(m => (
+                          <td key={m.mk} className="px-3 py-2 text-right font-mono whitespace-nowrap" style={{ color: m.otherIncome > 0 ? "var(--accent)" : "var(--muted2)" }}>
+                            {m.otherIncome > 0 ? fmtZAR(m.otherIncome) : "—"}
+                          </td>
+                        ))}
+                        <td className="px-3 py-2 text-right font-mono font-semibold whitespace-nowrap" style={{ color: "var(--accent)" }}>
+                          {fmtZAR(isMonthly.reduce((s, m) => s + m.otherIncome, 0))}
+                        </td>
+                      </tr>
+                    )}
                     {/* Cost rows */}
                     {isMonthlyAllCats.map(cat => (
                       <tr key={cat} className="border-b" style={{ borderColor: "var(--border)" }}>
@@ -415,7 +458,10 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
               <SectionHdr label="REVENUE" />
               <Row label="Turnover (Completed Invoices)" value={isData.revenue} cur={currency} />
               <Row label="Deferred Revenue (Pending)" value={0} cur={currency} note={`${fmtZAR(isData.pendingRev)} not yet earned`} />
-              {isData.revenue > 0 && <Subtotal label="TOTAL REVENUE" value={isData.revenue} cur={currency} />}
+              {Object.entries(isData.byIncomeType).map(([type, val]) => (
+                <Row key={type} label={INCOME_TYPE_LABELS[type] ?? "Other Income"} value={val} cur={currency} indent={1} />
+              ))}
+              {isData.totalIncome > 0 && <Subtotal label="TOTAL REVENUE" value={isData.totalIncome} cur={currency} />}
               <SectionHdr label="OPERATING EXPENSES" />
               {Object.entries(isData.byCat).map(([cat, val]) => (
                 <Row key={cat} label={cat} value={-val} cur={currency} indent={1} />
@@ -442,6 +488,9 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
               </div>
               <SectionHdr label="OPERATIONAL P&L" />
               <Row label="Revenue (Completed Invoices)" value={isData.revenue} cur={currency} />
+              {Object.entries(isData.byIncomeType).map(([type, val]) => (
+                <Row key={type} label={INCOME_TYPE_LABELS[type] ?? "Other Income"} value={val} cur={currency} indent={1} />
+              ))}
               <Row label="Operational Costs" value={-isData.totalCosts} cur={currency} indent={1} />
               <Subtotal label="OPERATING PROFIT / (LOSS)" value={isData.operatingProfit} cur={currency} />
 
@@ -602,7 +651,7 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
         const latestSnapshotDate = acctEntries.length > 0 ? acctEntries.map(e => e.record_date).sort().reverse()[0] : null;
         const multiAccount = acctEntries.length > 1;
 
-        const sysBalToday = calcSystemBalance(invoices, costs, null);
+        const sysBalToday = calcSystemBalance(invoices, costs, income, null);
         const currentVariance = totalBankBal != null ? totalBankBal - sysBalToday : null;
         const varColor = currentVariance === null ? "var(--muted2)"
           : Math.abs(currentVariance) < 1 ? "var(--accent)"
@@ -724,7 +773,7 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
                 {/* Mobile Cards */}
                 <div className="sm:hidden divide-y" style={{ borderColor: "var(--border)", background: "var(--card2)" }}>
                   {sortedCf.map(entry => {
-                    const sysBal = calcSystemBalance(invoices, costs, entry.record_date);
+                    const sysBal = calcSystemBalance(invoices, costs, income, entry.record_date);
                     const variance = entry.balance - sysBal;
                     const isBalanced = Math.abs(variance) < 1;
                     const acc = accounts.find(a => a.id === entry.account_id);
@@ -784,7 +833,7 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
                     </thead>
                     <tbody>
                       {sortedCf.map(entry => {
-                        const sysBal = calcSystemBalance(invoices, costs, entry.record_date);
+                        const sysBal = calcSystemBalance(invoices, costs, income, entry.record_date);
                         const variance = entry.balance - sysBal;
                         const isBalanced = Math.abs(variance) < 1;
                         const acc = accounts.find(a => a.id === entry.account_id);
@@ -830,7 +879,7 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
 
             {/* Resolve Modal */}
             {resolveEntry && (() => {
-              const sysBal = calcSystemBalance(invoices, costs, resolveEntry.record_date);
+              const sysBal = calcSystemBalance(invoices, costs, income, resolveEntry.record_date);
               const variance = resolveEntry.balance - sysBal;
               const absVar = Math.abs(variance);
               const isIncome = variance > 0;
@@ -936,6 +985,128 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
                 </div>
               );
             })()}
+          </div>
+        );
+      })()}
+
+      {/* ── Other Income ─────────────────────────────────────────────────── */}
+      {tab === "income" && (() => {
+        const sortedIncome = [...income].sort((a, b) => b.transaction_date.localeCompare(a.transaction_date));
+        const total = sortedIncome.reduce((s, r) => s + r.amount, 0);
+        return (
+          <div>
+            <div className="rounded-lg p-4 mb-4" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
+              <p className="text-sm font-semibold mb-1">Record non-invoice income</p>
+              <p className="text-xs" style={{ color: "var(--muted2)" }}>
+                Asset sales, interest, refunds and other money-in that isn&apos;t an invoice. Each entry lifts your
+                Income Statement and System Balance, and auto-creates a matching credit in the bank ledger.
+              </p>
+            </div>
+
+            {/* Add Income Form */}
+            <form
+              onSubmit={async e => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                setIncomeBusy(true);
+                try {
+                  await createIncome(new FormData(form));
+                  toast.success("Income recorded — a bank credit was added. Update your bank balance snapshot below.");
+                  form.reset();
+                  setIncomeDate(new Date().toISOString().slice(0, 10));
+                  setTab("bank");
+                  router.refresh();
+                } catch { toast.error("Failed to record income"); }
+                finally { setIncomeBusy(false); }
+              }}
+              className="rounded-lg p-4 mb-5"
+              style={{ background: "var(--card2)", border: "1px solid var(--border)" }}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-3">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Date *</label>
+                  <DateInput name="transaction_date" value={incomeDate} onChange={setIncomeDate} placeholder="Select date" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Income Type *</label>
+                  <select name="income_type" defaultValue="asset_sale" className={inp} style={inpS}>
+                    {INCOME_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Amount *</label>
+                  <input name="amount" type="number" step="0.01" min="0.01" required placeholder="0.00" className={inp} style={inpS} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Bank Account</label>
+                  <select name="account_id" className={inp} style={inpS}>
+                    <option value="">— Optional —</option>
+                    {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Description</label>
+                  <input name="description" placeholder="e.g. Sold company cellphone" className={inp} style={inpS} />
+                </div>
+                <div className="sm:col-span-2 md:col-span-1">
+                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--muted2)" }}>Reference</label>
+                  <input name="reference" placeholder="Optional ref / note" className={inp} style={inpS} />
+                </div>
+              </div>
+              <button type="submit" disabled={incomeBusy}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-semibold"
+                style={{ background: "var(--accent)", color: "#fff", opacity: incomeBusy ? .6 : 1 }}>
+                {incomeBusy ? "Saving…" : "+ Record Income"}
+              </button>
+            </form>
+
+            {/* Income History */}
+            {sortedIncome.length === 0 ? (
+              <div className="rounded-lg p-12 text-center" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
+                <p className="text-sm font-semibold mb-1">No other income recorded yet</p>
+                <p className="text-xs" style={{ color: "var(--muted2)" }}>Record your first non-invoice income above.</p>
+              </div>
+            ) : (
+              <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
+                        {["Date", "Type", "Description", "Account", "Amount", ""].map(h => (
+                          <th key={h} className="px-3 py-2.5 text-left font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: "var(--muted2)" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedIncome.map(r => {
+                        const acc = accounts.find(a => a.id === r.account_id);
+                        return (
+                          <tr key={r.id} className="border-b hover:bg-[var(--card3)] transition-colors" style={{ borderColor: "var(--border)" }}>
+                            <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--muted2)" }}>{fdateShort(r.transaction_date)}</td>
+                            <td className="px-3 py-2.5" style={{ color: "var(--muted)" }}>{INCOME_TYPE_LABELS[r.income_type] ?? "Other Income"}</td>
+                            <td className="px-3 py-2.5 max-w-[220px] truncate" style={{ color: "var(--muted)" }}>{r.description || "—"}</td>
+                            <td className="px-3 py-2.5" style={{ color: "var(--muted2)" }}>{acc?.name || "—"}</td>
+                            <td className="px-3 py-2.5 font-mono font-semibold" style={{ color: "var(--accent)" }}>{currency} {fmt(r.amount)}</td>
+                            <td className="px-3 py-2.5 whitespace-nowrap">
+                              <button onClick={() => handleDeleteIncome(r.id)}
+                                className="w-7 h-7 flex items-center justify-center rounded-lg"
+                                style={{ background: "var(--danger-bg)", color: "var(--red-c)" }}><Trash2 size={13} /></button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ background: "var(--card)", borderTop: "1px solid var(--border)" }}>
+                        <td className="px-3 py-2.5 font-semibold" colSpan={4} style={{ color: "var(--muted2)" }}>Total Other Income</td>
+                        <td className="px-3 py-2.5 font-mono font-bold" style={{ color: "var(--accent)" }}>{currency} {fmt(total)}</td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         );
       })()}

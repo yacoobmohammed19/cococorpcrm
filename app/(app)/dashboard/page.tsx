@@ -13,6 +13,7 @@ export default async function DashboardPage() {
     { data: leads },
     { data: invoices },
     { data: costs },
+    { data: income },
     { data: cashflow },
     { data: orgSettings },
     { data: timeRows },
@@ -23,6 +24,7 @@ export default async function DashboardPage() {
     supabase.from("fact_leads").select("id, name, status_id, lead_date, opportunity_value, opportunity_weighted, weight, last_follow_up, contacted, responded, developed, completed, created_at, total_revenue").eq("org_id", orgId).is("deleted_at", null),
     supabase.from("fact_invoices").select("id, amount, status, transaction_date, customer_id, payment_type_id, due_date").eq("org_id", orgId).is("deleted_at", null),
     supabase.from("fact_costs").select("id, amount, transaction_date, cost_category_id, include_in_pnl").eq("org_id", orgId).is("deleted_at", null),
+    supabase.from("fact_income").select("id, amount, transaction_date, income_type").eq("org_id", orgId).is("deleted_at", null),
     supabase.from("fact_cashflow").select("id, balance, record_date, account_id").eq("org_id", orgId).order("record_date", { ascending: false }),
     supabase.from("organizations").select("dashboard_settings").eq("id", orgId).single(),
     // Time tracking — degrades to [] if the migration hasn't run yet
@@ -83,6 +85,7 @@ export default async function DashboardPage() {
         rawLeads={leads || []}
         rawInvoices={invoices || []}
         rawCosts={costs || []}
+        rawIncome={income || []}
         rawCashflow={cashflow || []}
         customers={dims.customers}
         statuses={dims.statuses}

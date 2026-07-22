@@ -24,11 +24,12 @@ type RawInvoice = {
   customer_id: number | null; payment_type_id: number | null; due_date: string | null;
 };
 type RawCost = { id: number; amount: number | null; transaction_date: string | null; cost_category_id: number | null; include_in_pnl: boolean | null };
+type RawIncome = { id: number; amount: number | null; transaction_date: string | null; income_type: string | null };
 type RawCashflow = { id: number; balance: number; record_date: string; account_id: number | null };
 type Dim = { id: number; name: string };
 
 type Props = {
-  rawLeads: RawLead[]; rawInvoices: RawInvoice[]; rawCosts: RawCost[]; rawCashflow: RawCashflow[];
+  rawLeads: RawLead[]; rawInvoices: RawInvoice[]; rawCosts: RawCost[]; rawIncome: RawIncome[]; rawCashflow: RawCashflow[];
   customers: Dim[]; statuses: Dim[]; paymentTypes: Dim[]; costCategories: Dim[]; accounts: Dim[];
   currency: string; orgName: string; orgId?: string; bankBalance: number; bankLastDate: string | null;
   fiscalYearStart?: number;
@@ -985,7 +986,7 @@ function readLS<T>(key: string, fallback: T): T {
 }
 
 export function DashboardCharts({
-  rawLeads, rawInvoices, rawCosts, rawCashflow,
+  rawLeads, rawInvoices, rawCosts, rawIncome, rawCashflow,
   customers, statuses, paymentTypes, costCategories, accounts,
   currency, orgName, orgId, bankBalance, bankLastDate, fiscalYearStart,
   savedDashboardSettings, defaultPeriod,
@@ -1220,6 +1221,10 @@ export function DashboardCharts({
     return true;
   }), [rawCosts, filters]);
 
+  const fIncome = useMemo(() => rawIncome.filter(r =>
+    dateInRange(r.transaction_date, filters.dateFrom, filters.dateTo),
+  ), [rawIncome, filters]);
+
   // Trend charts (the rolling 12-month series) must NOT collapse when the date
   // filter is narrowed (e.g. the default "this month"). These sets apply every
   // filter EXCEPT the date range, so month-over-month trends stay intact while
@@ -1252,8 +1257,11 @@ export function DashboardCharts({
     // the KPI tiles stay consistent with them.
     const opex = fCosts.filter(c => includeAll || c.include_in_pnl !== false).reduce((s, c) => s + Number(c.amount || 0), 0);
     const all_costs = fCosts.reduce((s, c) => s + Number(c.amount || 0), 0);
-    const profit = revenue - opex;
-    const net_profit = revenue - all_costs;
+    // Non-invoice income (asset sales, interest…) lifts profit but is kept out of
+    // the turnover "revenue" figure, matching the accounting Income Statement.
+    const other_income = fIncome.reduce((s, r) => s + Number(r.amount || 0), 0);
+    const profit = revenue + other_income - opex;
+    const net_profit = revenue + other_income - all_costs;
     const margin_pct = revenue > 0 ? profit / revenue * 100 : 0;
     const net_margin_pct = revenue > 0 ? net_profit / revenue * 100 : 0;
     const wonLeads = fLeads.filter(l => l.status_id === wonStatusId);
@@ -1276,14 +1284,14 @@ export function DashboardCharts({
     const bank_balance_filtered = Object.values(latestByAcct).reduce((s, b) => s + b, 0);
 
     return {
-      revenue, opex, all_costs, profit, net_profit, margin_pct, net_margin_pct, pipeline, pipeline_weighted, avg_deal, pending,
+      revenue, other_income, opex, all_costs, profit, net_profit, margin_pct, net_margin_pct, pipeline, pipeline_weighted, avg_deal, pending,
       total_leads: fLeads.length, won_leads: wonLeads.length, open_leads: openLeads.length,
       conversion_pct, total_customers: customers.length, total_invoices: fInvoices.length,
       bank_balance: bankBalance,
       bank_balance_filtered,
       completedInv, pendingInv, openLeads, wonLeads,
     };
-  }, [fLeads, fInvoices, fCosts, fCashflow, wonStatusId, lostStatusId, customers, bankBalance, filters, includeAll]);
+  }, [fLeads, fInvoices, fCosts, fIncome, fCashflow, wonStatusId, lostStatusId, customers, bankBalance, filters, includeAll]);
 
   // ── Custom KPI evaluation (table-based, matches index.html calcMetric) ───
   const tableMap = useMemo<Record<TableKey, Record<string, unknown>[]>>(() => ({
@@ -1428,15 +1436,17 @@ export function DashboardCharts({
     const prevLeads = rawLeads.filter(l => dateInRange(l.lead_date, prevPeriodDates.from, prevPeriodDates.to));
     const prevInv = rawInvoices.filter(i => dateInRange(i.transaction_date, prevPeriodDates.from, prevPeriodDates.to));
     const prevCosts = rawCosts.filter(c => dateInRange(c.transaction_date, prevPeriodDates.from, prevPeriodDates.to));
+    const prevIncome = rawIncome.filter(r => dateInRange(r.transaction_date, prevPeriodDates.from, prevPeriodDates.to));
     const completedInv = prevInv.filter(i => isCompleted(i.status));
     const revenue = completedInv.reduce((s, i) => s + Number(i.amount || 0), 0);
+    const other_income = prevIncome.reduce((s, r) => s + Number(r.amount || 0), 0);
     const opex = prevCosts.filter(c => includeAll || c.include_in_pnl !== false).reduce((s, c) => s + Number(c.amount || 0), 0);
     const all_costs = prevCosts.reduce((s, c) => s + Number(c.amount || 0), 0);
     const wonLeads = prevLeads.filter(l => l.status_id === wonStatusId);
     const openLeads = prevLeads.filter(l => l.status_id !== wonStatusId && l.status_id !== lostStatusId && l.status_id !== 5);
     const totalRev = prevLeads.reduce((s, l) => s + Number(l.total_revenue || 0), 0);
     return {
-      revenue, opex, profit: revenue - opex, net_profit: revenue - all_costs,
+      revenue, opex, profit: revenue + other_income - opex, net_profit: revenue + other_income - all_costs,
       total_leads: prevLeads.length, won_leads: wonLeads.length,
       conversion_pct: prevLeads.length > 0 ? wonLeads.length / prevLeads.length * 100 : 0,
       pipeline: openLeads.reduce((s, l) => s + Number(l.opportunity_value || 0), 0),
@@ -1444,7 +1454,7 @@ export function DashboardCharts({
       pending: prevInv.filter(i => isPending(i.status)).reduce((s, i) => s + Number(i.amount || 0), 0),
       avg_deal: wonLeads.length > 0 ? totalRev / wonLeads.length : 0,
     };
-  }, [rawLeads, rawInvoices, rawCosts, prevPeriodDates, wonStatusId, lostStatusId, includeAll]);
+  }, [rawLeads, rawInvoices, rawCosts, rawIncome, prevPeriodDates, wonStatusId, lostStatusId, includeAll]);
 
   const lyPeriodDates = useMemo(() => {
     const shiftYear = (d: string) => d ? `${String(parseInt(d.slice(0, 4)) - 1)}${d.slice(4)}` : "";

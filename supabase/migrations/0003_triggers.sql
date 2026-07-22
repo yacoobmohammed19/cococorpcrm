@@ -50,6 +50,7 @@ declare
     'fact_rough_leads',
     'fact_invoices',
     'fact_costs',
+    'fact_income',
     'fact_cashflow',
     'fact_campaigns',
     'fact_campaign_updates',
