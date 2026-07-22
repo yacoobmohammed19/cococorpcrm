@@ -34,6 +34,7 @@ type Props = {
   orgName: string;
   orgRegNo: string;
   currency: string;
+  intangibleAssets?: number;
   defaultStart: string;
   defaultEnd: string;
 };
@@ -141,7 +142,7 @@ function calcSystemBalance(invoices: Invoice[], costs: Cost[], asOfDate: string 
 }
 
 // ── Main component ───────────────────────────────────────────────────────────
-export function AccountingClient({ invoices, costs, cashflow: initialCashflow, accounts, orgName, orgRegNo, currency, defaultStart, defaultEnd }: Props) {
+export function AccountingClient({ invoices, costs, cashflow: initialCashflow, accounts, orgName, orgRegNo, currency, intangibleAssets = 0, defaultStart, defaultEnd }: Props) {
   const toast = useToast();
   const { confirm, dialogProps } = useConfirm();
   const router = useRouter();
@@ -506,10 +507,16 @@ export function AccountingClient({ invoices, costs, cashflow: initialCashflow, a
               <SectionHdr label="ASSETS" />
               <Row label="Cash and Cash Equivalents" value={bsData.totalCash} cur={currency} />
               <Row label="Trade Receivables (Pending Invoices)" value={bsData.totalPending} cur={currency} />
-              <Subtotal label="TOTAL ASSETS" value={bsData.totalCash + bsData.totalPending} cur={currency} />
+              {intangibleAssets > 0 && (
+                <Row label="Intangible Assets (Capitalised Development)" value={intangibleAssets} cur={currency} />
+              )}
+              <Subtotal label="TOTAL ASSETS" value={bsData.totalCash + bsData.totalPending + intangibleAssets} cur={currency} />
               <SectionHdr label="EQUITY" />
               <Row label="Retained Earnings (Revenue – Costs)" value={bsData.retainedEarnings} cur={currency} />
-              <Total label="TOTAL EQUITY" value={bsData.retainedEarnings} cur={currency} />
+              {intangibleAssets > 0 && (
+                <Row label="Capitalised Development (Owner Investment)" value={intangibleAssets} cur={currency} />
+              )}
+              <Total label="TOTAL EQUITY" value={bsData.retainedEarnings + intangibleAssets} cur={currency} />
               <div className="px-8 py-3 text-xs italic" style={{ color: "#888", background: "#f9f9f9" }}>
                 Note: Simplified view. Use a dedicated accounting system for PPE, loans, and other adjustments.
               </div>

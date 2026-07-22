@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from "react";
 import { GripVertical, MessageSquare, Clock } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { TimeTracker } from "@/components/TimeTracker";
+import { ReportingClient, type ReportProject } from "@/components/ReportingClient";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -13,6 +14,7 @@ import {
   createRdStatus, updateRdStatus, deleteRdStatus, reorderRdStatuses,
   createRdProject, updateRdProject, updateRdProjectStatus, deleteRdProject,
   finalizeRdProject, addRdProjectUpdate,
+  createRdTag, updateRdTag, deleteRdTag, setProjectTags,
 } from "@/server-actions/rd";
 
 type RdStatus = { id: number; name: string; color: string; position: number };
@@ -24,6 +26,7 @@ type RdProject = {
 };
 type Member = { user_id: string; email: string };
 type ProjectUpdate = { id: number; content: string; author_id: string | null; created_at: string };
+type RdTag = { id: number; name: string; color: string };
 
 type Props = {
   statuses: RdStatus[];
@@ -31,6 +34,12 @@ type Props = {
   members: Member[];
   currency: string;
   currentRole: string;
+  reportProjects: ReportProject[];
+  reportCurrency: string;
+  defaultRate: number;
+  asOf: string;
+  tags: RdTag[];
+  tagIdsByProject: Record<number, number[]>;
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -55,10 +64,22 @@ function ftime(d: string) {
 const SWATCH_COLORS = ["#ec4899","#3b82f6","#8b5cf6","#f59e0b","#ef4444","#06b6d4","#e84393","#84cc16","#f97316","#64748b"];
 
 // ProjectCard is stable (defined outside the component) so React doesn't remount it on every render
+function TagChip({ tag, small = false }: { tag: RdTag; small?: boolean }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full font-semibold whitespace-nowrap ${small ? "text-[9px] px-1.5 py-0.5" : "text-[10px] px-2 py-0.5"}`}
+      style={{ background: `${tag.color}22`, color: tag.color }}>
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: tag.color }} />
+      {tag.name}
+    </span>
+  );
+}
+
 function ProjectCard({
-  p, members, currency, canEdit, onEdit, onDragStart, onDragEnd,
+  p, members, currency, canEdit, tags, onEdit, onDragStart, onDragEnd,
 }: {
   p: RdProject; members: Member[]; currency: string; canEdit: boolean;
+  tags: RdTag[];
   onEdit: (p: RdProject) => void;
   onDragStart: (id: number) => void;
   onDragEnd: () => void;
@@ -85,6 +106,11 @@ function ProjectCard({
       {p.description && (
         <p className="text-xs mb-1.5 line-clamp-2" style={{ color: "var(--muted2)" }}>{p.description}</p>
       )}
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-1.5">
+          {tags.map(t => <TagChip key={t.id} tag={t} small />)}
+        </div>
+      )}
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px]" style={{ color: "var(--muted2)" }}>
         {p.target_date && (
           <span style={{ color: overdue ? "var(--red-c)" : "var(--muted2)" }}>
@@ -99,7 +125,7 @@ function ProjectCard({
   );
 }
 
-export function RdClient({ statuses: initialStatuses, projects: initialProjects, members, currency, currentRole }: Props) {
+export function RdClient({ statuses: initialStatuses, projects: initialProjects, members, currency, currentRole, reportProjects, reportCurrency, defaultRate, asOf, tags, tagIdsByProject }: Props) {
   const toast = useToast();
   const { confirm, dialogProps } = useConfirm();
   const canEdit = ["owner", "admin", "member"].includes(currentRole);
@@ -112,7 +138,21 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
   const {
     items: projects, add: addProject, update: updateProject, remove: removeProject,
   } = useOptimisticList(initialProjects, toast);
-  const [view, setView] = useState<"kanban" | "table">("kanban");
+  const [view, setView] = useState<"kanban" | "table" | "report">("kanban");
+
+  // ── Tags ──────────────────────────────────────────────────────────────────
+  const tagById = new Map(tags.map(t => [t.id, t]));
+  const tagsForProject = useCallback(
+    (projectId: number): RdTag[] => (tagIdsByProject[projectId] ?? []).map(id => tagById.get(id)).filter((t): t is RdTag => !!t),
+    // tagById is derived from `tags` each render; depending on `tags` keeps it correct
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tags, tagIdsByProject],
+  );
+  const [tagPanel, setTagPanel] = useState(false);
+  const [editingTag, setEditingTag] = useState<RdTag | null>(null);
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagColor, setNewTagColor] = useState(SWATCH_COLORS[2]);
+  const [pTags, setPTags] = useState<number[]>([]);
 
   // ── Column manager ────────────────────────────────────────────────────────
   const [colPanel, setColPanel] = useState(false);
@@ -145,6 +185,8 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
   const [fDesc, setFDesc] = useState("");
   const [fPrice, setFPrice] = useState<number | "">(0);
   const [fCategory, setFCategory] = useState("");
+  const [fCapitalise, setFCapitalise] = useState(true);
+  const [fMonths, setFMonths] = useState<number | "">(36);
 
   // ── Card drag & drop ──────────────────────────────────────────────────────
   const dragId = useRef<number | null>(null);
@@ -177,6 +219,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
     setModalTab("details");
     setPName(""); setPDesc(""); setPStatus(statusId ?? statuses[0]?.id ?? null);
     setPTargetDate(""); setPAssigned(""); setPPriority("medium"); setPBudget(""); setPNotes("");
+    setPTags([]);
     setUpdates([]);
   }
 
@@ -186,6 +229,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
     setPName(p.name); setPDesc(p.description ?? ""); setPStatus(p.status_id);
     setPTargetDate(p.target_date ?? ""); setPAssigned(p.assigned_to ?? "");
     setPPriority(p.priority); setPBudget(p.budget_estimate ?? ""); setPNotes(p.notes ?? "");
+    setPTags(tagIdsByProject[p.id] ?? []);
     setUpdateInput("");
     setUpdates([]);
   }
@@ -194,6 +238,9 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
     setFinalizeProject(p);
     setFName(p.name); setFSku(""); setFDesc(p.description ?? "");
     setFPrice(p.budget_estimate ?? 0); setFCategory("");
+    const existing = reportProjects.find(r => r.id === p.id);
+    setFCapitalise(existing?.is_capex ?? true);
+    setFMonths(existing?.amortisation_months ?? 36);
   }
 
   function saveProject() {
@@ -206,14 +253,19 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
       notes: pNotes || null,
     };
     const editing = projectModal.project;
+    const tagIds = pTags;
     setProjectModal({ open: false, project: null });
     if (editing) {
-      void updateProject(editing.id, data, () => updateRdProject(editing.id, data), { success: "Project updated" });
+      void updateProject(
+        editing.id, data,
+        async () => { await updateRdProject(editing.id, data); await setProjectTags(editing.id, tagIds); },
+        { success: "Project updated" },
+      );
     } else {
       const temp: RdProject = {
         id: -Date.now(), ...data, product_id: null, finalized_at: null, created_at: new Date().toISOString(),
       };
-      void addProject(temp, () => createRdProject(data), { success: "Project created" });
+      void addProject(temp, () => createRdProject({ ...data, tag_ids: tagIds }), { success: "Project created" });
     }
   }
 
@@ -236,11 +288,13 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
       name, sku: fSku || null, description: fDesc || null,
       unit_price: Number(fPrice) || 0, category: fCategory || null,
     };
+    const capitalise = fCapitalise;
+    const months = capitalise && fMonths !== "" && Number(fMonths) > 0 ? Number(fMonths) : null;
     setFinalizeProject(null);
     void updateProject(
       id, { finalized_at: new Date().toISOString() },
-      () => finalizeRdProject(id, productData),
-      { success: `"${name}" added to Products` },
+      () => finalizeRdProject(id, productData, { capitalise, amortisationMonths: months }),
+      { success: capitalise ? `"${name}" finalised & added to the Balance Sheet` : `"${name}" added to Products` },
     );
   }
 
@@ -312,6 +366,29 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
     void removeStatus(id, () => deleteRdStatus(id), { success: "Column deleted" });
   }
 
+  // ── Tag handlers ───────────────────────────────────────────────────────────
+  async function addTag() {
+    if (!newTagName.trim()) return;
+    const name = newTagName.trim(); const color = newTagColor;
+    setNewTagName(""); setNewTagColor(SWATCH_COLORS[2]);
+    try { await createRdTag(name, color); toast.success("Tag added"); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Could not add tag"); }
+  }
+
+  async function saveTag() {
+    if (!editingTag || !editingTag.name.trim()) return;
+    const { id, name, color } = editingTag;
+    setEditingTag(null);
+    try { await updateRdTag(id, name, color); toast.success("Tag updated"); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Could not update tag"); }
+  }
+
+  async function removeTag(id: number) {
+    if (!await confirm("Delete this tag?", "It will be removed from all projects it's attached to.")) return;
+    try { await deleteRdTag(id); toast.success("Tag deleted"); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Could not delete tag"); }
+  }
+
   const unassigned = projects.filter(p => p.status_id === null || !statuses.find(s => s.id === p.status_id));
 
   return (
@@ -326,7 +403,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: "var(--border)" }}>
-            {(["kanban", "table"] as const).map(v => (
+            {(["kanban", "table", "report"] as const).map(v => (
               <button key={v} onClick={() => setView(v)}
                 className="px-3 py-1.5 text-xs font-semibold capitalize"
                 style={{ background: view === v ? "var(--accent)" : "var(--card2)", color: view === v ? "#fff" : "var(--muted2)" }}>
@@ -339,6 +416,13 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
               className="px-3 py-1.5 text-xs rounded font-semibold border"
               style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
               ⚙ Columns
+            </button>
+          )}
+          {canEdit && (
+            <button onClick={() => setTagPanel(true)}
+              className="px-3 py-1.5 text-xs rounded font-semibold border"
+              style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
+              🏷 Tags
             </button>
           )}
           {canEdit && (
@@ -409,6 +493,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                   {cols.map(p => (
                     <ProjectCard
                       key={p.id} p={p} members={members} currency={currency} canEdit={canEdit}
+                      tags={tagsForProject(p.id)}
                       onEdit={openEdit}
                       onDragStart={id => { dragId.current = id; }}
                       onDragEnd={() => { dragId.current = null; }}
@@ -432,6 +517,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                 {unassigned.map(p => (
                   <ProjectCard
                     key={p.id} p={p} members={members} currency={currency} canEdit={canEdit}
+                    tags={tagsForProject(p.id)}
                     onEdit={openEdit}
                     onDragStart={id => { dragId.current = id; }}
                     onDragEnd={() => { dragId.current = null; }}
@@ -458,7 +544,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
             <table className="w-full text-xs border-collapse" style={{ background: "var(--card2)" }}>
               <thead>
                 <tr style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
-                  {["Project", "Status", "Priority", "Target Date", "Budget", "Assigned To", ""].map(h => (
+                  {["Project", "Status", "Tags", "Priority", "Target Date", "Budget", "Assigned To", ""].map(h => (
                     <th key={h} className="px-3 py-2.5 text-left font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: "var(--muted2)" }}>{h}</th>
                   ))}
                 </tr>
@@ -480,6 +566,11 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                         {status
                           ? <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ background: status.color }} />{status.name}</span>
                           : <span style={{ color: "var(--muted2)" }}>—</span>}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {(() => { const ts = tagsForProject(p.id); return ts.length > 0
+                          ? <div className="flex flex-wrap gap-1 max-w-[220px]">{ts.map(t => <TagChip key={t.id} tag={t} small />)}</div>
+                          : <span style={{ color: "var(--muted2)" }}>—</span>; })()}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold"
@@ -521,11 +612,24 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                   );
                 })}
                 {projects.length === 0 && (
-                  <tr><td colSpan={7} className="px-3 py-10 text-center" style={{ color: "var(--muted2)" }}>No projects yet</td></tr>
+                  <tr><td colSpan={8} className="px-3 py-10 text-center" style={{ color: "var(--muted2)" }}>No projects yet</td></tr>
                 )}
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* ── REPORT VIEW ─────────────────────────────────────────────────── */}
+      {view === "report" && (
+        <div className="flex-1 min-h-0 overflow-y-auto pb-4">
+          <ReportingClient
+            projects={reportProjects}
+            currency={reportCurrency}
+            defaultRate={defaultRate}
+            asOf={asOf}
+            tags={tags}
+          />
         </div>
       )}
 
@@ -588,6 +692,74 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                 className="w-full py-2 text-sm rounded font-semibold disabled:opacity-40"
                 style={{ background: "var(--accent)", color: "#fff" }}>
                 + Add Column
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── TAG MANAGER PANEL ───────────────────────────────────────────── */}
+      {tagPanel && (
+        <div className="fixed inset-0 z-50 flex items-start justify-end"
+          style={{ background: "rgba(0,0,0,.5)", backdropFilter: "blur(4px)" }}
+          onClick={e => { if (e.target === e.currentTarget) setTagPanel(false); }}>
+          <div className="h-full w-80 flex flex-col" style={{ background: "var(--card2)", borderLeft: "1px solid var(--border)" }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: "var(--border)" }}>
+              <div>
+                <h3 className="font-semibold">Manage Tags</h3>
+                <p className="text-xs mt-0.5" style={{ color: "var(--muted2)" }}>Classify projects (separate from status)</p>
+              </div>
+              <button onClick={() => setTagPanel(false)} style={{ color: "var(--muted2)" }}>✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {tags.map(t => (
+                <div key={t.id}>
+                  {editingTag?.id === t.id ? (
+                    <div className="rounded-lg p-3 space-y-2" style={{ background: "var(--card3)", border: "1px solid var(--border)" }}>
+                      <input value={editingTag.name} onChange={e => setEditingTag({ ...editingTag, name: e.target.value })}
+                        className={inp} style={inpS} placeholder="Tag name" />
+                      <div className="flex gap-1.5 flex-wrap">
+                        {SWATCH_COLORS.map(c => (
+                          <button key={c} onClick={() => setEditingTag({ ...editingTag, color: c })}
+                            className="w-6 h-6 rounded-full border-2 transition-transform"
+                            style={{ background: c, borderColor: editingTag.color === c ? "#fff" : "transparent", transform: editingTag.color === c ? "scale(1.2)" : "none" }} />
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => setEditingTag(null)} className="flex-1 py-1.5 text-xs rounded border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>Cancel</button>
+                        <button onClick={saveTag} className="flex-1 py-1.5 text-xs rounded font-semibold" style={{ background: "var(--accent)", color: "#fff" }}>Save</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: "var(--card3)" }}>
+                      <span className="w-3 h-3 rounded-full shrink-0" style={{ background: t.color }} />
+                      <span className="flex-1 text-sm font-medium truncate">{t.name}</span>
+                      <span className="text-xs shrink-0" style={{ color: "var(--muted2)" }}>{Object.values(tagIdsByProject).filter(ids => ids.includes(t.id)).length}</span>
+                      <button onClick={() => setEditingTag(t)} className="text-xs px-1.5 py-0.5 rounded" style={{ color: "var(--muted2)" }}>✏</button>
+                      <button onClick={() => removeTag(t.id)} className="text-xs px-1.5 py-0.5 rounded" style={{ color: "var(--red-c)" }}>✕</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {tags.length === 0 && (
+                <p className="text-sm text-center py-4" style={{ color: "var(--muted2)" }}>No tags yet</p>
+              )}
+            </div>
+            <div className="border-t p-4 space-y-3 shrink-0" style={{ borderColor: "var(--border)" }}>
+              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Add Tag</p>
+              <input value={newTagName} onChange={e => setNewTagName(e.target.value)}
+                className={inp} style={inpS} placeholder="e.g. Consulting" />
+              <div className="flex gap-1.5 flex-wrap">
+                {SWATCH_COLORS.map(c => (
+                  <button key={c} onClick={() => setNewTagColor(c)}
+                    className="w-6 h-6 rounded-full border-2 transition-transform"
+                    style={{ background: c, borderColor: newTagColor === c ? "#fff" : "transparent", transform: newTagColor === c ? "scale(1.2)" : "none" }} />
+                ))}
+              </div>
+              <button onClick={addTag} disabled={!newTagName.trim()}
+                className="w-full py-2 text-sm rounded font-semibold disabled:opacity-40"
+                style={{ background: "var(--accent)", color: "#fff" }}>
+                + Add Tag
               </button>
             </div>
           </div>
@@ -688,6 +860,35 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Notes</label>
                   <textarea value={pNotes} onChange={e => setPNotes(e.target.value)} rows={2} className={inp} style={{ ...inpS, resize: "none" }} placeholder="Additional notes…" />
+                </div>
+                {/* Tags */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted2)" }}>Tags</label>
+                    <button type="button" onClick={() => setTagPanel(true)} className="text-xs" style={{ color: "var(--accent)" }}>Manage tags</button>
+                  </div>
+                  {tags.length === 0 ? (
+                    <p className="text-xs" style={{ color: "var(--muted2)" }}>No tags yet — create some via &ldquo;Manage tags&rdquo;.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {tags.map(t => {
+                        const on = pTags.includes(t.id);
+                        return (
+                          <button key={t.id} type="button"
+                            onClick={() => setPTags(cur => on ? cur.filter(x => x !== t.id) : [...cur, t.id])}
+                            className="inline-flex items-center gap-1.5 rounded-full text-xs font-semibold px-2.5 py-1 transition-all"
+                            style={{
+                              background: on ? t.color : "var(--card3)",
+                              color: on ? "#fff" : "var(--muted)",
+                              border: `1px solid ${on ? t.color : "var(--border)"}`,
+                            }}>
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: on ? "#fff" : t.color }} />
+                            {t.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-3 pt-1">
                   <button type="button" onClick={() => setProjectModal({ open: false, project: null })}
@@ -830,8 +1031,34 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                   onChange={e => setFPrice(e.target.value === "" ? "" : Number(e.target.value))}
                   className={inp} style={inpS} placeholder="0.00" />
               </div>
+              {/* Capitalisation / amortisation */}
+              <div className="rounded-lg px-4 py-3 space-y-3" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                  <input type="checkbox" checked={fCapitalise} onChange={e => setFCapitalise(e.target.checked)}
+                    className="w-4 h-4 rounded mt-0.5" style={{ accentColor: "var(--accent)" }} />
+                  <div>
+                    <p className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>Capitalise as an asset</p>
+                    <p className="text-xs" style={{ color: "var(--muted2)" }}>
+                      Import the build value (logged hours × rate) to the Balance Sheet as an intangible asset. Does not affect your P&amp;L.
+                    </p>
+                  </div>
+                </label>
+                {fCapitalise && (
+                  <div className="pl-6.5">
+                    <label className="text-xs font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>
+                      Amortise over (months)
+                    </label>
+                    <input type="number" min={1} step={1} value={fMonths}
+                      onChange={e => setFMonths(e.target.value === "" ? "" : Number(e.target.value))}
+                      className={inp} style={inpS} placeholder="e.g. 36" />
+                    <p className="text-xs mt-1" style={{ color: "var(--muted2)" }}>
+                      Straight-line from today. Leave blank to capitalise without amortising yet.
+                    </p>
+                  </div>
+                )}
+              </div>
               <div className="px-4 py-3 rounded-lg text-xs" style={{ background: "var(--success-bg)", color: "var(--accent)" }}>
-                ✓ Project &ldquo;{finalizeProject.name}&rdquo; will be marked as finalized and the product will appear in your catalogue immediately.
+                ✓ &ldquo;{finalizeProject.name}&rdquo; will be marked as finalized and the product added to your catalogue{fCapitalise ? " and Balance Sheet" : ""}.
               </div>
               <div className="flex gap-3 pt-1">
                 <button type="button" onClick={() => setFinalizeProject(null)}
@@ -841,7 +1068,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
                 <button type="button" onClick={handleFinalize} disabled={!fName.trim()}
                   className="flex-1 py-2 text-sm font-semibold rounded disabled:opacity-40"
                   style={{ background: "var(--accent)", color: "#fff" }}>
-                  Finalize & Add to Products
+                  {fCapitalise ? "Finalise, Capitalise & Add" : "Finalise & Add to Products"}
                 </button>
               </div>
             </div>

@@ -1,6 +1,7 @@
 import { createServerClient } from "@/lib/supabase/server";
 import { getCurrentOrgId } from "@/lib/supabase/org";
 import { AccountingClient } from "@/components/AccountingClient";
+import { computeCapex } from "@/lib/capex";
 
 export default async function AccountingPage() {
   const supabase = await createServerClient();
@@ -10,13 +11,31 @@ export default async function AccountingPage() {
   const fyStart = `${now.getFullYear()}-01-01`;
   const fyEnd = now.toISOString().slice(0, 10);
 
-  const [{ data: invoices }, { data: costs }, { data: cashflow }, { data: org }, { data: accounts }] = await Promise.all([
+  const [{ data: invoices }, { data: costs }, { data: cashflow }, { data: org }, { data: accounts }, { data: capexProjects }, { data: capexTimes }] = await Promise.all([
     supabase.from("fact_invoices").select("id, amount, status, transaction_date, customer_id").eq("org_id", orgId).is("deleted_at", null),
     supabase.from("fact_costs").select("id, amount, transaction_date, cost_category_id, cost_type, include_in_pnl, dim_cost_categories(name)").eq("org_id", orgId).is("deleted_at", null),
     supabase.from("fact_cashflow").select("id, balance, account_id, record_date, notes").eq("org_id", orgId).order("record_date", { ascending: false }),
-    supabase.from("organizations").select("currency, name, reg_no").eq("id", orgId).single(),
+    supabase.from("organizations").select("currency, name, reg_no, default_hourly_rate").eq("id", orgId).single(),
     supabase.from("dim_accounts").select("id, name").eq("org_id", orgId).order("name"),
+    supabase.from("rd_projects").select("id, finalized_at, is_capex, amortisation_months, hourly_rate_override").eq("org_id", orgId).eq("is_capex", true).is("deleted_at", null),
+    supabase.from("time_entries").select("entity_id, minutes").eq("org_id", orgId).eq("entity_type", "rd_project"),
   ]);
+
+  // Net book value of capitalised development → Intangible Assets on the balance sheet.
+  const capexMinutes: Record<number, number> = {};
+  (capexTimes || []).forEach((t) => {
+    const id = Number(t.entity_id);
+    capexMinutes[id] = (capexMinutes[id] || 0) + Number(t.minutes || 0);
+  });
+  const defaultRate = Number(org?.default_hourly_rate ?? 1000);
+  const intangibleAssets = (capexProjects || []).reduce((sum, p) => {
+    const hours = (capexMinutes[p.id] || 0) / 60;
+    const c = computeCapex(
+      { is_capex: true, amortisation_months: p.amortisation_months ?? null, hourly_rate_override: p.hourly_rate_override != null ? Number(p.hourly_rate_override) : null, finalized_at: p.finalized_at ?? null },
+      hours, defaultRate, fyEnd
+    );
+    return sum + c.netBookValue;
+  }, 0);
 
   const currency = org?.currency || "ZAR";
   const cur = currency === "ZAR" ? "R" : currency === "USD" ? "$" : currency === "EUR" ? "€" : "R";
@@ -31,6 +50,7 @@ export default async function AccountingPage() {
         orgName={org?.name || "Company"}
         orgRegNo={org?.reg_no || ""}
         currency={cur}
+        intangibleAssets={intangibleAssets}
         defaultStart={fyStart}
         defaultEnd={fyEnd}
       />
