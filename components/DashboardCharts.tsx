@@ -119,6 +119,10 @@ const monthLabel = (m: string) => {
 };
 const isCompleted = (status: string | null) => status === "Completed" || status === "Paid";
 const isPending = (status: string | null) => status === "Pending";
+// Format a Date as local YYYY-MM-DD. Never use toISOString() on a locally
+// constructed date — it converts to UTC and rolls the day back in +HH zones
+// (e.g. SAST/UTC+2), shifting period boundaries by a day.
+const localISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 function dateInRange(dateStr: string | null, from: string, to: string) {
   if (!dateStr) return true;
@@ -677,10 +681,10 @@ function CompactFilterBar({ filters, setFilters, statuses, customers, costCatego
 
   const now = new Date();
   const fyMonth = (fiscalYearStart ?? 3) - 1;
-  const off = (days: number) => { const d = new Date(); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); };
+  const off = (days: number) => { const d = new Date(); d.setDate(d.getDate() + days); return localISO(d); };
   const getFyStart = () => {
     const y = now.getMonth() >= fyMonth ? now.getFullYear() : now.getFullYear() - 1;
-    return new Date(y, fyMonth, 1).toISOString().slice(0, 10);
+    return localISO(new Date(y, fyMonth, 1));
   };
   const presets = [
     { key: "MTD", label: "Month", from: defaultPeriod.from, to: defaultPeriod.to },
@@ -1423,13 +1427,13 @@ export function DashboardCharts({
       const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const lastOfPrev = new Date(firstOfMonth.getTime() - 86400000);
       const firstOfPrev = new Date(lastOfPrev.getFullYear(), lastOfPrev.getMonth(), 1);
-      return { from: firstOfPrev.toISOString().slice(0, 10), to: lastOfPrev.toISOString().slice(0, 10) };
+      return { from: localISO(firstOfPrev), to: localISO(lastOfPrev) };
     }
     const fromMs = filters.dateFrom ? new Date(filters.dateFrom).getTime() : new Date(now.getFullYear(), now.getMonth(), 1).getTime();
     const toMs = filters.dateTo ? new Date(filters.dateTo).getTime() : now.getTime();
     const dur = Math.max(toMs - fromMs, 86400000);
     const prevToMs = fromMs - 86400000;
-    return { from: new Date(prevToMs - dur).toISOString().slice(0, 10), to: new Date(prevToMs).toISOString().slice(0, 10) };
+    return { from: localISO(new Date(prevToMs - dur)), to: localISO(new Date(prevToMs)) };
   }, [filters.dateFrom, filters.dateTo]);
 
   const prevMetrics = useMemo(() => {
@@ -1462,7 +1466,7 @@ export function DashboardCharts({
       const now = new Date();
       const firstLY = new Date(now.getFullYear() - 1, now.getMonth(), 1);
       const lastLY = new Date(now.getFullYear() - 1, now.getMonth() + 1, 0);
-      return { from: firstLY.toISOString().slice(0, 10), to: lastLY.toISOString().slice(0, 10) };
+      return { from: localISO(firstLY), to: localISO(lastLY) };
     }
     return { from: shiftYear(filters.dateFrom), to: shiftYear(filters.dateTo) };
   }, [filters.dateFrom, filters.dateTo]);
@@ -1503,7 +1507,7 @@ export function DashboardCharts({
     const now = new Date();
     const first = new Date(now.getFullYear(), now.getMonth(), 1);
     const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    return { from: first.toISOString().slice(0, 10), to: last.toISOString().slice(0, 10) };
+    return { from: localISO(first), to: localISO(last) };
   }, [filters.dateFrom, filters.dateTo]);
 
   const curMetrics = useMemo(() => {
