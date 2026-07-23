@@ -6,7 +6,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
 import { useConfirm } from "@/hooks/useConfirm";
 import { createClient } from "@/lib/supabase/client";
-import { logTime, deleteTimeEntry, type TrackedEntity } from "@/server-actions/tracking";
+import { logTime, updateTimeEntry, deleteTimeEntry, type TrackedEntity } from "@/server-actions/tracking";
 
 type TimeEntry = {
   id: number;
@@ -69,6 +69,33 @@ export function TimeTracker({
   const [note, setNote] = useState("");
   const [spentOn, setSpentOn] = useState("");
   const [busy, setBusy] = useState(false);
+  // Inline edit of an existing entry
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editDur, setEditDur] = useState("");
+  const [editNote, setEditNote] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [editBusy, setEditBusy] = useState(false);
+
+  function startEdit(e: TimeEntry) {
+    setEditingId(e.id);
+    setEditDur(e.minutes > 0 ? formatDuration(e.minutes) : "");
+    setEditNote(e.note ?? "");
+    setEditDate(e.spent_on);
+  }
+  function cancelEdit() { setEditingId(null); }
+  async function saveEdit(id: number) {
+    const minutes = parseDuration(editDur);
+    if (minutes <= 0 && !editNote.trim()) { toast.error("Enter a time or a note."); return; }
+    setEditBusy(true);
+    try {
+      await updateTimeEntry({ id, entityType, entityId, minutes, note: editNote, spentOn: editDate || null });
+      setEditingId(null);
+      await load();
+      onChanged?.();
+      toast.success("Entry updated");
+    } catch { toast.error("Failed to update entry"); }
+    finally { setEditBusy(false); }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -95,15 +122,15 @@ export function TimeTracker({
 
   async function submit() {
     const minutes = parseDuration(dur);
-    if (minutes <= 0) { toast.error('Enter a time like "45m", "1h 30m" or "1.5h".'); return; }
+    if (minutes <= 0 && !note.trim()) { toast.error("Enter a time (e.g. \"45m\") or a note."); return; }
     setBusy(true);
     try {
       await logTime({ entityType, entityId, minutes, note, spentOn: spentOn || null });
       setDur(""); setNote(""); setSpentOn("");
       await load();
       onChanged?.();
-      toast.success(`Logged ${formatDuration(minutes)}`);
-    } catch { toast.error("Failed to log time"); }
+      toast.success(minutes > 0 ? `Logged ${formatDuration(minutes)}` : "Note added");
+    } catch { toast.error("Failed to save log entry"); }
     finally { setBusy(false); }
   }
 
@@ -136,7 +163,7 @@ export function TimeTracker({
         <div className="rounded-lg p-3 space-y-2" style={{ background: "var(--card3)", border: "1px solid var(--border)" }}>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Time spent *</label>
+              <label className="text-[10px] font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Time spent (optional)</label>
               <input value={dur} onChange={e => setDur(e.target.value)} className={inp} style={inpS}
                 placeholder='e.g. 45m, 1h 30m'
                 onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); void submit(); } }} />
@@ -151,10 +178,10 @@ export function TimeTracker({
             <textarea value={note} onChange={e => setNote(e.target.value)} rows={2} className={inp} style={{ ...inpS, resize: "none" }}
               placeholder="Optional note…" />
           </div>
-          <button onClick={submit} disabled={busy || !dur.trim()}
+          <button onClick={submit} disabled={busy || (!dur.trim() && !note.trim())}
             className="w-full py-2 text-sm font-semibold rounded disabled:opacity-40"
             style={{ background: "var(--accent)", color: "#fff" }}>
-            {busy ? "Logging…" : "＋ Log time"}
+            {busy ? "Saving…" : "＋ Log entry"}
           </button>
         </div>
       )}
@@ -169,23 +196,46 @@ export function TimeTracker({
       ) : (
         <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-1">
           {entries.map(e => (
-            <div key={e.id} className="rounded-lg p-3 flex items-start gap-3" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
-              <span className="text-sm font-bold font-mono shrink-0 px-2 py-0.5 rounded" style={{ background: "var(--card3)", color: "var(--accent)" }}>
-                {formatDuration(e.minutes)}
-              </span>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 text-[10px]" style={{ color: "var(--muted2)" }}>
-                  <span>@{authorName(e.author_id)}</span>
-                  <span>·</span>
-                  <span>{fdate(e.spent_on)}</span>
+            editingId === e.id ? (
+              <div key={e.id} className="rounded-lg p-3 space-y-2" style={{ background: "var(--card2)", border: "1px solid var(--accent)" }}>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={editDur} onChange={ev => setEditDur(ev.target.value)} className={inp} style={inpS} placeholder="e.g. 45m (blank = note)" />
+                  <DateInput name="edit_spent_on" value={editDate} onChange={setEditDate} placeholder="Date" />
                 </div>
-                {e.note && <p className="text-sm mt-0.5 whitespace-pre-wrap leading-relaxed">{e.note}</p>}
+                <textarea value={editNote} onChange={ev => setEditNote(ev.target.value)} rows={2} className={inp} style={{ ...inpS, resize: "none" }} placeholder="Note…" />
+                <div className="flex gap-2">
+                  <button onClick={() => saveEdit(e.id)} disabled={editBusy}
+                    className="flex-1 py-1.5 text-sm font-semibold rounded disabled:opacity-40" style={{ background: "var(--accent)", color: "#fff" }}>
+                    {editBusy ? "Saving…" : "Save"}
+                  </button>
+                  <button onClick={cancelEdit} className="px-3 py-1.5 text-sm rounded" style={{ border: "1px solid var(--border)", color: "var(--muted)" }}>Cancel</button>
+                </div>
               </div>
-              {canDelete && (
-                <button onClick={() => remove(e.id)} className="px-2 py-1 rounded text-xs shrink-0"
-                  style={{ border: "1px solid var(--border)", background: "var(--card)" }} title="Delete entry">🗑️</button>
-              )}
-            </div>
+            ) : (
+              <div key={e.id} className="rounded-lg p-3 flex items-start gap-3" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
+                <span className="text-sm font-bold font-mono shrink-0 px-2 py-0.5 rounded" style={{ background: "var(--card3)", color: e.minutes > 0 ? "var(--accent)" : "var(--muted2)" }}>
+                  {e.minutes > 0 ? formatDuration(e.minutes) : "note"}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 text-[10px]" style={{ color: "var(--muted2)" }}>
+                    <span>@{authorName(e.author_id)}</span>
+                    <span>·</span>
+                    <span>{fdate(e.spent_on)}</span>
+                  </div>
+                  {e.note && <p className="text-sm mt-0.5 whitespace-pre-wrap leading-relaxed">{e.note}</p>}
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  {canEdit && (
+                    <button onClick={() => startEdit(e)} className="px-2 py-1 rounded text-xs"
+                      style={{ border: "1px solid var(--border)", background: "var(--card)" }} title="Edit entry">✏️</button>
+                  )}
+                  {canDelete && (
+                    <button onClick={() => remove(e.id)} className="px-2 py-1 rounded text-xs"
+                      style={{ border: "1px solid var(--border)", background: "var(--card)" }} title="Delete entry">🗑️</button>
+                  )}
+                </div>
+              </div>
+            )
           ))}
         </div>
       )}

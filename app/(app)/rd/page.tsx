@@ -21,7 +21,7 @@ export default async function RdPage() {
     supabase.from("rd_projects").select("*").eq("org_id", orgId).is("deleted_at", null).order("created_at", { ascending: false }),
     supabase.from("organizations").select("currency, default_hourly_rate").eq("id", orgId).single(),
     supabase.from("memberships").select("user_id").eq("org_id", orgId),
-    supabase.from("time_entries").select("entity_id, minutes").eq("org_id", orgId).eq("entity_type", "rd_project"),
+    supabase.from("time_entries").select("id, entity_id, minutes, note, spent_on, author_id, created_at").eq("org_id", orgId).eq("entity_type", "rd_project").order("spent_on", { ascending: false }).order("created_at", { ascending: false }),
     supabase.from("rd_tags").select("id, name, color").eq("org_id", orgId).order("name"),
     supabase.from("rd_project_tags").select("project_id, tag_id").eq("org_id", orgId),
   ]);
@@ -90,6 +90,15 @@ export default async function RdPage() {
         asOf={new Date().toISOString().slice(0, 10)}
         tags={tags || []}
         tagIdsByProject={tagIdsByProject}
+        logEntries={(times || []).map((t) => ({
+          id: t.id as number,
+          project_id: Number(t.entity_id),
+          minutes: Number(t.minutes || 0),
+          note: (t.note as string | null) ?? null,
+          spent_on: (t.spent_on as string) ?? "",
+          author_id: (t.author_id as string | null) ?? null,
+          created_at: (t.created_at as string) ?? "",
+        }))}
       />
     </section>
   );

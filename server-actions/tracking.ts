@@ -29,9 +29,11 @@ export async function logTime(input: {
   note?: string | null;
   spentOn?: string | null;
 }) {
-  const minutes = Math.round(Number(input.minutes));
-  if (!Number.isFinite(minutes) || minutes <= 0) {
-    throw new Error("Time logged must be greater than zero.");
+  const minutes = Math.max(0, Math.round(Number(input.minutes)) || 0);
+  const note = input.note?.trim() || null;
+  // A log entry needs either time or a note (a pure narrative update = 0 minutes).
+  if (minutes <= 0 && !note) {
+    throw new Error("Enter a time or a note.");
   }
 
   const orgId = await getCurrentOrgId();
@@ -43,12 +45,33 @@ export async function logTime(input: {
     entity_type: input.entityType,
     entity_id: input.entityId,
     minutes,
-    note: input.note?.trim() || null,
+    note,
     spent_on: input.spentOn || new Date().toISOString().slice(0, 10),
     author_id: user?.id ?? null,
   });
   if (error) throw new Error(error.message);
 
+  revalidateEntity(input.entityType, input.entityId);
+}
+
+export async function updateTimeEntry(input: {
+  id: number;
+  entityType: TrackedEntity;
+  entityId: number;
+  minutes: number;
+  note?: string | null;
+  spentOn?: string | null;
+}) {
+  const minutes = Math.max(0, Math.round(Number(input.minutes)) || 0);
+  const note = input.note?.trim() || null;
+  if (minutes <= 0 && !note) {
+    throw new Error("Enter a time or a note.");
+  }
+  const supabase = await createServerClient();
+  const patch: Record<string, unknown> = { minutes, note };
+  if (input.spentOn) patch.spent_on = input.spentOn;
+  const { error } = await supabase.from("time_entries").update(patch).eq("id", input.id);
+  if (error) throw new Error(error.message);
   revalidateEntity(input.entityType, input.entityId);
 }
 

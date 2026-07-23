@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { GripVertical, MessageSquare, Clock } from "lucide-react";
+import { GripVertical, Clock } from "lucide-react";
 import { useToast } from "@/components/Toast";
-import { TimeTracker } from "@/components/TimeTracker";
+import { TimeTracker, formatDuration } from "@/components/TimeTracker";
 import { ReportingClient, type ReportProject } from "@/components/ReportingClient";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DateInput } from "@/components/ui/DateInput";
@@ -13,7 +13,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   createRdStatus, updateRdStatus, deleteRdStatus, reorderRdStatuses,
   createRdProject, updateRdProject, updateRdProjectStatus, deleteRdProject,
-  finalizeRdProject, addRdProjectUpdate,
+  finalizeRdProject,
   createRdTag, updateRdTag, deleteRdTag, setProjectTags,
 } from "@/server-actions/rd";
 
@@ -25,8 +25,8 @@ type RdProject = {
   product_id: number | null; finalized_at: string | null; created_at: string;
 };
 type Member = { user_id: string; email: string };
-type ProjectUpdate = { id: number; content: string; author_id: string | null; created_at: string };
 type RdTag = { id: number; name: string; color: string };
+type LogEntry = { id: number; project_id: number; minutes: number; note: string | null; spent_on: string; author_id: string | null; created_at: string };
 
 type Props = {
   statuses: RdStatus[];
@@ -40,6 +40,7 @@ type Props = {
   asOf: string;
   tags: RdTag[];
   tagIdsByProject: Record<number, number[]>;
+  logEntries: LogEntry[];
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -125,7 +126,7 @@ function ProjectCard({
   );
 }
 
-export function RdClient({ statuses: initialStatuses, projects: initialProjects, members, currency, currentRole, reportProjects, reportCurrency, defaultRate, asOf, tags, tagIdsByProject }: Props) {
+export function RdClient({ statuses: initialStatuses, projects: initialProjects, members, currency, currentRole, reportProjects, reportCurrency, defaultRate, asOf, tags, tagIdsByProject, logEntries }: Props) {
   const toast = useToast();
   const { confirm, dialogProps } = useConfirm();
   const canEdit = ["owner", "admin", "member"].includes(currentRole);
@@ -138,7 +139,12 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
   const {
     items: projects, add: addProject, update: updateProject, remove: removeProject,
   } = useOptimisticList(initialProjects, toast);
-  const [view, setView] = useState<"kanban" | "table" | "report">("kanban");
+  const [view, setView] = useState<"kanban" | "table" | "report" | "history">("kanban");
+  // History (unified R&D log) filters
+  const [histProject, setHistProject] = useState<number | "">("");
+  const [histTags, setHistTags] = useState<number[]>([]);
+  const [histFrom, setHistFrom] = useState("");
+  const [histTo, setHistTo] = useState("");
 
   // ── Tags ──────────────────────────────────────────────────────────────────
   const tagById = new Map(tags.map(t => [t.id, t]));
@@ -162,7 +168,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
 
   // ── Project modal ─────────────────────────────────────────────────────────
   const [projectModal, setProjectModal] = useState<{ open: boolean; project: RdProject | null }>({ open: false, project: null });
-  const [modalTab, setModalTab] = useState<"details" | "updates" | "time">("details");
+  const [modalTab, setModalTab] = useState<"details" | "log">("details");
   const [pName, setPName] = useState("");
   const [pDesc, setPDesc] = useState("");
   const [pStatus, setPStatus] = useState<number | null>(null);
@@ -171,12 +177,6 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
   const [pPriority, setPPriority] = useState("medium");
   const [pBudget, setPBudget] = useState<number | "">("");
   const [pNotes, setPNotes] = useState("");
-
-  // ── Project updates log ──────────────────────────────────────────────────
-  const [updates, setUpdates] = useState<ProjectUpdate[]>([]);
-  const [updatesLoading, setUpdatesLoading] = useState(false);
-  const [updateInput, setUpdateInput] = useState("");
-  const [updateBusy, setUpdateBusy] = useState(false);
 
   // ── Finalize modal ────────────────────────────────────────────────────────
   const [finalizeProject, setFinalizeProject] = useState<RdProject | null>(null);
@@ -198,29 +198,12 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
   const [draggingColId, setDraggingColId] = useState<number | null>(null);
   const [colDragOver, setColDragOver] = useState<number | null>(null);
 
-  // ── Fetch updates ─────────────────────────────────────────────────────────
-  const loadUpdates = useCallback(async (projectId: number) => {
-    setUpdatesLoading(true);
-    setUpdates([]);
-    try {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from("rd_project_updates")
-        .select("id, content, author_id, created_at")
-        .eq("project_id", projectId)
-        .order("created_at", { ascending: false });
-      setUpdates((data as ProjectUpdate[]) ?? []);
-    } catch { /* swallow */ }
-    finally { setUpdatesLoading(false); }
-  }, []);
-
   function openCreate(statusId?: number) {
     setProjectModal({ open: true, project: null });
     setModalTab("details");
     setPName(""); setPDesc(""); setPStatus(statusId ?? statuses[0]?.id ?? null);
     setPTargetDate(""); setPAssigned(""); setPPriority("medium"); setPBudget(""); setPNotes("");
     setPTags([]);
-    setUpdates([]);
   }
 
   function openEdit(p: RdProject) {
@@ -230,8 +213,6 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
     setPTargetDate(p.target_date ?? ""); setPAssigned(p.assigned_to ?? "");
     setPPriority(p.priority); setPBudget(p.budget_estimate ?? ""); setPNotes(p.notes ?? "");
     setPTags(tagIdsByProject[p.id] ?? []);
-    setUpdateInput("");
-    setUpdates([]);
   }
 
   function openFinalize(p: RdProject) {
@@ -267,17 +248,6 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
       };
       void addProject(temp, () => createRdProject({ ...data, tag_ids: tagIds }), { success: "Project created" });
     }
-  }
-
-  async function handlePostUpdate() {
-    if (!updateInput.trim() || !projectModal.project) return;
-    setUpdateBusy(true);
-    try {
-      await addRdProjectUpdate(projectModal.project.id, updateInput.trim());
-      setUpdateInput("");
-      await loadUpdates(projectModal.project.id);
-    } catch { toast.error("Failed to post update"); }
-    finally { setUpdateBusy(false); }
   }
 
   function handleFinalize() {
@@ -403,7 +373,7 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: "var(--border)" }}>
-            {(["kanban", "table", "report"] as const).map(v => (
+            {(["kanban", "table", "report", "history"] as const).map(v => (
               <button key={v} onClick={() => setView(v)}
                 className="px-3 py-1.5 text-xs font-semibold capitalize"
                 style={{ background: view === v ? "var(--accent)" : "var(--card2)", color: view === v ? "#fff" : "var(--muted2)" }}>
@@ -633,6 +603,108 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
         </div>
       )}
 
+      {/* ── HISTORY VIEW (unified R&D log) ──────────────────────────────── */}
+      {view === "history" && (() => {
+        const projName = new Map(projects.map(p => [p.id, p.name]));
+        const filtered = logEntries.filter(e => {
+          if (histProject !== "" && e.project_id !== histProject) return false;
+          if (histTags.length) {
+            const pt = tagIdsByProject[e.project_id] ?? [];
+            if (!histTags.some(t => pt.includes(t))) return false;
+          }
+          if (histFrom && e.spent_on < histFrom) return false;
+          if (histTo && e.spent_on > histTo) return false;
+          return true;
+        });
+        const totalMin = filtered.reduce((s, e) => s + e.minutes, 0);
+        const byTag: Record<number, number> = {};
+        filtered.forEach(e => (tagIdsByProject[e.project_id] ?? []).forEach(tid => { byTag[tid] = (byTag[tid] || 0) + e.minutes; }));
+        const authorName = (id: string | null) => {
+          const email = members.find(m => m.user_id === id)?.email;
+          return email ? email.split("@")[0] : "Someone";
+        };
+        return (
+          <div className="flex-1 min-h-0 overflow-y-auto pb-4 space-y-3">
+            {/* Filters */}
+            <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg" style={{ background: "var(--card2)", border: "1px solid var(--border)" }}>
+              <div>
+                <label className="text-[10px] font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>Project</label>
+                <select value={histProject} onChange={e => setHistProject(e.target.value ? Number(e.target.value) : "")}
+                  className="px-2 py-1.5 text-xs rounded border outline-none" style={inpS}>
+                  <option value="">All projects</option>
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>From</label>
+                <DateInput name="histFrom" value={histFrom} onChange={setHistFrom} placeholder="Any" />
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--muted2)" }}>To</label>
+                <DateInput name="histTo" value={histTo} onChange={setHistTo} placeholder="Any" />
+              </div>
+              {tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  {tags.map(t => {
+                    const on = histTags.includes(t.id);
+                    return (
+                      <button key={t.id} onClick={() => setHistTags(on ? histTags.filter(x => x !== t.id) : [...histTags, t.id])}
+                        className="px-2 py-1 rounded-full text-[11px] font-semibold"
+                        style={{ background: on ? t.color : "var(--card3)", color: on ? "#fff" : "var(--muted2)", border: `1px solid ${on ? t.color : "var(--border)"}` }}>
+                        {t.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {(histProject !== "" || histTags.length > 0 || histFrom || histTo) && (
+                <button onClick={() => { setHistProject(""); setHistTags([]); setHistFrom(""); setHistTo(""); }}
+                  className="px-2 py-1.5 text-xs rounded border" style={{ borderColor: "var(--border)", color: "var(--muted2)" }}>Clear</button>
+              )}
+            </div>
+
+            {/* Time allocation summary */}
+            <div className="flex flex-wrap gap-2 items-center">
+              <span className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "var(--card3)", border: "1px solid var(--border)" }}>
+                {filtered.length} entries · <span style={{ color: "var(--accent)" }}>{formatDuration(totalMin)}</span> total
+              </span>
+              {Object.entries(byTag).filter(([, m]) => m > 0).map(([tid, m]) => {
+                const t = tagById.get(Number(tid));
+                if (!t) return null;
+                return <span key={tid} className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold" style={{ background: t.color + "22", color: t.color, border: `1px solid ${t.color}` }}>{t.name}: {formatDuration(m)}</span>;
+              })}
+            </div>
+
+            {/* Feed */}
+            {filtered.length === 0 ? (
+              <div className="py-12 text-center rounded-lg" style={{ color: "var(--muted2)", background: "var(--card2)", border: "1px solid var(--border)" }}>
+                <p className="text-sm">No log entries match these filters.</p>
+              </div>
+            ) : (
+              <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+                {filtered.map(e => (
+                  <div key={e.id} className="flex items-start gap-3 px-4 py-3 border-b" style={{ borderColor: "var(--border)", background: "var(--card2)" }}>
+                    <span className="text-xs font-bold font-mono shrink-0 px-2 py-0.5 rounded mt-0.5" style={{ background: "var(--card3)", color: e.minutes > 0 ? "var(--accent)" : "var(--muted2)" }}>
+                      {e.minutes > 0 ? formatDuration(e.minutes) : "note"}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap text-[11px]" style={{ color: "var(--muted2)" }}>
+                        <span className="font-semibold" style={{ color: "var(--foreground)" }}>{projName.get(e.project_id) ?? `Project #${e.project_id}`}</span>
+                        {tagsForProject(e.project_id).map(t => (
+                          <span key={t.id} className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: t.color + "22", color: t.color }}>{t.name}</span>
+                        ))}
+                        <span>· {fdate(e.spent_on)} · @{authorName(e.author_id)}</span>
+                      </div>
+                      {e.note && <p className="text-sm mt-0.5 whitespace-pre-wrap leading-relaxed">{e.note}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* ── COLUMN MANAGER PANEL ────────────────────────────────────────── */}
       {colPanel && (
         <div className="fixed inset-0 z-50 flex items-start justify-end"
@@ -781,28 +853,20 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
             {/* Tabs — only show for existing projects */}
             {projectModal.project && (
               <div className="flex border-b px-5" style={{ borderColor: "var(--border)" }}>
-                {(["details", "updates", "time"] as const).map(t => (
+                {(["details", "log"] as const).map(t => (
                   <button
                     key={t}
-                    onClick={() => {
-                      setModalTab(t);
-                      if (t === "updates" && projectModal.project) void loadUpdates(projectModal.project.id);
-                    }}
+                    onClick={() => setModalTab(t)}
                     className="px-4 py-2.5 text-xs font-semibold capitalize border-b-2 -mb-px transition-colors"
                     style={{
                       borderColor: modalTab === t ? "var(--accent)" : "transparent",
                       color: modalTab === t ? "var(--accent)" : "var(--muted2)",
                     }}
                   >
-                    {t === "updates" ? (
-                      <span className="flex items-center gap-1.5">
-                        <MessageSquare size={12} />
-                        Updates
-                      </span>
-                    ) : t === "time" ? (
+                    {t === "log" ? (
                       <span className="flex items-center gap-1.5">
                         <Clock size={12} />
-                        Time
+                        Log
                       </span>
                     ) : "Details"}
                   </button>
@@ -923,62 +987,8 @@ export function RdClient({ statuses: initialStatuses, projects: initialProjects,
               </div>
             )}
 
-            {/* Updates tab */}
-            {modalTab === "updates" && projectModal.project && (
-              <div className="p-5 space-y-4">
-                {/* Post new update */}
-                {canEdit && (
-                  <div className="space-y-2">
-                    <textarea
-                      value={updateInput}
-                      onChange={e => setUpdateInput(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void handlePostUpdate(); }}
-                      rows={3}
-                      placeholder="Add an update, note, or blocker… (Ctrl+Enter to post)"
-                      className={inp}
-                      style={{ ...inpS, resize: "none" }}
-                    />
-                    <button
-                      onClick={handlePostUpdate}
-                      disabled={updateBusy || !updateInput.trim()}
-                      className="px-4 py-2 text-sm font-semibold rounded disabled:opacity-40"
-                      style={{ background: "var(--accent)", color: "#fff" }}
-                    >
-                      {updateBusy ? "Posting…" : "Post Update"}
-                    </button>
-                  </div>
-                )}
-
-                {/* Updates list */}
-                {updatesLoading ? (
-                  <div className="py-8 text-center text-sm" style={{ color: "var(--muted2)" }}>Loading…</div>
-                ) : updates.length === 0 ? (
-                  <div className="py-8 text-center" style={{ color: "var(--muted2)" }}>
-                    <MessageSquare size={24} className="mx-auto mb-2 opacity-40" />
-                    <p className="text-sm">No updates yet</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
-                    {updates.map(u => {
-                      const authorEmail = members.find(m => m.user_id === u.author_id)?.email;
-                      const authorName = authorEmail ? authorEmail.split("@")[0] : "Unknown";
-                      return (
-                        <div key={u.id} className="rounded-xl p-3" style={{ background: "var(--card3)", border: "1px solid var(--border)" }}>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-xs font-semibold" style={{ color: "var(--accent)" }}>@{authorName}</span>
-                            <span className="text-[10px]" style={{ color: "var(--muted2)" }}>{ftime(u.created_at)}</span>
-                          </div>
-                          <p className="text-sm whitespace-pre-wrap leading-relaxed">{u.content}</p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Time tab */}
-            {modalTab === "time" && projectModal.project && (
+            {/* Log tab — unified notes + time */}
+            {modalTab === "log" && projectModal.project && (
               <div className="p-5">
                 <TimeTracker
                   entityType="rd_project"
