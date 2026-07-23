@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LucideIcon, LayoutDashboard, Target, Users, FileText, Package, Receipt, CalendarDays, TrendingDown, Megaphone, BookOpen, BarChart2, Settings, Sparkles, Building2, FlaskConical, TableProperties, Radar, History } from "lucide-react";
+import { LucideIcon, LayoutDashboard, Target, Users, FileText, Package, Receipt, CalendarDays, TrendingDown, Megaphone, BookOpen, BarChart2, Settings, Sparkles, Building2, FlaskConical, TableProperties, Radar } from "lucide-react";
 
 type NavItem = { href: string; label: string; Icon: LucideIcon; group: string };
 
@@ -17,7 +17,6 @@ const sideNav: NavItem[] = [
   { href: "/billing",     label: "Billing",     Icon: CalendarDays,    group: "Finance"    },
   { href: "/costs",       label: "Costs",       Icon: TrendingDown,    group: "Finance"    },
   { href: "/marketing",   label: "Marketing",   Icon: Megaphone,       group: "Marketing"  },
-  { href: "/timeline",    label: "Timeline",    Icon: History,            group: "Analytics"  },
   { href: "/accounting",  label: "Accounting",  Icon: BookOpen,           group: "Analytics"  },
   { href: "/performance", label: "Snapshots",   Icon: BarChart2,          group: "Analytics"  },
   { href: "/reports",     label: "Reports",     Icon: TableProperties,    group: "Analytics"  },

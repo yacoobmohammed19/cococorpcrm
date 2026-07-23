@@ -3,14 +3,11 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@/lib/supabase/server";
 import { getServerUser } from "@/lib/supabase/org";
 import { isSuperAdminUser } from "@/lib/supabase/platform";
-import { getCachedDimensions } from "@/lib/supabase/cache";
 import { setActiveOrganization, signout } from "@/server-actions/auth";
 import { CollapsibleSidebar } from "@/components/CollapsibleSidebar";
 import { BotNav } from "@/components/SideNav";
 import { MobileHeader } from "@/components/MobileHeader";
 import { UserProfileMenu } from "@/components/OrgSwitcher";
-import { FAB } from "@/components/FAB";
-import { FABProvider } from "@/components/FABContext";
 import { ToastProvider } from "@/components/Toast";
 import { AiAssistant } from "@/components/AiAssistant";
 
@@ -39,9 +36,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   // Resolve current role for the active org
   const currentRole = memberships.find(m => String(m.org_id) === activeOrgId)?.role ?? null;
-
-  const { accounts, customers, paymentTypes: payTypes, statuses, costCategories: costCats } =
-    await getCachedDimensions(activeOrgId);
 
   // Resolve org name safely — Supabase returns joined records as objects for m:1 joins
   const orgs = (memberships ?? []).map(m => {
@@ -87,9 +81,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
         {/* Desktop top bar — profile menu top-right */}
         <header
-          className="hidden md:flex items-center justify-end px-6 py-2 border-b shrink-0 sticky top-0 z-30"
+          className="hidden md:flex items-center justify-end gap-3 px-6 py-2 border-b shrink-0 sticky top-0 z-30"
           style={{ background: "var(--background)", borderColor: "var(--border)", height: 48 }}
         >
+          <AiAssistant />
           <UserProfileMenu
             orgs={orgs}
             activeOrgId={activeOrgId}
@@ -100,18 +95,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           />
         </header>
 
-        <FABProvider>
           <ToastProvider>
             <main className="flex-1 p-4 md:p-6 pb-[76px] md:pb-6">{children}</main>
-
-            <FAB
-              accounts={accounts || []}
-              customers={customers || []}
-              paymentTypes={payTypes || []}
-              statuses={statuses || []}
-              costCategories={costCats || []}
-            />
-            <AiAssistant orgId={activeOrgId} />
 
             {/* Mobile bottom nav — 64 px bar + safe-area inset */}
             <nav
@@ -126,7 +111,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <BotNav role={currentRole} />
             </nav>
           </ToastProvider>
-        </FABProvider>
       </div>
     </div>
   );

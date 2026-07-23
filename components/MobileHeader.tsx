@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Target, Users, FileText, Package,
   Receipt, CalendarDays, TrendingDown, Megaphone,
   BookOpen, BarChart2, Settings, Sparkles, UsersRound, Building2, TableProperties,
-  FlaskConical, History, Radar,
+  FlaskConical, Radar,
 } from "lucide-react";
 
 const allDrawerNav = [
@@ -23,7 +23,6 @@ const allDrawerNav = [
   { href: "/billing",    label: "Billing",     Icon: CalendarDays,    group: "Finance"    },
   { href: "/costs",      label: "Costs",       Icon: TrendingDown,    group: "Finance"    },
   { href: "/marketing",  label: "Marketing",   Icon: Megaphone,       group: "Marketing"  },
-  { href: "/timeline",   label: "Timeline",    Icon: History,         group: "Analytics"  },
   { href: "/accounting", label: "Accounting",  Icon: BookOpen,        group: "Analytics"  },
   { href: "/performance",label: "Snapshots",   Icon: BarChart2,       group: "Analytics"  },
   { href: "/reports",    label: "Reports",     Icon: TableProperties, group: "Analytics"  },
