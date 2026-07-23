@@ -32,17 +32,25 @@ export default async function AccountingPage() {
     capexMinutes[id] = (capexMinutes[id] || 0) + Number(t.minutes || 0);
   });
   const defaultRate = Number(org?.default_hourly_rate ?? 1000);
-  const intangiblesAsOf = (asOf: string) =>
-    (capexProjects || []).reduce((sum, p) => {
+  // Capitalised R&D as at a date: gross cost, accumulated amortisation, net book value.
+  const capexAt = (asOf: string) =>
+    (capexProjects || []).reduce((acc, p) => {
       const hours = (capexMinutes[p.id] || 0) / 60;
       const c = computeCapex(
         { is_capex: true, amortisation_months: p.amortisation_months ?? null, hourly_rate_override: p.hourly_rate_override != null ? Number(p.hourly_rate_override) : null, finalized_at: p.finalized_at ?? null },
         hours, defaultRate, asOf
       );
-      return sum + c.netBookValue;
-    }, 0);
+      acc.gross += c.capitalised;
+      acc.accum += c.accumulated;
+      acc.nbv += c.netBookValue;
+      return acc;
+    }, { gross: 0, accum: 0, nbv: 0 });
+  const dayBefore = (iso: string) => {
+    const d = new Date(iso); d.setDate(d.getDate() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
 
-  const intangibleAssets = intangiblesAsOf(fyEnd);
+  const intangibleAssets = capexAt(fyEnd).nbv;
 
   // ── AFS: auto figures per financial year ────────────────────────────────
   const fyStartMonth = Number(org?.fiscal_year_start ?? 3);
@@ -59,10 +67,14 @@ export default async function AccountingPage() {
   const autoByYear: Record<number, AutoFigures> = {};
   for (const y of finYears) {
     const { start, end } = finYearRange(y, fyStartMonth);
+    const endCapex = capexAt(end);
+    const openCapex = capexAt(dayBefore(start));
     autoByYear[y] = computeAutoFigures({
       fyStart: start, fyEnd: end,
       invoices: invRows, costs: costRows, income: incRows, cashflow: cfRows,
-      intangibles: intangiblesAsOf(end),
+      intangibles: endCapex.nbv,
+      intangiblesGross: endCapex.gross,
+      amortisation: endCapex.accum - openCapex.accum, // amortisation charged during the FY
     });
   }
 

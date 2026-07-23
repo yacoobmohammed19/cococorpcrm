@@ -13,6 +13,9 @@ export type AutoSource =
   | "cash"
   | "trade_receivables"
   | "intangibles"
+  | "intangibles_gross"
+  | "amortisation"
+  | "ppe"
   | "retained_earnings"
   | "revenue"
   | "other_income"
@@ -48,7 +51,7 @@ export const CASH_FLOW_SECTIONS = [
 
 export const CATALOG: CatalogLine[] = [
   // ── Statement of Financial Position ──────────────────────────────────────
-  { statement: "balance_sheet", section: "non_current_assets", line_key: "ppe", label: "Property, Plant & Equipment" },
+  { statement: "balance_sheet", section: "non_current_assets", line_key: "ppe", label: "Property, Plant & Equipment", auto: "ppe" },
   { statement: "balance_sheet", section: "non_current_assets", line_key: "intangibles", label: "Intangible Assets", auto: "intangibles" },
   { statement: "balance_sheet", section: "non_current_assets", line_key: "investments", label: "Investments" },
   { statement: "balance_sheet", section: "current_assets", line_key: "inventory", label: "Inventory" },
@@ -56,6 +59,9 @@ export const CATALOG: CatalogLine[] = [
   { statement: "balance_sheet", section: "current_assets", line_key: "cash", label: "Cash & Cash Equivalents", auto: "cash" },
   { statement: "balance_sheet", section: "equity", line_key: "share_capital", label: "Share Capital" },
   { statement: "balance_sheet", section: "equity", line_key: "retained_earnings", label: "Retained Earnings", auto: "retained_earnings" },
+  // Equity counterpart to capitalised development (own work capitalised): the
+  // intangible asset's value is matched here so the sheet balances.
+  { statement: "balance_sheet", section: "equity", line_key: "capitalised_dev", label: "Capitalised Development Reserve", auto: "intangibles_gross" },
   { statement: "balance_sheet", section: "non_current_liabilities", line_key: "long_term_loans", label: "Long-Term Loans" },
   { statement: "balance_sheet", section: "non_current_liabilities", line_key: "deferred_tax", label: "Deferred Tax" },
   { statement: "balance_sheet", section: "current_liabilities", line_key: "trade_payables", label: "Trade & Other Payables" },

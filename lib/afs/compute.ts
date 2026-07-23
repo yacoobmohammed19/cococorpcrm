@@ -10,6 +10,12 @@ type Income = { amount: number; transaction_date: string };
 type Cashflow = { balance: number; account_id: number | null; record_date: string };
 
 const isCompleted = (s: string) => s === "Completed" || s === "Paid";
+const isPending = (s: string) => s === "Pending";
+// Accrual basis for the statutory statements: revenue is recognised when an
+// invoice is ISSUED (pending or paid), so the unpaid balance sits as a
+// receivable that is matched by revenue in retained earnings. (Written-off
+// invoices are excluded.)
+const isEarned = (s: string) => isCompleted(s) || isPending(s);
 
 // Owner's draws / personal spend are distributions of equity, not business
 // expenses: they leave the Income Statement and appear as drawings in the
@@ -19,6 +25,8 @@ const isDrawing = (c: Cost) => DRAWING_TYPES.has(c.cost_type ?? "operational");
 // Charity is an expense (charge against profit), shown on its own lines.
 const isSadaqah = (c: Cost) => (c.cost_type ?? "") === "sadaqah";
 const isZakat = (c: Cost) => (c.cost_type ?? "") === "zakat";
+// Capex = asset purchase: capitalised to PPE, not expensed in the P&L.
+const isCapex = (c: Cost) => (c.cost_type ?? "") === "capex";
 
 function pad(n: number) {
   return String(n).padStart(2, "0");
@@ -48,19 +56,33 @@ export function computeAutoFigures(opts: {
   costs: Cost[];
   income: Income[];
   cashflow: Cashflow[];
-  intangibles: number; // capex net book value as at fyEnd (computed by caller)
+  intangibles: number; // R&D net book value as at fyEnd (computed by caller)
+  intangiblesGross?: number; // R&D gross capitalised cost as at fyEnd (reserve)
+  amortisation?: number; // R&D amortisation charged during the FY
 }): AutoFigures {
   const { fyStart, fyEnd } = opts;
   const inFy = (d: string) => d >= fyStart && d <= fyEnd;
+  const intangiblesGross = opts.intangiblesGross ?? opts.intangibles;
+  const amortisation = opts.amortisation ?? 0;
+  // Accumulated R&D amortisation to date = gross capitalised − net book value.
+  const accumAmort = intangiblesGross - opts.intangibles;
 
   // ── Balance-sheet figures: cumulative "as at" year-end ──
+  // Retained earnings excludes capex (asset, not expense) and carries the
+  // accumulated R&D amortisation charged to date.
   const retainedEarnings =
-    opts.invoices.filter((i) => isCompleted(i.status) && i.transaction_date <= fyEnd).reduce((s, i) => s + i.amount, 0) +
+    opts.invoices.filter((i) => isEarned(i.status) && i.transaction_date <= fyEnd).reduce((s, i) => s + i.amount, 0) +
     opts.income.filter((r) => r.transaction_date <= fyEnd).reduce((s, r) => s + r.amount, 0) -
-    opts.costs.filter((c) => c.transaction_date <= fyEnd).reduce((s, c) => s + c.amount, 0);
+    opts.costs.filter((c) => c.transaction_date <= fyEnd && !isCapex(c)).reduce((s, c) => s + c.amount, 0) -
+    accumAmort;
+
+  // PPE = cumulative capex-tagged asset purchases as at year-end.
+  const ppe = opts.costs
+    .filter((c) => isCapex(c) && c.transaction_date <= fyEnd)
+    .reduce((s, c) => s + c.amount, 0);
 
   const tradeReceivables = opts.invoices
-    .filter((i) => i.status === "Pending" && i.transaction_date <= fyEnd)
+    .filter((i) => isPending(i.status) && i.transaction_date <= fyEnd)
     .reduce((s, i) => s + i.amount, 0);
 
   // Cash = latest snapshot per account with record_date <= year-end.
@@ -74,23 +96,27 @@ export function computeAutoFigures(opts: {
 
   // ── Income-statement figures: within the financial year ──
   const revenue = opts.invoices
-    .filter((i) => isCompleted(i.status) && inFy(i.transaction_date))
+    .filter((i) => isEarned(i.status) && inFy(i.transaction_date))
     .reduce((s, i) => s + i.amount, 0);
   const otherIncome = opts.income.filter((r) => inFy(r.transaction_date)).reduce((s, r) => s + r.amount, 0);
   const fyCosts = opts.costs.filter((c) => inFy(c.transaction_date));
   const drawings = fyCosts.filter((c) => isDrawing(c)).reduce((s, c) => s + c.amount, 0);
   const donations = fyCosts.filter((c) => isSadaqah(c)).reduce((s, c) => s + c.amount, 0);
   const zakat = fyCosts.filter((c) => isZakat(c)).reduce((s, c) => s + c.amount, 0);
-  // Operating expenses exclude drawings (equity) and charity (shown separately).
+  // Operating expenses exclude drawings (equity), charity (shown separately)
+  // and capex (capitalised to PPE).
   const totalExpenses = fyCosts
-    .filter((c) => !isDrawing(c) && !isSadaqah(c) && !isZakat(c))
+    .filter((c) => !isDrawing(c) && !isSadaqah(c) && !isZakat(c) && !isCapex(c))
     .reduce((s, c) => s + c.amount, 0);
-  const profitForYear = revenue + otherIncome - totalExpenses - donations - zakat;
+  const profitForYear = revenue + otherIncome - totalExpenses - donations - zakat - amortisation;
 
   return {
     cash,
     trade_receivables: tradeReceivables,
     intangibles: opts.intangibles,
+    intangibles_gross: intangiblesGross,
+    amortisation,
+    ppe,
     retained_earnings: retainedEarnings,
     revenue,
     other_income: otherIncome,
