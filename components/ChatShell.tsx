@@ -41,7 +41,7 @@ export function ChatShell({ agents: initialAgents, conversations: initialConvers
       setConvs(c => [{ id, title: "New chat", agent_id: defaultAgentId, updated_at: new Date().toISOString() }, ...c]);
       setActiveId(id);
       setSidebar(false);
-    } catch { toast.error("Failed to start chat"); }
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to start chat"); }
     finally { setBusy(false); }
   }
 
