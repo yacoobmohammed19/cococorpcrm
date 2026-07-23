@@ -16,6 +16,9 @@ const isCompleted = (s: string) => s === "Completed" || s === "Paid";
 // Statement of Changes in Equity.
 const DRAWING_TYPES = new Set(["owner_draw", "personal"]);
 const isDrawing = (c: Cost) => DRAWING_TYPES.has(c.cost_type ?? "operational");
+// Charity is an expense (charge against profit), shown on its own lines.
+const isSadaqah = (c: Cost) => (c.cost_type ?? "") === "sadaqah";
+const isZakat = (c: Cost) => (c.cost_type ?? "") === "zakat";
 
 function pad(n: number) {
   return String(n).padStart(2, "0");
@@ -75,10 +78,14 @@ export function computeAutoFigures(opts: {
     .reduce((s, i) => s + i.amount, 0);
   const otherIncome = opts.income.filter((r) => inFy(r.transaction_date)).reduce((s, r) => s + r.amount, 0);
   const fyCosts = opts.costs.filter((c) => inFy(c.transaction_date));
-  // Operating expenses exclude drawings; drawings are an equity distribution.
-  const totalExpenses = fyCosts.filter((c) => !isDrawing(c)).reduce((s, c) => s + c.amount, 0);
   const drawings = fyCosts.filter((c) => isDrawing(c)).reduce((s, c) => s + c.amount, 0);
-  const profitForYear = revenue + otherIncome - totalExpenses;
+  const donations = fyCosts.filter((c) => isSadaqah(c)).reduce((s, c) => s + c.amount, 0);
+  const zakat = fyCosts.filter((c) => isZakat(c)).reduce((s, c) => s + c.amount, 0);
+  // Operating expenses exclude drawings (equity) and charity (shown separately).
+  const totalExpenses = fyCosts
+    .filter((c) => !isDrawing(c) && !isSadaqah(c) && !isZakat(c))
+    .reduce((s, c) => s + c.amount, 0);
+  const profitForYear = revenue + otherIncome - totalExpenses - donations - zakat;
 
   return {
     cash,
@@ -89,6 +96,8 @@ export function computeAutoFigures(opts: {
     other_income: otherIncome,
     total_expenses: totalExpenses,
     drawings,
+    donations,
+    zakat,
     profit_for_year: profitForYear,
   };
 }

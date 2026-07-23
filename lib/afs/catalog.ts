@@ -18,6 +18,8 @@ export type AutoSource =
   | "other_income"
   | "total_expenses"
   | "drawings"
+  | "donations"
+  | "zakat"
   | "profit_for_year";
 
 export type CatalogLine = {
@@ -65,6 +67,8 @@ export const CATALOG: CatalogLine[] = [
   { statement: "income_statement", section: "revenue", line_key: "revenue", label: "Revenue", auto: "revenue" },
   { statement: "income_statement", section: "revenue", line_key: "other_income", label: "Other Income", auto: "other_income" },
   { statement: "income_statement", section: "expenses", line_key: "operating_expenses", label: "Operating Expenses", auto: "total_expenses" },
+  { statement: "income_statement", section: "expenses", line_key: "donations", label: "Donations (Sadaqah)", auto: "donations" },
+  { statement: "income_statement", section: "expenses", line_key: "zakat", label: "Zakat", auto: "zakat" },
   { statement: "income_statement", section: "expenses", line_key: "depreciation", label: "Depreciation & Amortisation" },
   { statement: "income_statement", section: "expenses", line_key: "finance_costs", label: "Finance Costs" },
   { statement: "income_statement", section: "tax", line_key: "tax_expense", label: "Taxation" },
