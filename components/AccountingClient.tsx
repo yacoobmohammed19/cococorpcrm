@@ -193,7 +193,7 @@ export function AccountingClient({ invoices, costs, income: initialIncome, cashf
   // ── IS / BS data ─────────────────────────────────────────────────────────
   const isData = useMemo(() => {
     const inPeriod = (d: string) => d >= start && d <= end;
-    const completed = invoices.filter(i => i.status === "Completed" && inPeriod(i.transaction_date));
+    const completed = invoices.filter(i => (i.status === "Completed" || i.status === "Paid") && inPeriod(i.transaction_date));
     const pending = invoices.filter(i => i.status === "Pending" && inPeriod(i.transaction_date));
     const revenue = completed.reduce((s, i) => s + i.amount, 0);
     const pendingRev = pending.reduce((s, i) => s + i.amount, 0);
@@ -231,7 +231,7 @@ export function AccountingClient({ invoices, costs, income: initialIncome, cashf
       const me = monthEnd(mk);
       const ms = mk + "-01";
       const inMonth = (d: string) => d >= ms && d <= me;
-      const revenue = invoices.filter(i => i.status === "Completed" && inMonth(i.transaction_date)).reduce((s, i) => s + i.amount, 0);
+      const revenue = invoices.filter(i => (i.status === "Completed" || i.status === "Paid") && inMonth(i.transaction_date)).reduce((s, i) => s + i.amount, 0);
       const otherIncome = income.filter(r => inMonth(r.transaction_date)).reduce((s, r) => s + r.amount, 0);
       const opCosts = costs.filter(c => inMonth(c.transaction_date) && (includeAll || c.include_in_pnl));
       const byCat: Record<string, number> = {};
