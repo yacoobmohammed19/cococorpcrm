@@ -850,9 +850,11 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const orgId = await getCurrentOrgId();
-    const { messages, proactive } = (await req.json()) as {
+    const { messages, proactive, agentId, conversationId } = (await req.json()) as {
       messages: { role: "user" | "assistant"; content: string }[];
       proactive?: boolean;
+      agentId?: number | null;
+      conversationId?: number | null;
     };
 
     if (!proactive && !messages?.length) {
@@ -897,13 +899,39 @@ LIVE BUSINESS SNAPSHOT (${new Date().toISOString().slice(0, 10)}):
     // Mutable copy of feature_flags — memory tools update this object in place during the session
     const orgFeatureFlags: Record<string, unknown> = { ...(orgData?.feature_flags as Record<string, unknown> || {}) };
 
+    // Persona: the selected agent's prompt wins, then the org-wide custom prompt, then the base.
+    let agentPrompt: string | null = null;
+    if (agentId) {
+      const { data: agent } = await supabase.from("coco_agents").select("system_prompt").eq("id", agentId).single();
+      agentPrompt = (agent?.system_prompt as string | null) ?? null;
+    }
     const customPrompt = orgFeatureFlags.ai_system_prompt as string | null;
     const memories = orgFeatureFlags.coco_memories as string[] | undefined;
     const memorySection = memories?.length
       ? `\n\n## Things you've been asked to remember\n${memories.map((m, i) => `${i + 1}. ${m}`).join("\n")}`
       : "";
 
-    const systemPrompt = (customPrompt?.trim() || BASE_SYSTEM_PROMPT) + memorySection + snapshot + `\n\nToday's date: ${new Date().toISOString().slice(0, 10)}`;
+    const basePrompt = agentPrompt?.trim() || customPrompt?.trim() || BASE_SYSTEM_PROMPT;
+    const systemPrompt = basePrompt + memorySection + snapshot + `\n\nToday's date: ${new Date().toISOString().slice(0, 10)}`;
+
+    // Persist a completed turn (user + assistant) to the conversation history.
+    const persistTurn = async (assistantText: string) => {
+      if (!conversationId) return;
+      const rows: { org_id: string; conversation_id: number; role: string; content: string }[] = [];
+      if (!proactive && messages?.length) {
+        rows.push({ org_id: orgId, conversation_id: conversationId, role: "user", content: messages[messages.length - 1].content });
+      }
+      rows.push({ org_id: orgId, conversation_id: conversationId, role: "assistant", content: assistantText });
+      try {
+        await supabase.from("coco_messages").insert(rows);
+        const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+        // Auto-title from the first user message.
+        if (!proactive && messages?.length === 1) {
+          patch.title = messages[0].content.slice(0, 60);
+        }
+        await supabase.from("coco_conversations").update(patch).eq("id", conversationId);
+      } catch { /* history is best-effort */ }
+    };
 
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
@@ -948,6 +976,7 @@ No bullet points. No headers. No filler phrases.`
         // Return the write action as a pending confirmation — do NOT execute.
         const writeCall = writeCalls[0];
         const textSoFar = result.response.text()?.trim() || "";
+        await persistTurn(textSoFar || "I have all the information needed. Please review and confirm the action below.");
         return NextResponse.json({
           reply: textSoFar || "I have all the information needed. Please review and confirm:",
           pendingAction: {
@@ -974,6 +1003,7 @@ No bullet points. No headers. No filler phrases.`
     }
 
     const reply = result.response.text();
+    await persistTurn(reply);
     return NextResponse.json({ reply });
   } catch (e: unknown) {
     console.error("[ai-assistant]", e);

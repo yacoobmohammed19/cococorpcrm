@@ -1,38 +1,42 @@
-import { AiChatCore } from "@/components/AiChatCore";
+import { ChatShell } from "@/components/ChatShell";
 import { getCurrentOrgId } from "@/lib/supabase/org";
+import { createServerClient } from "@/lib/supabase/server";
+import { ensureDefaultAgents } from "@/server-actions/coco";
+
+export const dynamic = "force-dynamic";
 
 export default async function ChatPage() {
   const orgId = await getCurrentOrgId();
+  await ensureDefaultAgents();
+
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const [{ data: agents }, { data: conversations }] = await Promise.all([
+    supabase.from("coco_agents").select("id, name, description, system_prompt, is_default")
+      .eq("org_id", orgId).is("deleted_at", null).order("sort").order("name"),
+    supabase.from("coco_conversations").select("id, title, agent_id, updated_at")
+      .eq("org_id", orgId).eq("user_id", user?.id ?? "").is("deleted_at", null)
+      .order("updated_at", { ascending: false }),
+  ]);
+
   return (
-    // -mx-4 -mt-4 removes the layout's p-4 so the chat fills edge-to-edge on mobile.
-    // Height = full dynamic viewport minus the fixed mobile header (48px) and bottom nav (64px).
+    // Remove the layout's padding so the chat fills edge-to-edge; bound the height to the
+    // dynamic viewport minus the mobile header (48px) + bottom nav (64px) so it never "moves around".
     <div
-      className="-mx-4 -mt-4 md:mx-0 md:mt-0 flex flex-col"
+      className="-mx-4 -mt-4 md:mx-0 md:mt-0"
       style={{ height: "calc(100dvh - 48px - 64px)" }}
     >
-      {/* Page header */}
-      <div
-        className="flex items-center gap-3 px-4 pt-4 pb-3 shrink-0 border-b"
-        style={{ borderColor: "var(--border)" }}
-      >
-        <div
-          className="w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-base shrink-0"
-          style={{ background: "linear-gradient(135deg, var(--accent), var(--purple-c))", color: "#fff" }}
-        >
-          C
-        </div>
-        <div>
-          <h1 className="text-lg font-bold tracking-tight">Coco AI</h1>
-          <p className="text-xs" style={{ color: "var(--muted2)" }}>
-            Ask anything · create records · manage your CRM
-          </p>
-        </div>
-      </div>
-
-      {/* Chat fills remaining space */}
-      <div className="flex-1 min-h-0" style={{ background: "var(--card2)" }}>
-        <AiChatCore orgId={orgId} />
-      </div>
+      <ChatShell
+        orgId={orgId}
+        agents={(agents || []).map(a => ({
+          id: a.id as number, name: a.name as string, description: (a.description as string | null) ?? null,
+          system_prompt: (a.system_prompt as string) ?? "", is_default: !!a.is_default,
+        }))}
+        conversations={(conversations || []).map(c => ({
+          id: c.id as number, title: (c.title as string) ?? "New chat",
+          agent_id: (c.agent_id as number | null) ?? null, updated_at: (c.updated_at as string) ?? "",
+        }))}
+      />
     </div>
   );
 }

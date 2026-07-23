@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, useLayoutEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
+import { createClient } from "@/lib/supabase/client";
 import remarkGfm from "remark-gfm";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -263,12 +264,9 @@ function ConfirmActionCard({
   );
 }
 
-type Props = { compact?: boolean; orgId?: string };
+type Props = { compact?: boolean; orgId?: string; conversationId?: number; agentId?: number | null };
 
-const MAX_STORED = 100;
-
-export function AiChatCore({ compact = false, orgId }: Props) {
-  const historyKey = orgId ? `coco_chat_history_${orgId}` : "coco_chat_history";
+export function AiChatCore({ compact = false, conversationId, agentId }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -278,53 +276,45 @@ export function AiChatCore({ compact = false, orgId }: Props) {
   const [executing, setExecuting] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const greetedRef = useRef(false);
 
-  // Reset + reload persisted chat history when the session key changes. This is a
-  // genuine external-store (localStorage) load, so setState here is intentional;
-  // the set-state-in-effect rule's cascading-render concern doesn't apply.
-  useLayoutEffect(() => {
+  // Load the conversation's messages from the DB; if empty, kick off a proactive
+  // greeting (persisted server-side). Re-runs whenever the active conversation changes.
+  useEffect(() => {
+    // Reset when switching conversations — a genuine external-store (DB) reload,
+    // so the cascading-render concern of set-state-in-effect doesn't apply.
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!conversationId) { setMessages([]); return; }
+    let cancelled = false;
     setMessages([]);
-    greetedRef.current = false;
-    try {
-      const stored = localStorage.getItem(historyKey);
-      if (stored) {
-        const msgs = JSON.parse(stored) as Message[];
-        if (msgs.length > 0) {
-          setMessages(msgs);
-          greetedRef.current = true;
-        }
-      }
-    } catch { /* ignore */ }
+    setPendingAction(null);
+    (async () => {
+      let existing: Message[] = [];
+      try {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from("coco_messages")
+          .select("role, content")
+          .eq("conversation_id", conversationId)
+          .order("created_at", { ascending: true });
+        existing = (data ?? []).map(m => ({ role: m.role as "user" | "assistant", content: m.content as string }));
+      } catch { /* ignore */ }
+      if (cancelled) return;
+      if (existing.length > 0) { setMessages(existing); return; }
+      setLoading(true);
+      try {
+        const r = await fetch("/api/ai-assistant", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: [], proactive: true, conversationId, agentId }),
+        });
+        const d = await r.json() as { reply?: string };
+        if (!cancelled && d.reply) setMessages([{ role: "assistant", content: d.reply }]);
+      } catch { /* silent */ }
+      finally { if (!cancelled) setLoading(false); }
+    })();
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historyKey]);
-
-  // Proactive greeting when chat is opened fresh
-  useEffect(() => {
-    if (greetedRef.current) return;
-    greetedRef.current = true;
-    setLoading(true);
-    fetch("/api/ai-assistant", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: [], proactive: true }),
-    })
-      .then(r => r.json())
-      .then((data: { reply?: string; overloaded?: boolean }) => {
-        if (data.reply) setMessages([{ role: "assistant", content: data.reply }]);
-      })
-      .catch(() => { /* silent — chat just starts empty */ })
-      .finally(() => setLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (messages.length === 0) return;
-    try {
-      localStorage.setItem(historyKey, JSON.stringify(messages.slice(-MAX_STORED)));
-    } catch { /* ignore */ }
-  }, [messages, historyKey]);
+  }, [conversationId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -352,7 +342,7 @@ export function AiChatCore({ compact = false, orgId }: Props) {
         const res = await fetch("/api/ai-assistant", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: next }),
+          body: JSON.stringify({ messages: next, conversationId, agentId }),
         });
         const data = await res.json() as { reply?: string; error?: string; pendingAction?: PendingAction; overloaded?: boolean };
 
@@ -380,7 +370,7 @@ export function AiChatCore({ compact = false, orgId }: Props) {
 
     setLoading(false);
     setRetryStatus("");
-  }, [messages, loading]);
+  }, [messages, loading, conversationId, agentId]);
 
   async function handleConfirm() {
     if (!pendingAction) return;
@@ -499,16 +489,6 @@ export function AiChatCore({ compact = false, orgId }: Props) {
 
       {/* Input bar */}
       <div className="shrink-0 border-t p-3" style={{ borderColor: "var(--border)", background: "var(--card)" }}>
-        {messages.length > 0 && (
-          <div className="flex justify-end mb-2">
-            <button
-              onClick={() => { setMessages([]); setError(""); setPendingAction(null); try { localStorage.removeItem(historyKey); } catch { /* ignore */ } }}
-              className="text-[11px] px-2.5 py-1 rounded-lg"
-              style={{ color: "var(--muted2)", border: "1px solid var(--border)" }}>
-              Clear chat
-            </button>
-          </div>
-        )}
         <div className="flex gap-2 items-end">
           <textarea
             ref={inputRef}
